@@ -61,6 +61,12 @@ $ ./bin/qasm.ts -o file.qbin file.qasm
 $ ./bin/qvm.ts file.qbin
 ```
 
+Run tests:
+
+```bash
+$ npm t
+```
+
 ## Installing
 
 I wouldn't do that if I were you.
