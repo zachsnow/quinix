@@ -1,6 +1,6 @@
 # Quinix: A quarantine experiment
 
-Quinix is an enjoyable excursion into virtual machines, assemblers,
+[Quinix](https://quinix.vein.io) is an enjoyable excursion into virtual machines, assemblers,
 compilers, and operating systems.
 
 ### QPU
