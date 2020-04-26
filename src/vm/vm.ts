@@ -463,6 +463,7 @@ class VM {
     const base = this.INTERRUPT_TABLE_REGISTERS_ADDR;
     for(var i = 0; i < this.state.registers.length; i++){
       this.state.registers[i] = this.memory[base + i];
+      this.memory[base + i] = 0;
     }
   }
 
@@ -480,6 +481,12 @@ class VM {
 
       // Restore registers, including `ip`.
       this.interruptRestore();
+
+      // If we restored an `ip` of 0 we performed an invalid return,
+      // bail out.
+      if(!this.state.registers[Register.IP]){
+        this.fault(`invalid interrupt return`);
+      }
 
       // Re-enable interrupts.
       this.memory[this.INTERRUPT_TABLE_ENABLED_ADDR] = 0x1;

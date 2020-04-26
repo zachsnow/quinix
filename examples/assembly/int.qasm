@@ -13,4 +13,6 @@ int r1
 constant r1 0x0
 int r1
 
+; We shouldn't reach this point, and so the machine should not halt with 0x1.
+constant r0 0x1
 halt
