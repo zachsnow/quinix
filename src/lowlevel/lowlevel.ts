@@ -160,7 +160,7 @@ class GlobalDeclaration extends Declaration {
     if(this.expression instanceof StringLiteralExpression){
       const temporaryReference = new Reference(`${this.qualifiedIdentifier}_string$`);
       return [
-        new DataDirective(temporaryReference, new TextData(this.expression.toString())),
+        new DataDirective(temporaryReference, new TextData(this.expression.text)),
         new DataDirective(reference, new ReferenceData(temporaryReference)),
       ];
     }

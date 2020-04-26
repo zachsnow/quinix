@@ -289,7 +289,7 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, expressions
 
 @expression
 class StringLiteralExpression extends Expression {
-  private text: string;
+  public readonly text: string;
   private codePoints: number[];
 
   public constructor(text: string){
