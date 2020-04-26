@@ -1,7 +1,7 @@
 import { logger, release } from '../lib/util';
 import { Debugger } from './debugger';
 import { Memory, Address, Immediate } from '../lib/base-types';
-import { MMU, AccessFlags, IdentityMMU, TwoLevelPageTablePeripheral } from './mmu';
+import { MMU, AccessFlags, IdentityMMU, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
 import { Program, Operation, Instruction, Register } from './instructions';
 import {
   Peripheral, PeripheralMapping,
@@ -159,7 +159,8 @@ class VM {
     this.memory = new Memory(this.memorySize);
 
     // Default MMU.
-    this.mmu = new IdentityMMU();
+    const mmu = new ListPageTablePeripheral(this.memory);
+    this.mmu = mmu;
 
     // Peripherals.
     this.peripherals = options.peripherals ?? [
@@ -167,6 +168,7 @@ class VM {
       new DebugBreakPeripheral(),
       new DebugOutputPeripheral(),
       new DebugInputPeripheral(),
+      mmu,
     ];
 
     // Peripheral frequency.
@@ -226,12 +228,6 @@ class VM {
       }
 
       peripheral.map(this, mapping);
-
-      // At most 1 peripheral can act as an MMU.
-      if(peripheral.identifier === Peripheral.MMU_IDENTIFIER){
-        // HACK: I don't know how to make this type safe.
-        this.mmu = peripheral as any as MMU;
-      }
 
       baseAddress += peripheralSize;
     });
