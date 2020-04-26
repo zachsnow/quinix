@@ -210,6 +210,21 @@ class BuiltinType extends Type {
     return false;
   }
 
+  public isConvertibleTo(type: Type, context: TypeChecker): boolean {
+    // Really we should make `bool` an identifer, but then we need a "default"
+    // typechecking context. So we'll make it a builtin, but allow
+    // conversion between byte and bool.
+    const convertibleBuiltins = ['byte', 'bool'];
+    type = type.resolve(context);
+    if(type instanceof BuiltinType){
+      return this.builtin === type.builtin || (
+        convertibleBuiltins.indexOf(this.builtin) !== -1 &&
+        convertibleBuiltins.indexOf(type.builtin) !== -1
+      );
+    }
+    return false;
+  }
+
   public toString(){
     return this.withTags(this.builtin);
   }
