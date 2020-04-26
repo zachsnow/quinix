@@ -82,23 +82,27 @@ type VMResult = number;
 type VMStepResult = 'halt' | 'wait' | 'continue' | 'break';
 
 class VM {
-  // Whenever we trigger an interrupt, we push the current state.
-  // We we return from an interrupt, we restore the state.
-  private readonly interruptFrames: InterruptFrame[] = [];
+  /**
+   *
+   */
   private resumeInterrupt?: () => void;
+  private waiting: boolean = false;
 
   // Interrupt table layout @ 0x0000:
   //  byte: enabled
-  //  byte: r0
+  //  byte: handler entries address
+  //  byte: r0 -- stored register
   //  ...
-  //  byte: rn
-  //  byte: handler count
-  //  byte: handler 0 address
+  //  byte: rn -- stored register
+  //  byte: handler entry count
+  //  byte: handler entry 0 address
   //  ...
-  //  byte: handler n address
+  //  byte: handler entry n address
   private readonly INTERRUPT_TABLE_ENABLED_ADDR: Address = 0x0000;
-  private readonly INTERRUPT_TABLE_COUNT_ADDR: Address;
-  private readonly INTERRUPT_TABLE_ENTRIES_ADDR: Address;
+  private readonly INTERRUPT_TABLE_ENTRIES_ADDR_ADDR: Address = 0x0001;
+  private readonly INTERRUPT_TABLE_REGISTERS_ADDR: Address = 0x0002;
+  private readonly INTERRUPT_TABLE_COUNT_ADDR: Address = Register.REGISTER_COUNT + 0x2;
+  private readonly INTERRUPT_TABLE_ENTRIES_ADDR: Address = this.INTERRUPT_TABLE_COUNT_ADDR + 0x1;
 
   // Interrupt handler code:
   //  byte: handler 1 code
@@ -167,10 +171,6 @@ class VM {
 
     // Peripheral frequency.
     this.peripheralFrequency = options.peripheralFrequency ?? this.DEFAULT_PERIPHERAL_FREQUENCY;
-
-    // Interrupts.
-    this.INTERRUPT_TABLE_COUNT_ADDR = this.INTERRUPT_TABLE_ENABLED_ADDR + 1;
-    this.INTERRUPT_TABLE_ENTRIES_ADDR = this.INTERRUPT_TABLE_COUNT_ADDR + 1;
 
     // Breakpoints (just records whether to break on a particular *virtual* address, for now).
     (options.breakpoints || []).forEach((breakpoint) => {
@@ -260,8 +260,13 @@ class VM {
 
   private loadInterrupts(){
     let maxInterrupt = 0;
+
     let handlerAddress = this.INTERRUPT_HANDLERS_ADDR;
     const mappedInterrupts: { [interrupt: number]: Peripheral } = {};
+
+    // Mark the start of the interrupt handler entries table at a known location so it's
+    // easy to reference.
+    this.memory[this.INTERRUPT_TABLE_ENTRIES_ADDR_ADDR] = this.INTERRUPT_TABLE_ENTRIES_ADDR;
 
     // Auto-map peripherals.
     this.mappedPeripherals.forEach((mapping) => {
@@ -382,11 +387,11 @@ class VM {
       if(this.resumeInterrupt){
         this.resumeInterrupt();
         this.resumeInterrupt = undefined;
-        return;
+        log(`resuming interrupt due to ${Immediate.toString(interrupt, 1)}...`);
       }
 
       // In any event, since we've already prepared
-      // the interrupt, execution will resume in the
+      // the interrupt, execution will resume once we return.
       return;
     }
   }
@@ -399,6 +404,8 @@ class VM {
     if(this.resumeInterrupt){
       this.fault(`waiting before previous wait has completed`);
     }
+
+    this.waiting = true;
 
     return new Promise<void>((resolve) => {
       this.resumeInterrupt = resolve;
@@ -435,6 +442,7 @@ class VM {
           // Wait for the next interrupt to begin trigger.  This will resume
           // execution.
           log('wait');
+          this.waiting = true;
           await this.nextInterrupt();
           break;
 
@@ -446,6 +454,22 @@ class VM {
     }
   }
 
+  private interruptStore(): void {
+    // Store each register in the register location.
+    const base = this.INTERRUPT_TABLE_REGISTERS_ADDR;
+    for(var i = 0; i < this.state.registers.length; i++){
+      this.memory[base + i] = this.state.registers[i];
+    }
+  }
+
+  private interruptRestore(): void {
+    // Read each register in the register location.
+    const base = this.INTERRUPT_TABLE_REGISTERS_ADDR;
+    for(var i = 0; i < this.state.registers.length; i++){
+      this.state.registers[i] = this.memory[base + i];
+    }
+  }
+
   /**
    * Prepares the machine to handle the given interrupt. Returns `true` if
    * the interrupt is mapped, and the machine's state is updated. Otherwise,
@@ -453,18 +477,13 @@ class VM {
    *
    * @param interrupt the interrupt to prepare to handle.
    */
-  private prepareInterrupt(interrupt: Interrupt): VMStepResult | boolean {
+  private prepareInterrupt(interrupt: Interrupt): boolean {
     // Special cases.
     if(interrupt === 0x0){
       log(`interrupt 0x0: return`);
 
-      const frame = this.interruptFrames.pop();
-      if(frame === undefined){
-        this.fault(`invalid interrupt return`);
-      }
-
       // Restore registers, including `ip`.
-      this.state.restore(frame);
+      this.interruptRestore();
 
       // Re-enable interrupts.
       this.memory[this.INTERRUPT_TABLE_ENABLED_ADDR] = 0x1;
@@ -472,16 +491,13 @@ class VM {
       // Re-enable MMU.
       this.mmu.enable();
 
-      // If we have returned trom the last interrupt frame, and
-      // we started handling interrupts from the wait state, we should return
-      // to the wait state.
-      return this.interruptFrames.length === 0 && frame.waiting ? 'wait' : true;
+      return true;
     }
     else if (interrupt === 0x1){
       // HACK: this is just for release for now; we simulate an interrupt + interrupt
       // return without actually doing anything, and then release.
       this.state.registers[Register.IP]++;
-      return 'continue';
+      return true;
     }
 
     // NOTE: all direct memory accesses are to *physical* memory.
@@ -500,7 +516,7 @@ class VM {
     // is not currently mapped and should be ignored.
     const handler = this.memory[this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt];
     if(handler === 0x0){
-      log(`interrupt ${Immediate.toString(interrupt)}: handler not mapped ${this.INTERRUPT_TABLE_ENTRIES_ADDR}`);
+      log(`interrupt ${Immediate.toString(interrupt)}: handler not mapped ${Immediate.toString(this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt)}`);
       return false;
     }
 
@@ -511,7 +527,7 @@ class VM {
     this.state.registers[Register.IP]++;
 
     // Store state.
-    this.interruptFrames.push(this.state.store(!!this.resumeInterrupt));
+    this.interruptStore();
 
     // Jump to register.
     this.state.registers[Register.IP] = handler;
@@ -598,21 +614,15 @@ class VM {
         case Operation.INT: {
           const interrupt = registers[decoded.sr0!];
           const prepared = this.prepareInterrupt(interrupt);
-          switch(prepared){
-            case true:
-              // Interrupt prepared.
-              ipOffset = 0;
-              break;
-            case false:
-              // Interrupt not prepared.
-              break;
-            case 'wait':
-            case 'continue':
-              return prepared;
-            default:
-              this.fault(`invalid interrupt preparation ${prepared}`);
+          if(prepared){
+            // Interrupt prepared. If we are waiting and we just performed an interrupt
+            // return (int 0x0), we should carry on waiting. Otherwise we want to execute the
+            // body of the interrupt, so we `continue` (to release for peripherals and then
+            // resume execution).
+            return !interrupt && this.waiting ? 'wait' : 'continue';
           }
         }
+
         case Operation.LOAD: {
           const virtualAddress = registers[decoded.sr0!];
 

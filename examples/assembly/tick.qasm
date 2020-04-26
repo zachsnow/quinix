@@ -1,14 +1,19 @@
 ; Prints "Tick..." every second or so.
 data @hello 'Tick...\n'
 
-data @interrupt 0x4                   ; Hardware timer is interrupt 0x4.
+data @interruptTable 0x1              ; Address of containing the address of the interrupt handler entries table.
+data @interrupt 0x2                   ; Hardware timer is interrupt 0x2.
 data @timerControl 0x300              ; Hardware timer MMIO location.
 data @consoleControl 0x302            ; Console output MMIO location.
 data @consoleBuffer 0x303             ; Console output DMA location.
 
 ; Set up interrupt handler.
-constant r0 @interrupt
+constant r0 @interruptTable
 load r0 r0
+load r0 r0
+constant r1 @interrupt
+load r1 r1
+add r0 r0 r1
 constant r1 @int
 store r0 r1
 
