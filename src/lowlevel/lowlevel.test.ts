@@ -282,7 +282,7 @@ describe('QLLC end-to-end', () => {
       ['1 && 2', 2],
       ['1 && 0', 0],
       ['1 && <byte>false', 0],
-      ['21 && <byte><* byte>null', 0],
+      ['21 && <unsafe byte><* byte>null', 0],
     ];
     return Promise.all(runs.map(([expr, value], i) => {
       return expectExpressionToBe(expr, value);
@@ -990,7 +990,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(0, `
       function main(): byte {
         var b = new byte [0x2000];
-        return <byte>b;
+        return <unsafe byte>b;
       }
     `, true);
   });
@@ -1019,7 +1019,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(0x8003, `
       function main(): byte {
         var b: * byte = new byte 10;
-        return <byte>b;
+        return <unsafe byte>b;
       }
     `, true);
   });
@@ -1041,7 +1041,7 @@ describe('QLLC end-to-end', () => {
         var b: * byte = new byte 10;
         delete b;
         b = new byte 20;
-        return <byte>b;
+        return <unsafe byte>b;
       }
     `, true, 2000);
   });
@@ -1052,7 +1052,7 @@ describe('QLLC end-to-end', () => {
         var a: * byte = new byte 10;
         var b: * byte = new byte 11;
         var c: * byte = new byte 12;
-        return <byte>c;
+        return <unsafe byte>c;
       }
     `, true, 5000);
   });
@@ -1093,7 +1093,7 @@ describe('QLLC end-to-end', () => {
       function main(): byte {
         var p: * Point = new Point;
         var q: * Point = new Point;
-        return <byte>q;
+        return <unsafe byte>q;
       }
     `, true, 2000);
   });
@@ -1287,7 +1287,7 @@ describe('QLLC end-to-end', () => {
       function main(): byte {
         var b: * byte = null;
         var bb: ** byte = null;
-        return <byte>b + <byte>bb;
+        return <unsafe byte>b + <unsafe byte>bb;
       }
     `);
   });
