@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "es6",
+    "module": "commonjs",
+    "strict": true,
+    "importHelpers": true,
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "rootDir": ".",
+    "outDir": "./build",
+    "lib": [
+      "es6",
+      "dom"
+    ]
+  },
+  "include": [
+    "./src/**/*.ts",
+    "./bin/**/*.ts",
+  ]
+}

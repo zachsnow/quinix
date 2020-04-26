@@ -1,0 +1,5 @@
+{
+    "files.exclude": {
+        "src/**/*parser.ts": true
+    }
+}

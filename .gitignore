@@ -1,0 +1,11 @@
+*~
+destroy.log
+provision.log
+deploy.log
+node_modules/
+src/parser.ts
+/build/
+out.qasm
+out.qbin
+/*.qasm
+/*.qbin

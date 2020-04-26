@@ -1,0 +1,20 @@
+void
+;;
+byte
+;;
+* byte
+;;
+foo
+;;
+struct { foo: byte; }
+;;
+() => void
+;;
+(byte) => void
+;;
+() => byte
+;;
+byte[]
+;;
+byte[2]
+;;

@@ -1,0 +1,13 @@
+# build.sh: builds the system runtime and standard library.
+set -euo pipefail
+
+QLLC_PATH="../bin/qllc.ts"
+if [ "${1-}" == "--compiled" ]; then
+  QLLC_PATH="../build/bin/qllc.js"
+fi
+
+echo "Compiling system..."
+${QLLC_PATH} --library --namespace system -o bin/system.qasm system.qll
+
+echo "Compiling lib..."
+${QLLC_PATH} --library -o bin/lib.qasm lib.qll
