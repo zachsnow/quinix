@@ -35,7 +35,7 @@ class TypeChecker extends Messages {
   }
 
   public loop(): TypeChecker {
-    const context = new TypeChecker(this.typeTable, this.symbolTable, this.namespace);
+    const context = this.extend(undefined, undefined, undefined);
     context.loopCount++;
     return context;
   }
