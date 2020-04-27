@@ -7,6 +7,5 @@ node_modules/
 /src/lowlevel/*parser.ts
 /build/
 out.qasm
-out.qbin
 /*.qasm
-/*.qbin
+*.qbin
