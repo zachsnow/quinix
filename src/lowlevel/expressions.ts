@@ -1523,6 +1523,10 @@ class IndexExpression extends SuffixExpression {
     else if(cType instanceof PointerType) {
       elementType = cType.dereference();
     }
+    else if(cType === Type.Error){
+      // Shhhh....
+      elementType = Type.Error;
+    }
     else {
       this.error(context, `expected array or pointer type, actual ${type}`);
       return Type.Error;
