@@ -126,8 +126,17 @@ namespace Register {
    */
   export const registers: string[] = [...genericRegisters, ...specialRegisters];
 
+  /**
+   * The total number of generic and special registers.
+   */
   export const REGISTER_COUNT = registers.length;
 
+  /**
+   * Parses the given string into a register; throws if the string does not
+   * represent a valid generic or special register.
+   *
+   * @param s the string to parse.
+   */
   export function parse(s: string): Register {
     var index = registers.indexOf(s);
     if(index !== -1){
