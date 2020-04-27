@@ -3,7 +3,8 @@ destroy.log
 provision.log
 deploy.log
 node_modules/
-src/parser.ts
+/src/assembly/*parser.ts
+/src/lowlevel/*parser.ts
 /build/
 out.qasm
 out.qbin
