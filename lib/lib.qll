@@ -5,12 +5,12 @@
 ///////////////////////////////////////////////////////////////////////
 namespace lib {
   namespace support {
-    global EXIT_SYSCALL: .constant byte = 0x0;
-    global DEBUGGER_SYSCALL: .constant byte = 0x1;
-    global OPEN_SYSCALL: .constant byte = 0x2;
-    global CLOSE_SYSCALL: .constant byte = 0x3;
-    global READ_SYSCALL: .constant byte = 0x4;
-    global WRITE_SYSCALL: .constant byte = 0x5;
+    .constant global EXIT_SYSCALL: byte = 0x0;
+    .constant global DEBUGGER_SYSCALL: byte = 0x1;
+    .constant global OPEN_SYSCALL: byte = 0x2;
+    .constant global CLOSE_SYSCALL: byte = 0x3;
+    .constant global READ_SYSCALL: byte = 0x4;
+    .constant global WRITE_SYSCALL: byte = 0x5;
 
     function syscall(syscall: byte): byte;
     function syscall1(syscall: byte, arg0: byte): byte;
@@ -18,29 +18,29 @@ namespace lib {
   }
 
   type error = byte;
-  global GENERIC_ERROR: .constant error = -1;
+  .constant global GENERIC_ERROR: error = -1;
 
   type string = byte[];
 
   type handle = * byte;
 
-  global debug_input_handle: .constant handle = <handle>0x1;
-  global debug_output_handle: .constant handle = <handle>0x2;
+  global debug_input_handle: .constant handle = <unsafe handle>0x1;
+  global debug_output_handle: .constant handle = <unsafe handle>0x2;
 
   function open(filename: string): handle {
-    return <handle>support::syscall1(support::OPEN_SYSCALL, <byte>filename);
+    return <unsafe handle>support::syscall1(support::OPEN_SYSCALL, <unsafe byte>filename);
   }
 
   function close(handle: handle): error {
-    return <error>support::syscall1(support::CLOSE_SYSCALL, <byte>handle);
+    return <error>support::syscall1(support::CLOSE_SYSCALL, <unsafe byte>handle);
   }
 
   function read(handle: handle, buffer: string): error {
-    return <error>support::syscall2(support::READ_SYSCALL, <byte>handle, <byte>buffer);
+    return <error>support::syscall2(support::READ_SYSCALL, <unsafe byte>handle, <unsafe byte>buffer);
   }
 
   function write(handle: handle, data: string): error {
-    return <error>support::syscall2(support::WRITE_SYSCALL, <byte>handle, <byte>data);
+    return <error>support::syscall2(support::WRITE_SYSCALL, <unsafe byte>handle, <unsafe byte>data);
   }
 
   function input(buffer: string): error {
