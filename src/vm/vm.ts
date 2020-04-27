@@ -1,4 +1,4 @@
-import { logger, release } from '../lib/util';
+import { logger, release, ResolvablePromise } from '../lib/util';
 import { Debugger } from './debugger';
 import { Memory, Address, Immediate } from '../lib/base-types';
 import { MMU, AccessFlags, IdentityMMU, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
@@ -17,6 +17,44 @@ type Registers = number[];
 type InterruptFrame = {
   state: State;
   waiting: boolean;
+}
+
+/**
+ * Records statistics about a running VM.
+ */
+class Stats {
+  public cycles = 0;
+  public steps = 0;
+  public interruptsHandled = 0;
+  public interruptsIgnored = 0;
+  public waited = false;
+
+  public start?: Date;
+  public stop?: Date;
+
+  public reset(){
+    this.cycles = 0;
+    this.steps = 0;
+    this.start = undefined;
+    this.stop = undefined;
+  }
+
+  public get seconds(){
+    return (+(this.stop ?? 0) - +(this.start ?? 0)) / 1000;
+  }
+
+  public toString(): string{
+    return [
+      ['cycles', this.cycles],
+      ['cycles per second', this.cycles / this.seconds],
+      ['steps', this.steps],
+      ['interrupts handled', this.interruptsHandled],
+      ['interrupts ignored', this.interruptsIgnored],
+      ['waited?', this.waited],
+    ].map(([stat, v]) => {
+      return `${stat}: ${v}`;
+    }).join('\n');
+  }
 }
 
 class State {
@@ -82,10 +120,13 @@ type VMResult = number;
 type VMStepResult = 'halt' | 'wait' | 'continue' | 'break';
 
 class VM {
+  public readonly stats: Stats = new Stats();
+
   /**
    *
    */
-  private resumeInterrupt?: () => void;
+  private resumeInterrupt?: ResolvablePromise<void>;
+  private killed: boolean = false;
   private waiting: boolean = false;
 
   // Interrupt table layout @ 0x0000:
@@ -126,7 +167,7 @@ class VM {
 
   public static readonly PROGRAM_ADDR = 0x1000;
 
-  private readonly DEFAULT_PERIPHERAL_FREQUENCY = 25;
+  private readonly DEFAULT_PERIPHERAL_FREQUENCY = 1000;
   private peripheralFrequency: number;
   private peripherals: Peripheral[] = [];
   private mappedPeripherals: PeripheralMapping[] = [];
@@ -188,9 +229,12 @@ class VM {
   }
 
   private reset(){
+    this.stats.reset();
     this.state.reset();
     this.cycles = 0;
     this.memory.fill(Operation.HALT);
+    this.waiting = false;
+    this.killed = false;
   }
 
   private loadPeripherals(){
@@ -335,13 +379,20 @@ class VM {
   }
 
   /**
+   * Kill the machine.
+   */
+  public kill(): void {
+    this.killed = true;
+  }
+
+  /**
    * Runs the given program and returns a promise that resolves
    * to the execution result (that is, `r0` when `halt` is executed).
    *
    * @param program the program to run.
    */
   public async run(program: Uint32Array): Promise<VMResult> {
-    // Reset registers and memory; re
+    // Reset registers and memory, statistics, etc.
     this.reset();
 
     // Load and map peripherals.
@@ -357,7 +408,9 @@ class VM {
     try {
       // NOTE: we *must* block here with `await` or our finally
       // will run before we've waited for execution to complete.
+      this.stats.start = new Date();
       const r = await this.execute();
+      this.stats.stop = new Date();
       return r;
     }
     finally {
@@ -372,7 +425,7 @@ class VM {
    *
    * @param interrupt the interrupt to trigger.
    */
-  public interrupt(interrupt: Interrupt) {
+  public interrupt(interrupt: Interrupt): boolean {
     if(interrupt === 0x0 || interrupt === 0x1){
       this.fault(`invalid interrupt: ${Immediate.toString(interrupt, 1)}`);
     }
@@ -381,15 +434,19 @@ class VM {
       // Currently in "wait" mode; this will allow `execute`
       // to resume from the wait.
       if(this.resumeInterrupt){
-        this.resumeInterrupt();
+        this.resumeInterrupt.resolve();
         this.resumeInterrupt = undefined;
-        log(`resuming interrupt due to ${Immediate.toString(interrupt, 1)}...`);
+        log(`resuming due to interrupt ${Immediate.toString(interrupt, 1)}...`);
+      }
+      else {
+        log(`not waiting`);
       }
 
       // In any event, since we've already prepared
       // the interrupt, execution will resume once we return.
-      return;
+      return true;
     }
+    return false;
   }
 
   /**
@@ -403,9 +460,8 @@ class VM {
 
     this.waiting = true;
 
-    return new Promise<void>((resolve) => {
-      this.resumeInterrupt = resolve;
-    });
+    this.resumeInterrupt = new ResolvablePromise<void>();
+    return this.resumeInterrupt.promise;
   }
 
   /**
@@ -415,6 +471,7 @@ class VM {
     while(true){
       // Pause each step at the peripheral frequency to allow them to run.
       let result = this.step(this.peripheralFrequency);
+      this.stats.steps++;
 
       switch(result){
         case 'continue':
@@ -438,14 +495,20 @@ class VM {
           // Wait for the next interrupt to begin trigger.  This will resume
           // execution.
           log('wait');
+          this.stats.waited = true;
           this.waiting = true;
           await this.nextInterrupt();
           break;
 
         case 'halt':
           const r = this.state.registers[Register.R0];
-          log(`halted after ${this.cycles} cycles: ${Immediate.toString(r)}`);
+          log(`halt: ${Immediate.toString(r)}`);
           return r;
+      }
+
+      if(this.killed){
+        log(`killed`);
+        return -1;
       }
     }
   }
@@ -499,12 +562,14 @@ class VM {
     else if (interrupt === 0x1){
       // HACK: this is just for release for now; we simulate an interrupt + interrupt
       // return without actually doing anything, and then release.
+      this.stats.interruptsHandled++;
       this.state.registers[Register.IP]++;
       return true;
     }
 
     // NOTE: all direct memory accesses are to *physical* memory.
     if(!this.memory[this.INTERRUPT_TABLE_ENABLED_ADDR]){
+      this.stats.interruptsIgnored++;
       log(`interrupt ${Immediate.toString(interrupt)}: interrupts disabled`);
       return false;
     }
@@ -526,6 +591,9 @@ class VM {
     // Disable MMU.
     this.mmu.disable();
 
+    // Disable interrupts.
+    this.memory[this.INTERRUPT_TABLE_ENABLED_ADDR] = 0x0;
+
     // Advance so we save the *next* instruction, not the current instruction.
     this.state.registers[Register.IP]++;
 
@@ -534,6 +602,8 @@ class VM {
 
     // Jump to register.
     this.state.registers[Register.IP] = handler;
+
+    this.stats.interruptsHandled++;
 
     return true;
   }
@@ -766,11 +836,11 @@ class VM {
       // Check if we have stepped the requested number of times;
       // there's a machine limit and a per-step limit; don't bother
       // if we are already stopped.
-      this.cycles++
+      this.stats.cycles++
       stepCycles++;
 
       // Machine total limit.
-      if(maxCycles !== undefined && (this.cycles >= maxCycles)){
+      if(maxCycles !== undefined && (this.stats.cycles >= maxCycles)){
         this.fault(`exceeded max cycles ${this.maxCycles}`);
       }
 

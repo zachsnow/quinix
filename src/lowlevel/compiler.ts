@@ -778,7 +778,7 @@ class GlobalCompiler extends StorageCompiler {
  * returns, and how to build function prologues and epilogues.
  */
 class FunctionCompiler extends StorageCompiler {
-  private localStorage: number = 0;
+  protected localStorage: number = 0;
   private locals: { [identifier: string ]: number } = {};
 
   private readonly parameterStorage: number = 0;
@@ -895,7 +895,7 @@ class FunctionCompiler extends StorageCompiler {
     this.deallocateRegister(r);
   }
 
-  private prologue(): Directive[] {
+  protected prologue(): Directive[] {
     const storeCalleeSaveRegisters: Directive[] = [];
     const calleeSave = this.registers.calleeSave;
     calleeSave.forEach((r) => {
@@ -925,7 +925,7 @@ class FunctionCompiler extends StorageCompiler {
     return directives;
   }
 
-  private epilogue(): Directive[] {
+  protected epilogue(): Directive[] {
     const r = this.allocateRegister();
     const directives: Directive[] = [
       // This is the label that return statements within the function jump to.
@@ -960,6 +960,49 @@ class FunctionCompiler extends StorageCompiler {
   }
 }
 
+class InterruptCompiler extends FunctionCompiler {
+  protected prologue(): Directive[] {
+    const r = this.allocateRegister();
+
+    const directives = [
+      new LabelDirective(this.createReference('start_interrupt_handler')), // Just a nicety.
+
+      new InstructionDirective(Instruction.createOperation(Operation.MOV, r, Compiler.SP)).comment('frame start'),
+
+      // Allocate storage.
+      ...this.pushMany(this.localStorage, 'allocate local storage'),
+    ];
+
+    directives.push(...this.push(r, 'push frame start'));
+
+    this.deallocateRegister(r);
+    return directives;
+  }
+
+  protected epilogue(): Directive[] {
+    const r = this.allocateRegister();
+    const directives: Directive[] = [
+      // This is the label that return statements within the function jump to.
+      new LabelDirective(this.createReference('return')),
+
+      // Deallocate storage; this deallocates all callee save registers, temporary storage,
+      // local storage.
+      new InstructionDirective(Instruction.createOperation(Operation.LOAD, Compiler.SP, Compiler.SP)).comment('restore sp'),
+
+      // Return.
+      new ConstantDirective(r, new ImmediateConstant(0)),
+      new InstructionDirective(Instruction.createOperation(Operation.INT, undefined, r)).comment('interrupt return'),
+
+      // Just a nicety.
+      new LabelDirective(this.createReference('end_interrupt_handler')), // Just a nicety.
+    ];
+
+    this.deallocateRegister(r);
+
+    return directives;
+  }
+}
+
 export {
-  Compiler, StorageCompiler, FunctionCompiler, GlobalCompiler, RegisterAllocator,
+  Compiler, StorageCompiler, InterruptCompiler, FunctionCompiler, GlobalCompiler, RegisterAllocator,
 }

@@ -917,7 +917,7 @@ class CastExpression extends Expression {
 }
 
 type BinaryOperator =
-  '+' | '-' | '*' | '/' |
+  '+' | '-' | '*' | '/' | '%' |
   '&&' | '||' |
   '==' | '!=' | '<' | '<=' | '>' | '>=';
 
@@ -942,7 +942,8 @@ class BinaryExpression extends Expression {
       case '+':
       case '-':
       case '*':
-      case '/': {
+      case '/':
+      case '%': {
         // We can do arithmetic on numbers of the same type.
         if(!tLeft.isNumeric(context)){
           this.error(context, `expected numeric type, actual ${tLeft}`);
@@ -1522,6 +1523,10 @@ class IndexExpression extends SuffixExpression {
     }
     else if(cType instanceof PointerType) {
       elementType = cType.dereference();
+    }
+    else if(cType === Type.Error){
+      // Shhhh....
+      elementType = Type.Error;
     }
     else {
       this.error(context, `expected array or pointer type, actual ${type}`);
