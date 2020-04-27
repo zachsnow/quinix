@@ -1,4 +1,4 @@
-import { InternalError, logger, HasLocation } from '../lib/util';
+import { InternalError, logger, mixin, HasTags, HasLocation } from '../lib/util';
 import {
   ConstantDirective, ReferenceConstant,
   InstructionDirective,
@@ -19,7 +19,7 @@ const log = logger('lowlevel:statements');
 ///////////////////////////////////////////////////////////////////////
 // Statements.
 ///////////////////////////////////////////////////////////////////////
-abstract class Statement extends HasLocation {
+abstract class Statement extends mixin(HasTags, HasLocation) {
   public abstract typecheck(context: TypeChecker): void;
   public abstract compile(compiler: Compiler): void;
 
@@ -37,6 +37,8 @@ abstract class Statement extends HasLocation {
     return false;
   }
 }
+interface Statement extends HasTags, HasLocation {}
+
 
 class BlockStatement extends Statement {
   private statements: Statement[] = [];
@@ -156,7 +158,7 @@ class VarStatement extends Statement {
     compiler.emitIdentifier(this.identifier, 'local', r, false);
 
     // Store to that address.
-    if(this.expression.concreteType.isIntegral()){
+    if(this.concreteType.isIntegral()){
       compiler.emitStaticStore(r, er, 1, `${this}`);
     }
     else {
@@ -189,11 +191,11 @@ class AssignmentStatement extends Statement {
     const ar = this.assignable.compile(compiler, true);
     const er = this.expression.compile(compiler);
 
-    if(this.expression.concreteType.isIntegral()){
+    if(this.assignable.concreteType.isIntegral()){
       compiler.emitStaticStore(ar, er, 1, `${this}`);
     }
     else {
-      compiler.emitStaticCopy(ar, er, this.expression.concreteType.size, `${this}`);
+      compiler.emitStaticCopy(ar, er, this.assignable.concreteType.size, `${this}`);
     }
 
     compiler.deallocateRegister(ar);

@@ -1,4 +1,5 @@
-import { indent, HasLocation, unique } from '../lib/util';
+import { Immediate } from '../lib/base-types';
+import { indent, HasTags, HasLocation, unique, mixin } from '../lib/util';
 import { TypeChecker, KindChecker } from './typechecker';
 
 ///////////////////////////////////////////////////////////////////////
@@ -15,7 +16,7 @@ function type(constructor: Function){
 /**
  * The abstract base class for QLL types.
  */
-abstract class Type extends HasLocation {
+abstract class Type extends mixin(HasTags, HasLocation) {
   /**
    * Check that the type is valid.
    *
@@ -91,7 +92,7 @@ abstract class Type extends HasLocation {
     return (
       cType instanceof PointerType ||
       cType instanceof FunctionType ||
-      cType instanceof ArrayType ||
+      (cType instanceof ArrayType && cType.length === undefined) ||
       (cType instanceof BuiltinType && cType.size === 1)
     );
   }
@@ -113,35 +114,8 @@ abstract class Type extends HasLocation {
   public get size(): number {
     return 1;
   }
-
-  private tags: string[] = [];
-
-  /**
-   * Tags this type with the given tags.
-   *
-   * @param tags the tags to tag this type with.
-   */
-  public tag(tags: string[] = []): this {
-    this.tags.push(...tags);
-    this.tags = unique(this.tags);
-    return this;
-  }
-
-  /**
-   * Checks if this type is tagged with the given tag.
-   *
-   * @param tag the tag to check.
-   */
-  public tagged(tag: string): boolean {
-    return this.tags.indexOf(tag) !== -1;
-  }
-
-  protected withTags(message: string): string {
-    return this.tags.length ?
-      `${this.tags.join(' ')} ${message}` :
-      message;
-  }
 }
+interface Type extends HasTags, HasLocation {}
 
 type Storage = 'global' | 'function' | 'parameter' | 'local';
 
@@ -446,11 +420,8 @@ class PointerType extends Type {
 
 @type
 class ArrayType extends Type {
-  private type: Type;
-
-  public constructor(type: Type){
+  public constructor(private type: Type, public readonly length?: number){
     super();
-    this.type = type;
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker){
@@ -463,9 +434,11 @@ class ArrayType extends Type {
     const concreteType = type.resolve(context);
     if(concreteType instanceof ArrayType){
       if(this.type.isUnifiableWith(concreteType.type, context)){
-        return true;
+        // We can convert from sized array to unsized array, but not the opposite.
+        return this.length === concreteType.length || (this.length === undefined);
       }
     }
+
     return false;
   }
 
@@ -474,15 +447,17 @@ class ArrayType extends Type {
   }
 
   public toString(){
-    return this.withTags(`${this.type}[]`);
+    return this.withTags(`${this.type}[${this.length === undefined ? '' : Immediate.toString(this.length, 1)}]`);
   }
 
-  public static build(type: Type, n: number = 1): Type {
-    let t = type;
-    for(var i = 0; i < n; i++){
-      t = new ArrayType(t);
-    }
-    return t;
+  public static build(type: Type, lengths: (number|undefined)[]): Type {
+    return lengths.reduce((type, length) => {
+      return new ArrayType(type, length);
+    }, type);
+  }
+
+  public get size(): number {
+    return this.length === undefined ? 1 : this.length + 1;
   }
 }
 

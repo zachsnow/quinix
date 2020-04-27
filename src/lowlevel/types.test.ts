@@ -103,17 +103,19 @@ describe('Types', () => {
   const t1 = new IdentifierType('t1');
 
   test('build array', () => {
-    expect(ArrayType.build(t1, 0)).toBe(t1);
+    expect(ArrayType.build(t1, [])).toBe(t1);
 
-    expect(ArrayType.build(t1, 1)).toBeInstanceOf(ArrayType);
+    expect(ArrayType.build(t1, [undefined])).toBeInstanceOf(ArrayType);
 
-    let parsed = ArrayType.build(t1, 2);
+    let parsed = ArrayType.build(t1, [7, undefined]);
     expect(parsed).toBeInstanceOf(ArrayType);
 
     let t = parsed as ArrayType;
     expect(t.index()).toBeInstanceOf(ArrayType);
+    expect(t.length === undefined);
 
     const nested = t.index() as ArrayType;
     expect(nested.index()).toBe(t1);
+    expect(nested.length === 7);
   });
 });

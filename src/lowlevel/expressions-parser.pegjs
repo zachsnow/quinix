@@ -30,29 +30,38 @@ PostfixExpressionSuffix
 PrefixExpression
     = op:UnaryOperator _ e:PrefixExpression { return new UnaryExpression(op, e).at(location(), text(), options); }
     / "<" _ u:"unsafe"? _ t:Type _ ">" _ e:PrefixExpression { return new CastExpression(t, e, !!u).at(location(), text(), options); }
-    / "new" _ e:NewExpression { return e; }
+    / NewArrayExpression
+    / NewExpression
     / PostfixExpression
 
+NewArrayExpression
+    // Initializer and ellipsis expressions.
+    = "new" _ t:Type _ "[" _ s:Expression _ "]" _ el:("="/"...") _ e:Expression {
+        return new NewArrayExpression(
+            new ArrayType(t).at(t.location), s, e, el === "..."
+        ).at(location(), text(), options);
+    }
+
+    // Zero.
+    / "new" _ t:Type _ "[" _ s:Expression _ "]" {
+        return new NewArrayExpression(
+            new ArrayType(t).at(t.location), s, undefined, false
+        ).at(location(), text(), options);
+    }
+
+    // Special case initializers.
+    // new byte[] = 'foo' => new byte[3] = 'foo'; new byte[] = [ 1,2,3 ] = new byte[3] = [ 1,2,3 ]
+    / "new" _ t:Type _ "=" _ e:(StringExpression/ArrayExpression) {
+        return new NewArrayExpression(t, new IntLiteralExpression(e.length), e, false).at(location(), text(), options);
+    }
+
+
 NewExpression
-    // Struct special case.
-    = t:StructExpression { return new NewExpression(t.type, t).at(location(), text(), options); }
+    // Initializer expressions.
+    = "new" _ t:Type _ el:("="/"...") _ e:Expression { return new NewExpression(t, e, el === "...").at(location(), text(), options); }
 
-    // String special case.
-    / t:Type _ e:StringExpression {
-        return new NewArrayExpression(t, e, new IntLiteralExpression(e.length), false).at(location(), text(), options);
-    }
-
-    // Array special cases.
-    / t:Type _ "[" _ n:Expression _ "]" _ el:"..."? _ e:Expression? {
-        return new NewArrayExpression(new ArrayType(t), e || undefined, n, !!el).at(location(), text(), options);
-    }
-    / t:Type _ e:ArrayExpression {
-        return new NewArrayExpression(t, e, new IntLiteralExpression(e.length), false).at(location(), text(), options);
-    }
-
-    // General case; we expect that `t` should *not* be an arrray type.
-    / t:Type _ e:Expression { return new NewExpression(t, e).at(location(), text(), options); }
-    / t:Type { return new NewExpression(t).at(location(), text(), options); }
+    // Zero.
+    / "new" _ t:Type { return new NewExpression(t).at(location(), text(), options); }
 
 UnaryOperator
     = "*"

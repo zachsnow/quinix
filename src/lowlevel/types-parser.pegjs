@@ -2,7 +2,7 @@
 // Types.
 ///////////////////////////////////////////////////////////////////////
 Type
-    = TaggedType
+    = tags:TagList? type:PrefixType { return type.tag(tags); }
 
 PrimaryType
     = StructType
@@ -10,19 +10,13 @@ PrimaryType
     / id:QualifiedIdentifier { return IdentifierType.build(id).at(location(), text(), options); }
 
 PostfixType
-    = t:PrimaryType tail:(_ "[" _ "]")* {
-        return ArrayType.build(t, tail.length).at(location(), text(), options);
+    = t:PrimaryType tail:(_ "[" _ IntLiteral? _ "]")* {
+        return ArrayType.build(t, tail.map((t: any) => t[3] || undefined)).at(location(), text(), options);
     }
 
 PrefixType
     = "*" _ t:PrefixType { return new PointerType(t).at(location(), text(), options); }
     / PostfixType
-
-TaggedType
-    = tags:TagList? type:PrefixType { return type.tag(tags); }
-
-TagList
-    = tags:("." [a-z]+ _)* { return tags.map((t: any) => '.' + t[1].join('')); }
 
 StructType
     = "struct" _ "{" _ sml:MemberTypeList? _ "}" { return new StructType(sml).at(location(), text(), options); }

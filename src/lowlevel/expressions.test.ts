@@ -138,8 +138,8 @@ describe('Expressions', () => {
     expect((n as any).expression).toBeUndefined();
   });
 
-  test('new byte 10', () => {
-    const n = parse('new byte 10');
+  test('new byte = 10', () => {
+    const n = parse('new byte = 10');
     expect(n).toBeInstanceOf(NewExpression);
     expect((n as any).type.toString()).toBe('byte');
     expect((n as any).size).toBeUndefined();
@@ -148,17 +148,14 @@ describe('Expressions', () => {
   });
 
   test('new byte [0x8000]', () => {
-    const n = parse('new byte [0x8000]');
-    expect(n).toBeInstanceOf(NewArrayExpression);
-    expect((n as any).type.toString()).toBe('byte[]');
-    expect((n as any).size).toBeInstanceOf(IntLiteralExpression);
-    expect((n as any).size.toString()).toBe(`${0x8000}`);
-    expect((n as any).ellipsis).toBeFalsy();
+    const n = parse('new byte[0x8000]');
+    expect(n).toBeInstanceOf(NewExpression);
+    expect((n as any).type.toString()).toBe('byte[0x8000]');
     expect((n as any).expression).toBeUndefined();
   });
 
-  test('new byte [n]', () => {
-    const n = parse('new byte [n]');
+  test('new byte[n]', () => {
+    const n = parse('new byte[n]');
     expect(n).toBeInstanceOf(NewArrayExpression);
     expect((n as any).type.toString()).toBe('byte[]');
     expect((n as any).size.toString()).toBe('n');
@@ -175,8 +172,8 @@ describe('Expressions', () => {
     expect((n as any).expression.toString()).toBe('e');
   });
 
-  test('new byte[] [1,2,3]', () => {
-    const n = parse('new byte[] [1,2,3]');
+  test('new byte[] = [1,2,3]', () => {
+    const n = parse('new byte[] = [1,2,3]');
     expect(n).toBeInstanceOf(NewArrayExpression);
     expect((n as any).type.toString()).toBe('byte[]');
     expect((n as any).size.toString()).toBe('3');
