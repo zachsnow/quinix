@@ -1,6 +1,9 @@
 ///////////////////////////////////////////////////////////////////////
 // Literals and base constructs.
 ///////////////////////////////////////////////////////////////////////
+TagList
+    = tags:("." [a-z]+ _)* { return tags.map((t: any) => '.' + t[1].join('')); }
+
 QualifiedIdentifier
   = i:Identifier tail:("::" Identifier)* { return [i, ...tail.map((t: any) => t[1])].join('::'); }
 

@@ -23,15 +23,15 @@ NamespaceDeclaration
     }
 
 TypeDeclaration
-    = "type" _ i:Identifier _ "=" _ t:Type _ ";" { return new TypeDeclaration(i, t).at(location(), text(), options); }
+    = tags:TagList? "type" _ i:Identifier _ "=" _ t:Type _ ";" { return new TypeDeclaration(i, t, tags || []).at(location(), text(), options); }
 
 GlobalDeclaration
-    = "global" _ ti:TypedIdentifier _ tail:("=" _ Expression _)? ";" {
-        return new GlobalDeclaration(ti.identifier, ti.type, tail ? tail[2] : undefined).at(location(), text(), options);
+    = tags:TagList? _ "global" _ ti:TypedIdentifier _ tail:("=" _ Expression _)? ";" {
+        return new GlobalDeclaration(ti.identifier, ti.type, tags || [], tail ? tail[2] : undefined).at(location(), text(), options);
     }
 
 FunctionDeclaration
-    = tags:TagList? "function" _ i:Identifier _ "(" _ args:TypedArgumentList? _ ")" _ ":" _ r:Type _ b:FunctionBody {
+    = tags:TagList? _ "function" _ i:Identifier _ "(" _ args:TypedArgumentList? _ ")" _ ":" _ r:Type _ b:FunctionBody {
         return new FunctionDeclaration(i, args || [], r, tags || [], b).at(location(), text(), options);;
     }
 

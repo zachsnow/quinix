@@ -12,13 +12,13 @@ import {
   AssemblyProgram,
 } from '../assembly/assembly';
 import { VM } from '../vm/vm';
-import { Instruction, Operation, Immediate } from '../vm/instructions';
+import { Instruction, Operation } from '../vm/instructions';
 import { Type, TypedIdentifier, TypedStorage, FunctionType } from './types';
 import { Expression, StringLiteralExpression, IntLiteralExpression } from './expressions';
 import { BlockStatement } from './statements';
 import { TypeChecker, KindChecker } from './typechecker';
-import { HasLocation } from '../lib/util';
-import { Compiler, FunctionCompiler, GlobalCompiler } from './compiler';
+import { mixin, HasTags, HasLocation } from '../lib/util';
+import { Compiler, FunctionCompiler, InterruptCompiler, GlobalCompiler } from './compiler';
 import { parse } from './parser';
 
 const log = logger('lowlevel');
@@ -26,13 +26,9 @@ const log = logger('lowlevel');
 ///////////////////////////////////////////////////////////////////////
 // Declarations.
 ///////////////////////////////////////////////////////////////////////
-abstract class Declaration extends HasLocation {
-  protected identifier: string;
-  protected qualifiedIdentifier?: string;
-
-  protected constructor(identifier: string){
+abstract class Declaration extends mixin(HasTags, HasLocation) {
+  protected constructor(protected identifier: string, protected qualifiedIdentifier?: string){
     super();
-    this.identifier = identifier;
   }
 
   /**
@@ -78,6 +74,7 @@ abstract class Declaration extends HasLocation {
     return [ this ];
   }
 }
+interface Declaration extends HasTags, HasLocation {}
 
 /**
  * A new type declaration. For now type declarations cannot
@@ -86,9 +83,10 @@ abstract class Declaration extends HasLocation {
 class TypeDeclaration extends Declaration {
   private type: Type;
 
-  public constructor(identifier: string, type: Type){
+  public constructor(identifier: string, type: Type, tags: string[]){
     super(identifier);
     this.type = type;
+    this.tag(tags);
   }
 
   public preKindcheck(context: TypeChecker): void {
@@ -104,7 +102,7 @@ class TypeDeclaration extends Declaration {
   }
 
   public toString(){
-    return `type ${this.identifier} = ${this.type};`;
+    return this.withTags(`type ${this.identifier} = ${this.type};`);
   }
 }
 
@@ -117,10 +115,12 @@ class GlobalDeclaration extends Declaration {
   private type: Type;
   private expression?: Expression;
 
-  public constructor(identifier: string, type: Type, expression?: Expression){
+  public constructor(identifier: string, type: Type, tags: string[], expression?: Expression){
     super(identifier);
     this.type = type;
     this.expression = expression;
+
+    this.tag(tags);
   }
 
   public kindcheck(context: TypeChecker){
@@ -197,9 +197,9 @@ class GlobalDeclaration extends Declaration {
 
   public toString(){
     if(this.expression){
-      return `global ${this.identifier}: ${this.type} = ${this.expression};`;
+      return this.withTags(`global ${this.identifier}: ${this.type} = ${this.expression};`);
     }
-    return `global ${this.identifier}: ${this.type};`;
+    return this.withTags(`global ${this.identifier}: ${this.type};`);
   }
 }
 
@@ -211,14 +211,14 @@ class FunctionDeclaration extends Declaration {
   private parameters: TypedIdentifier[];
   private returnType: Type;
   private block?: BlockStatement;
-  private tags: string[];
 
   public constructor(identifier: string, parameters: TypedIdentifier[], returnType: Type, tags: string[], block?: BlockStatement){
     super(identifier);
     this.parameters = parameters;
     this.returnType = returnType;
     this.block = block;
-    this.tags = tags;
+
+    this.tag(tags);
   }
 
   private get type() {
@@ -265,23 +265,28 @@ class FunctionDeclaration extends Declaration {
     }
 
     if(this.block){
-      const compiler = new FunctionCompiler(this.qualifiedIdentifier, this.parameters.map((parameter) => {
+      const compilerClass = this.interrupt ? InterruptCompiler : FunctionCompiler;
+      const compiler = new compilerClass(this.qualifiedIdentifier, this.parameters.map((parameter) => {
         return {
           identifier: parameter.identifier,
           size: parameter.type.concreteType.size,
         };
       }));
 
-      // TODO: allow customizing prologue/epilogue based on tags.
       this.block.compile(compiler);
       return compiler.compile();
     }
+
     return [];
+  }
+
+  private get interrupt(): boolean {
+    return this.tagged('.interrupt');
   }
 
   public toString(){
     const args = this.parameters.join(', ');
-    return `function ${this.identifier}(${args}): ${this.returnType} ${this.block}`;
+    return this.withTags(`function ${this.identifier}(${args}): ${this.returnType} ${this.block}`);
   }
 }
 

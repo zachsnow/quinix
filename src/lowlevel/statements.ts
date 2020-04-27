@@ -1,4 +1,4 @@
-import { InternalError, logger, HasLocation } from '../lib/util';
+import { InternalError, logger, mixin, HasTags, HasLocation } from '../lib/util';
 import {
   ConstantDirective, ReferenceConstant,
   InstructionDirective,
@@ -19,7 +19,7 @@ const log = logger('lowlevel:statements');
 ///////////////////////////////////////////////////////////////////////
 // Statements.
 ///////////////////////////////////////////////////////////////////////
-abstract class Statement extends HasLocation {
+abstract class Statement extends mixin(HasTags, HasLocation) {
   public abstract typecheck(context: TypeChecker): void;
   public abstract compile(compiler: Compiler): void;
 
@@ -37,6 +37,8 @@ abstract class Statement extends HasLocation {
     return false;
   }
 }
+interface Statement extends HasTags, HasLocation {}
+
 
 class BlockStatement extends Statement {
   private statements: Statement[] = [];

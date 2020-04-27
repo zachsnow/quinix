@@ -1,4 +1,4 @@
-import { InternalError, duplicates, HasLocation, IParseOptions, IFileRange, stringToCodePoints } from '../lib/util';
+import { InternalError, duplicates, HasLocation, HasTags, mixin, IParseOptions, IFileRange, stringToCodePoints } from '../lib/util';
 import {
   ConstantDirective, ImmediateConstant, ReferenceConstant,
   InstructionDirective,
@@ -23,7 +23,7 @@ import { Register } from '../vm/instructions';
  *
  * TODO: maybe we don't want this?
  *
- * @param constructor class to decorate
+ * @param constructor class to decorate.
  */
 function expression(constructor: new (...args: any[]) => Expression){
   const typecheck = constructor.prototype.typecheck;
@@ -37,7 +37,7 @@ function expression(constructor: new (...args: any[]) => Expression){
 /**
  * Abstract base class for expressions.
  */
-abstract class Expression extends HasLocation {
+abstract class Expression extends mixin(HasTags, HasLocation) {
   public constructor(concreteType?: Type){
     super();
     this._concreteType = concreteType;
@@ -117,6 +117,8 @@ abstract class Expression extends HasLocation {
     return;
   }
 }
+interface Expression extends HasTags, HasLocation {}
+
 
 @expression
 class IdentifierExpression extends Expression {

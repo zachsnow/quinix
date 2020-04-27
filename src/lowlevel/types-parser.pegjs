@@ -2,7 +2,7 @@
 // Types.
 ///////////////////////////////////////////////////////////////////////
 Type
-    = TaggedType
+    = tags:TagList? type:PrefixType { return type.tag(tags); }
 
 PrimaryType
     = StructType
@@ -17,12 +17,6 @@ PostfixType
 PrefixType
     = "*" _ t:PrefixType { return new PointerType(t).at(location(), text(), options); }
     / PostfixType
-
-TaggedType
-    = tags:TagList? type:PrefixType { return type.tag(tags); }
-
-TagList
-    = tags:("." [a-z]+ _)* { return tags.map((t: any) => '.' + t[1].join('')); }
 
 StructType
     = "struct" _ "{" _ sml:MemberTypeList? _ "}" { return new StructType(sml).at(location(), text(), options); }
