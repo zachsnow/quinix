@@ -19,6 +19,9 @@ type InterruptFrame = {
   waiting: boolean;
 }
 
+/**
+ * Records statistics about a running VM.
+ */
 class Stats {
   public cycles = 0;
   public steps = 0;
