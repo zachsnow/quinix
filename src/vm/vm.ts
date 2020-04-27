@@ -1,4 +1,4 @@
-import { logger, release } from '../lib/util';
+import { logger, release, ResolvablePromise } from '../lib/util';
 import { Debugger } from './debugger';
 import { Memory, Address, Immediate } from '../lib/base-types';
 import { MMU, AccessFlags, IdentityMMU, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
@@ -85,7 +85,7 @@ class VM {
   /**
    *
    */
-  private resumeInterrupt?: () => void;
+  private resumeInterrupt?: ResolvablePromise<void>;
   private waiting: boolean = false;
 
   // Interrupt table layout @ 0x0000:
@@ -381,9 +381,9 @@ class VM {
       // Currently in "wait" mode; this will allow `execute`
       // to resume from the wait.
       if(this.resumeInterrupt){
-        this.resumeInterrupt();
+        this.resumeInterrupt.resolve();
         this.resumeInterrupt = undefined;
-        log(`resuming interrupt due to ${Immediate.toString(interrupt, 1)}...`);
+        log(`resuming due to interrupt ${Immediate.toString(interrupt, 1)}...`);
       }
 
       // In any event, since we've already prepared
@@ -403,9 +403,8 @@ class VM {
 
     this.waiting = true;
 
-    return new Promise<void>((resolve) => {
-      this.resumeInterrupt = resolve;
-    });
+    this.resumeInterrupt = new ResolvablePromise<void>();
+    return this.resumeInterrupt.promise;
   }
 
   /**
