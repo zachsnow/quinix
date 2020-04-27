@@ -27,8 +27,8 @@ echo "Building executables..."
 tsc --build tsconfig.build.json
 chmod u+x build/bin/*
 
-echo "Building Quinix library..."
-tsc --build tsconfig.lib.json
+echo "Skipping building library..."
+# tsc --build tsconfig.lib.json
 
 echo "Building libraries..."
 (cd lib && ./build.sh "--compiled")
