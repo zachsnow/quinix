@@ -190,7 +190,7 @@ class AssignmentStatement extends Statement {
   public typecheck(context: TypeChecker): void {
     // The assignable should have the same type as the expression being assigned.
     const expectedType = this.assignable.typecheck(context);
-    const actualType = this.expression.typecheck(context);
+    const actualType = this.expression.typecheck(context, expectedType);
 
     // Allow conversion.
     if(!expectedType.isConvertibleTo(actualType, context)){
