@@ -160,6 +160,41 @@ async function readFiles(filenames: string[]): Promise<string[]> {
   return await Promise.all(filenames.map((filename) => fs.promises.readFile(filename, 'utf-8')));
 }
 
+class HasTags {
+  protected tags: string[] = [];
+
+  /**
+   * Tags this type with the given tags.
+   *
+   * @param tags the tags to tag this type with.
+   */
+  public tag(tags: string[] = []): this {
+    this.tags.push(...tags);
+    this.tags = unique(this.tags);
+    return this;
+  }
+
+  /**
+   * Checks if this type is tagged with the given tag.
+   *
+   * @param tag the tag to check.
+   */
+  public tagged(tag: string): boolean {
+    return this.tags.indexOf(tag) !== -1;
+  }
+
+  /**
+   * Prepends the given method with this object's tags.
+   *
+   * @param message the message to prepend with this object's tags.
+   */
+  public withTags(message: string): string {
+    return this.tags.length ?
+      `${this.tags.join(' ')} ${message}` :
+      message;
+  }
+}
+
 class Location {
   private filename: string;
   private line: number;
@@ -195,8 +230,15 @@ interface IFileRange {
 class HasLocation {
   private location?: Location;
 
-  public at(range: IFileRange, text: string, options?: IParseOptions): this {
-    this.location = new Location(options?.filename || 'stdin', range.start.line, text);
+  public at(location: Location): this;
+  public at(range: IFileRange, text: string, options?: IParseOptions): this;
+  public at(locationOrRange: Location | IFileRange, text?: string, options?: IParseOptions): this {
+    if(locationOrRange instanceof Location){
+      this.location = this.location;
+    }
+    else {
+      this.location = new Location(options?.filename || 'stdin', locationOrRange.start.line, text!);
+    }
     return this;
   }
 
@@ -208,6 +250,7 @@ class HasLocation {
     messages.warning(message, this.location);
   }
 }
+
 
 type MessageType = 'error' | 'warning';
 
@@ -319,6 +362,30 @@ function range(i: number, j: number): number[] {
   return l;
 }
 
+type Mixin = new () => any;
+
+function mixin(...mixinCtors: Mixin[]) {
+  const mixed = class Mixed {
+    constructor(){
+      mixinCtors.forEach((mixinCtors) => {
+        const m = new mixinCtors();
+
+        Object.getOwnPropertyNames(m).forEach(name => {
+          (this as any)[name] = m[name];
+        });
+      });
+    }
+  };
+
+  mixinCtors.forEach((mixinCtor) => {
+    Object.getOwnPropertyNames(mixinCtor.prototype).forEach(name => {
+      Object.defineProperty(mixed.prototype, name, Object.getOwnPropertyDescriptor(mixinCtor.prototype, name)!);
+    });
+  });
+
+  return mixed;
+}
+
 export {
   InternalError,
   indent,
@@ -328,10 +395,12 @@ export {
   readFiles,
   parseFile,
   HasLocation, Location, IParseOptions, IFileRange,
+  HasTags,
   Messages,
   ResolvablePromise,
   release,
   stringToCodePoints,
   codePointsToString,
   range,
+  mixin,
 }

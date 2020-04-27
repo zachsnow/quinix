@@ -10,8 +10,8 @@ PrimaryType
     / id:QualifiedIdentifier { return IdentifierType.build(id).at(location(), text(), options); }
 
 PostfixType
-    = t:PrimaryType tail:(_ "[" _ "]")* {
-        return ArrayType.build(t, tail.length).at(location(), text(), options);
+    = t:PrimaryType tail:(_ "[" _ IntLiteral? _ "]")* {
+        return ArrayType.build(t, tail.map((t: any) => t[3] || undefined)).at(location(), text(), options);
     }
 
 PrefixType
