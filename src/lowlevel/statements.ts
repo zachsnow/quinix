@@ -187,21 +187,6 @@ class AssignmentStatement extends Statement {
     this.expression = expression;
   }
 
-  public compile(compiler: Compiler): void {
-    const ar = this.assignable.compile(compiler, true);
-    const er = this.expression.compile(compiler);
-
-    if(this.assignable.concreteType.isIntegral()){
-      compiler.emitStaticStore(ar, er, 1, `${this}`);
-    }
-    else {
-      compiler.emitStaticCopy(ar, er, this.assignable.concreteType.size, `${this}`);
-    }
-
-    compiler.deallocateRegister(ar);
-    compiler.deallocateRegister(er);
-  }
-
   public typecheck(context: TypeChecker): void {
     // The assignable should have the same type as the expression being assigned.
     const expectedType = this.assignable.typecheck(context);
@@ -221,6 +206,21 @@ class AssignmentStatement extends Statement {
     if(expectedType.tagged('.constant')){
       this.error(context, `expected non-constant assignable, actual ${expectedType}`);
     }
+  }
+
+  public compile(compiler: Compiler): void {
+    const ar = this.assignable.compile(compiler, true);
+    const er = this.expression.compile(compiler);
+
+    if(this.assignable.concreteType.isIntegral()){
+      compiler.emitStaticStore(ar, er, 1, `${this}`);
+    }
+    else {
+      compiler.emitStaticCopy(ar, er, this.assignable.concreteType.size, `${this}`);
+    }
+
+    compiler.deallocateRegister(ar);
+    compiler.deallocateRegister(er);
   }
 
   public toString(){
