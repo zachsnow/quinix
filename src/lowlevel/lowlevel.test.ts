@@ -1018,7 +1018,7 @@ describe('QLLC end-to-end', () => {
   test('heap allocate (address)', () => {
     return expectRunToBe(0x8003, `
       function main(): byte {
-        var b: * byte = new byte 10;
+        var b: * byte = new byte = 10;
         return <unsafe byte>b;
       }
     `, true);
@@ -1027,9 +1027,9 @@ describe('QLLC end-to-end', () => {
   test('heap allocate delete allocate', () => {
     return expectRunToBe(22, `
       function main(): byte {
-        var b: * byte = new byte 10;
+        var b: * byte = new byte = 10;
         delete b;
-        b = new byte 22;
+        b = new byte = 22;
         return *b;
       }
     `, true, 2000);
@@ -1038,9 +1038,9 @@ describe('QLLC end-to-end', () => {
   test('heap allocate delete allocate (address)', () => {
     return expectRunToBe(0x8003, `
       function main(): byte {
-        var b: * byte = new byte 10;
+        var b: * byte = new byte = 10;
         delete b;
-        b = new byte 20;
+        b = new byte = 20;
         return <unsafe byte>b;
       }
     `, true, 2000);
@@ -1049,9 +1049,9 @@ describe('QLLC end-to-end', () => {
   test('heap allocate multiple times (address)', () => {
     return expectRunToBe(0x800b, `
       function main(): byte {
-        var a: * byte = new byte 10;
-        var b: * byte = new byte 11;
-        var c: * byte = new byte 12;
+        var a: * byte = new byte = 10;
+        var b: * byte = new byte = 11;
+        var c: * byte = new byte = 12;
         return <unsafe byte>c;
       }
     `, true, 5000);
@@ -1060,7 +1060,7 @@ describe('QLLC end-to-end', () => {
   test('heap allocate with initializer', () => {
     return expectRunToBe(20, `
       function main(): byte {
-        var b: * byte = new byte 20;
+        var b: * byte = new byte = 20;
         return *b;
       }
     `, true);
@@ -1070,7 +1070,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(20, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var p: * Point = new Point { x = 10, y = 20 };
+        var p: * Point = new Point = Point { x = 10, y = 20 };
         return (*p).y;
       }
     `, true);
@@ -1081,8 +1081,8 @@ describe('QLLC end-to-end', () => {
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
         var p: * Point = new Point;
-        (*p).x = 13;
-        return (*p).x;
+        p->x = 13;
+        return p->x;
       }
     `, true);
   });
@@ -1176,7 +1176,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(4, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var ps = new Point[] [
+        var ps = new Point[] = [
           Point {
             x = 1,
             y = 2,
@@ -1195,7 +1195,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(2, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var ps = new Point[] [
+        var ps = new Point[] = [
           Point {
             x = 1,
             y = 2,
@@ -1239,7 +1239,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(0, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var ps = new Point[10] [
+        var ps = new Point[10] = [
           Point {
             x = 55,
             y = 66,
@@ -1262,7 +1262,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(0, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var ps = new Point[2] [
+        var ps = new Point[2] = [
           Point {
             x = 55,
             y = 66,
@@ -1392,4 +1392,14 @@ describe('QLLC end-to-end', () => {
       }
     `);
   });
+
+  test('sized array assignment', () => {
+    return expectRunToBe(6, `
+      function main(): byte {
+        var b: byte[3] = [1,2,3];
+        b = [4,5,6];
+        return b[2];
+      }
+    `);
+  })
 });

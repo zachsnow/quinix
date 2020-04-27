@@ -253,6 +253,16 @@ class FunctionDeclaration extends Declaration {
       }
     }
 
+    // Check for interrupt handler correctness.
+    if(this.interrupt){
+      if(this.type.arity > 0){
+        this.error(context, `interrupt expected no arguments, actual ${this.type}`);
+      }
+      if(!isVoid){
+        this.error(context, `interrupt expected void return type, actual ${this.returnType}`);
+      }
+    }
+
     // For now we can't return non-integral types, like old C.
     if(!isVoid && !this.returnType.isIntegral(context)){
       this.error(context, `expected integral return type, actual ${this.returnType}`);

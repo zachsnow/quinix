@@ -158,7 +158,7 @@ class VarStatement extends Statement {
     compiler.emitIdentifier(this.identifier, 'local', r, false);
 
     // Store to that address.
-    if(this.expression.concreteType.isIntegral()){
+    if(this.concreteType.isIntegral()){
       compiler.emitStaticStore(r, er, 1, `${this}`);
     }
     else {
@@ -191,11 +191,11 @@ class AssignmentStatement extends Statement {
     const ar = this.assignable.compile(compiler, true);
     const er = this.expression.compile(compiler);
 
-    if(this.expression.concreteType.isIntegral()){
+    if(this.assignable.concreteType.isIntegral()){
       compiler.emitStaticStore(ar, er, 1, `${this}`);
     }
     else {
-      compiler.emitStaticCopy(ar, er, this.expression.concreteType.size, `${this}`);
+      compiler.emitStaticCopy(ar, er, this.assignable.concreteType.size, `${this}`);
     }
 
     compiler.deallocateRegister(ar);

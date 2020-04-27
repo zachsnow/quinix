@@ -378,14 +378,20 @@ class Compiler {
     return directives;
   }
 
-  protected emitPop(r: Register, comment: string = ''): void {
-    this.emit(this.pop(r, comment));
-  }
-
+  /**
+   * Stores the most recently pushed stack value in the given register.
+   *
+   * @param r the register to store to.
+   * @param comment optional comment.
+   */
   protected emitPeek(r: Register, comment: string = ''): void {
     this.emit([
       new InstructionDirective(Instruction.createOperation(Operation.LOAD, r, Compiler.SP)).comment(comment),
     ]);
+  }
+
+  protected emitPop(r: Register, comment: string = ''): void {
+    this.emit(this.pop(r, comment));
   }
 
   protected pop(r: Register, comment: string = ''): Directive[] {
@@ -397,16 +403,7 @@ class Compiler {
   }
 
   protected emitPopMany(n: number, comment: string = ''): void {
-    if(!n){
-      return;
-    }
-
-    const rn = this.allocateRegister();
-    this.emit([
-      new ConstantDirective(rn, new ImmediateConstant(n)).comment(comment),
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, Compiler.SP, Compiler.SP, rn))
-    ]);
-    this.deallocateRegister(rn);
+    this.emitIncrement(Compiler.SP, n, comment);
   }
 
   protected emitPushMany(n: number, r: Register, comment: string = ''): void {
@@ -452,7 +449,6 @@ class Compiler {
       new InstructionDirective(Instruction.createOperation(Operation.MOV, dr, sr)).comment(comment),
     ]);
   }
-
 
   /**
    * Stores the value in register `sr` into the memory address indicated by `dr` `size`
@@ -624,7 +620,7 @@ class Compiler {
 
     for(let i = 0; i < size; i++){
       this.emit([
-        new InstructionDirective(Instruction.createOperation(Operation.LOAD, rc, si)),
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, rc, si)).comment(`copy byte ${i}`),
         new InstructionDirective(Instruction.createOperation(Operation.STORE, di, rc)),
       ]);
       if(i < size - 1){
@@ -677,6 +673,38 @@ class Compiler {
       default:
         throw new InternalError(`invalid storage ${storage}`);
     }
+  }
+
+  /**
+   * Increments the given register by the given constant, ignoring `0` and
+   * using `Compiler.ONE` for `1`.
+   *
+   * @param r the register to increment.
+   * @param n the constant value to increment the register by.
+   * @param comment optional comment.
+   */
+  protected increment(r: Register, n: number = 1, comment: string = ''): Directive[] {
+    if(n === 0){
+      return [];
+    }
+
+    if(n === 1){
+      return [
+        new InstructionDirective(Instruction.createOperation(Operation.ADD, r, r, Compiler.ONE)).comment(comment),
+      ];
+    }
+
+    const sr = this.allocateRegister();
+    const directives = [
+      new ConstantDirective(sr, new ImmediateConstant(n)),
+      new InstructionDirective(Instruction.createOperation(Operation.ADD, r, r, sr)).comment(comment),
+    ];
+    this.deallocateRegister(sr);
+    return directives;
+  }
+
+  public emitIncrement(r: Register, n: number = 1, comment: string = ''): void {
+    this.emit(this.increment(r, n, comment));
   }
 }
 

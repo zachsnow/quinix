@@ -256,9 +256,7 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, expressions
       new ConstantDirective(sr, new ImmediateConstant(size)).comment(`size ${size}`),
     ]);
     compiler.emitStaticStore(ri, sr, 1, `store size`);
-    compiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, ri, ri, Compiler.ONE)).comment('array[0]'),
-    ]);
+    compiler.emitIncrement(ri, 1, 'array[0]');
     compiler.deallocateRegister(sr);
   }
 
@@ -275,12 +273,7 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, expressions
     compiler.deallocateRegister(er);
 
     if(i < expressions.length - 1){
-      const sr = compiler.allocateRegister();
-      compiler.emit([
-        new ConstantDirective(sr, new ImmediateConstant(expression.concreteType.size)).comment('next literal expression size'),
-        new InstructionDirective(Instruction.createOperation(Operation.ADD, ri, ri, sr)).comment('next literal expression'),
-      ]);
-      compiler.deallocateRegister(sr);
+      compiler.emitIncrement(ri, expression.concreteType.size, 'next literal expression');
     }
   });
 
@@ -370,7 +363,7 @@ class ArrayLiteralExpression extends Expression {
       }
     });
 
-    return new ArrayType(actualElementType);
+    return new ArrayType(actualElementType, this.expressions?.length);
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
@@ -512,6 +505,7 @@ class SizeOfExpression extends Expression {
 /**
  * Represents a `new` expression of one of the following forms:
  *
+ *
  *    new byte              // Allocate a byte on the heap and set it to 0. Returns a * byte.
  *    new byte 2            // Allocate a byte on the heap and set it to 2. Returns a * byte;
  *
@@ -527,17 +521,17 @@ class SizeOfExpression extends Expression {
  */
 @expression
 class NewExpression extends Expression {
-  private type: Type;
-
   /**
-   * The initializer expression for the newly allocated memory.
+   * When we construct a new expression for a named type, e.g.
+   * `new state` where `type state = byte[32]`, we don't realize
+   * that we are constructing a new array expression at parse time.
+   * So, construct it at type-checking time and forward subsequent
+   * calls to it.
    */
-  private expression?: Expression;
+  private newArrayExpression?: NewArrayExpression;
 
-  public constructor(type: Type, expression?: Expression){
+  public constructor(private type: Type, private expression?: Expression, private ellipsis: boolean = false){
     super();
-    this.type = type;
-    this.expression = expression;
   }
 
   public typecheck(context: TypeChecker): Type {
@@ -545,8 +539,19 @@ class NewExpression extends Expression {
 
     const cType = this.type.resolve(context);
     if(cType instanceof ArrayType){
-      this.error(context, `unexpected array type ${this.type}`);
-      return Type.Error;
+      // This should have been constructed as a new array expression, but we couldn't
+      // see that at parse time.  The type *must* be a sized array or we won't
+      // know how much memory to allocate.
+      if(cType.length === undefined){
+        this.error(context, `expected sized array type, actual ${this.type}`);
+      }
+      this.newArrayExpression = new NewArrayExpression(this.type, new IntLiteralExpression(cType.length || 0), this.expression, this.ellipsis);
+      return this.newArrayExpression.typecheck(context);
+    }
+
+    // Unexpected ...
+    if(this.ellipsis){
+      this.error(context, `expected array type, actual ${this.type}`);
     }
 
     // If we've given the expression an initializer, typecheck it. Pass the
@@ -563,6 +568,10 @@ class NewExpression extends Expression {
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
+    if(this.newArrayExpression){
+      return this.newArrayExpression.compile(compiler, lvalue);
+    }
+
     // Allocate storage for the single object.
     const sr = compiler.allocateRegister();
     compiler.emit([
@@ -600,8 +609,11 @@ class NewExpression extends Expression {
   }
 
   public toString(){
+    if(this.newArrayExpression){
+      return this.newArrayExpression.toString();
+    }
     if(this.expression){
-      return `new ${this.type} ${this.expression}`;
+      return `new ${this.type} = ${this.expression}`;
     }
     return `new ${this.type}`;
   }
@@ -609,17 +621,16 @@ class NewExpression extends Expression {
 
 @expression
 class NewArrayExpression extends Expression {
+  /**
+   * The type of the elements of the array.
+   */
   private type: Type;
+  private elementType?: Type;
 
   /**
    * The initializer expression for the newly allocated memory.
    */
   private expression?: Expression;
-
-  /**
-   * The type of the elements of the array.
-   */
-  private elementType?: Type;
 
   /**
    * An expression evaluating to the size of the array to be allocated.
@@ -633,26 +644,30 @@ class NewArrayExpression extends Expression {
    */
   private ellipsis: boolean = false;
 
-  public constructor(type: Type, expression: Expression | undefined, size: Expression, ellipsis: boolean = false){
+  public constructor(type: Type, size: Expression, expression: Expression | undefined, ellipsis: boolean = false){
     super();
     this.type = type;
-    this.expression = expression;
     this.size = size;
+    this.expression = expression;
     this.ellipsis = ellipsis;
   }
 
   public typecheck(context: TypeChecker): Type {
     this.type.kindcheck(context, new KindChecker());
 
+    // This type must be an array.
     const cType = this.type.resolve(context);
-
-    // We should never construct a new array expression with a non-array type.
     if(!(cType instanceof ArrayType)){
-      this.error(context, `expected array type, actual ${this.type}`);
+      this.error(context, `new array expected array type, actual ${this.type}`);
       return Type.Error;
     }
-
     this.elementType = cType.index();
+
+    // Size should be a number.
+    const sizeType = this.size.typecheck(context);
+    if(!sizeType.isNumeric(context)){
+      this.error(context, `new array size expected numeric type, actual ${sizeType}`);
+    }
 
     // If we've given the expression an initializer, typecheck it. Pass the
     // type contextually so that we can easily allocate arrays.
@@ -661,16 +676,23 @@ class NewArrayExpression extends Expression {
       const type = this.expression.typecheck(context, compareType);
 
       if(!compareType.isEqualTo(type, context)){
-        this.error(context, `expected ${compareType}, actual ${type}`);
+        this.error(context, `new array initializer expected ${compareType}, actual ${type}`);
       }
     }
 
-    // new[] returns an array.
-    return this.type;
+    // `new` doesn't return a sized array so that initializing a local
+    // variable with `new` has the expected behavior:
+    //
+    //  var bytes = new byte[10] ... 5;
+    //
+    // Makes bytes have type `byte[]`, so that it is a pointer on the stack,
+    // not a stack-allocated sized array. If it were, we'd copy the bytes
+    // from the new expression to the stack, which is probably not wanted.
+    return new ArrayType(this.elementType);
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
-    if(!this.elementType){
+    if(!this.elementType || this.size === undefined){
       throw new InternalError(`${this} has not been typechecked`);
     }
 
@@ -696,9 +718,7 @@ class NewArrayExpression extends Expression {
     // Add space for the array size.
     const tsr = compiler.allocateRegister();
     compiler.emitMove(tsr, sr);
-    compiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, tsr, tsr, Compiler.ONE)).comment('new[]: array size'),
-    ]);
+    compiler.emitIncrement(tsr, 1, 'new[]: array size');
 
     // Allocate the storage; this deallocates `tsr`.
     const dr = compiler.emitNew(tsr, 'new[]');
@@ -766,7 +786,7 @@ class NewArrayExpression extends Expression {
     ]);
 
     // Then multiply by element size if necessary to find the number of bytes to copy.
-    if(!this.elementType.concreteType.isIntegral()){
+    if(this.elementType.concreteType.size > 1){
       compiler.emit([
         new ConstantDirective(tr, new ImmediateConstant(this.elementType.concreteType.size)).comment('new[]: source element size'),
         new InstructionDirective(Instruction.createOperation(Operation.MUL, esr, esr, tr)).comment('new[]: source all elements size'),
@@ -782,17 +802,13 @@ class NewArrayExpression extends Expression {
       new LabelDirective(minRef).comment('new[]: minimum size'),
     ]);
 
-    // Finally we can copy.  First find the beginning of each array.
-    compiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, er, er, Compiler.ONE)).comment('new[]: source[0]'),
-    ]);
+    // Finally we can copy.  First find the beginning of the expression array.
+    compiler.emitIncrement(er, 1, 'new[]: source[0]');
 
     if(isZero){
-      // memset(&dr[0], er, sr, 1);
       compiler.emitDynamicStore(adr, er, sr, 'new[]: initialize');
     }
     else {
-      // memcopy(&dr[0], er, sr, 1);
       compiler.emitDynamicCopy(adr, er, sr, 'new[]: initialize');
     }
 
@@ -829,12 +845,11 @@ class NewArrayExpression extends Expression {
       new LabelDirective(loopRef),
     ]);
 
-    compiler.emitStaticCopy(di, er, this.elementType.concreteType.size);
+    compiler.emitStaticCopy(di, er, this.elementType.concreteType.size, 'structural ellipsis');
 
+    compiler.emitIncrement(di, this.elementType.concreteType.size, 'increment index');
+    compiler.emitIncrement(ci, 1, 'increment counter');
     compiler.emit([
-      new ConstantDirective(tr, new ImmediateConstant(this.elementType.concreteType.size)),
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, di, di, tr)).comment('increment indexes'),
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, ci, ci, Compiler.ONE)),
       new InstructionDirective(Instruction.createOperation(Operation.EQ, tr, ci, cr)).comment('check for end of element loop'),
       new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, tr, loopR)),
     ]);
@@ -846,14 +861,11 @@ class NewArrayExpression extends Expression {
   }
 
   public toString(){
-    if(!this.elementType){
-      throw new InternalError(`not typechecked`);
-    }
     if(this.expression){
       if(this.ellipsis){
         return `new ${this.elementType}[${this.size}] ... ${this.expression}`;
       }
-      return `new ${this.elementType}[${this.size}] ${this.expression}`;
+      return `new ${this.elementType}[${this.size}] = ${this.expression}`;
     }
     return `new ${this.elementType}[${this.size}]`;
   }
@@ -1402,16 +1414,7 @@ class DotExpression extends SuffixExpression {
   public compile(compiler: Compiler, lvalue?: boolean): Register {
     const er = this.expression.compile(compiler);
 
-    // We only need to adjust our pointer when we are indexing into the object;
-    // if we are referencing the first value, we don't need to.
-    if(this.offset !== 0){
-      const r = compiler.allocateRegister();
-      compiler.emit([
-        new ConstantDirective(r, new ImmediateConstant(this.offset)).comment(`${this}`),
-        new InstructionDirective(Instruction.createOperation(Operation.ADD, er, er, r)),
-      ]);
-      compiler.deallocateRegister(r);
-    }
+    compiler.emitIncrement(er, this.offset, `.${this.identifier}`);
 
     // We only dereference when we are evaluating an integral, e.g. `point.x` when
     // `x` is a byte.
@@ -1470,14 +1473,7 @@ class ArrowExpression extends SuffixExpression {
 
     // We only need to adjust our pointer when we are indexing into the object;
     // if we are referencing the first value, we don't need to.
-    if(this.offset !== 0){
-      const r = compiler.allocateRegister();
-      compiler.emit([
-        new ConstantDirective(r, new ImmediateConstant(this.offset)).comment(`${this}`),
-        new InstructionDirective(Instruction.createOperation(Operation.ADD, er, er, r)),
-      ]);
-      compiler.deallocateRegister(r);
-    }
+    compiler.emitIncrement(er, this.offset, `->${this.identifier}`);
 
     // We only dereference when we are evaluating an integral, e.g. `point->x` when
     // `x` is a byte.
@@ -1548,23 +1544,24 @@ class IndexExpression extends SuffixExpression {
 
     const er = this.expression.compile(compiler);
     const ir = this.index.compile(compiler);
-    const sr = compiler.allocateRegister();
 
     // TODO: bounds check!
 
     // The left side is an array; we need to know the size of each element
     // so that we can index into the correct location. So we multiply the index
     // by the stride to get the actual offset.
-    compiler.emit([
-      new ConstantDirective(sr, new ImmediateConstant(this.stride)),
-      new InstructionDirective(Instruction.createOperation(Operation.MUL, ir, ir, sr)),
-    ]);
+    if(this.stride > 1){
+      const sr = compiler.allocateRegister();
+      compiler.emit([
+        new ConstantDirective(sr, new ImmediateConstant(this.stride)).comment(`stride ${this.stride}`),
+        new InstructionDirective(Instruction.createOperation(Operation.MUL, ir, ir, sr)).comment('actual index'),
+      ]);
+      compiler.deallocateRegister(sr);
+    }
 
     // If we are indexing into an array, take into account the size.
     if(this.expression.concreteType instanceof ArrayType){
-      compiler.emit([
-        new InstructionDirective(Instruction.createOperation(Operation.ADD, er, er, Compiler.ONE)),
-      ]);
+      compiler.emitIncrement(er);
     }
 
     // Then we add the actual offset to the array.
@@ -1578,8 +1575,6 @@ class IndexExpression extends SuffixExpression {
         new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er))
       ]);
     }
-
-    compiler.deallocateRegister(sr);
     compiler.deallocateRegister(ir);
 
     return er;
