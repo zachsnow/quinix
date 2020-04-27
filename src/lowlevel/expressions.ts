@@ -917,7 +917,7 @@ class CastExpression extends Expression {
 }
 
 type BinaryOperator =
-  '+' | '-' | '*' | '/' |
+  '+' | '-' | '*' | '/' | '%' |
   '&&' | '||' |
   '==' | '!=' | '<' | '<=' | '>' | '>=';
 
@@ -942,7 +942,8 @@ class BinaryExpression extends Expression {
       case '+':
       case '-':
       case '*':
-      case '/': {
+      case '/':
+      case '%': {
         // We can do arithmetic on numbers of the same type.
         if(!tLeft.isNumeric(context)){
           this.error(context, `expected numeric type, actual ${tLeft}`);
