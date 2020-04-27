@@ -391,7 +391,7 @@ class DebugBreakPeripheral extends Peripheral {
     }
 
     // Map a handler that simply triggers a break; that way programs
-    // can include `int 0x3` to trigger the debugger.
+    // can use `int 0x3` to trigger the debugger.
     return [
       Instruction.createOperation(Operation.CONSTANT, Register.R0),
       Instruction.createImmediate(this.mapping.base + this.CONTROL_ADDR),

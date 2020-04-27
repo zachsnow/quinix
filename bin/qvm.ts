@@ -17,6 +17,7 @@ interface Options {
   cycles?: number;
   break: string;
   'break-write': string;
+  stats: boolean;
 }
 
 const argv = parseArguments<Options>(
@@ -42,6 +43,12 @@ const argv = parseArguments<Options>(
         type: 'string',
         default: '',
       },
+      stats: {
+        alias: 's',
+        describe: 'display statistics',
+        type: 'boolean',
+        default: false,
+      }
     },
     positional: {
       name: 'binary',
@@ -94,11 +101,20 @@ const vm = new VM({
 
 vm.run(programData).then((r) => {
   log(`terminated: ${r}`);
-  process.exit(r);
+  return Promise.resolve(r);
 }, (e) => {
   log(`error: ${e}`);
   if(argv.verbose){
     log(`${e.stack}`);
   }
-  process.exit(-1);
+  return Promise.resolve(-1);
+}).then((r) => {
+  if(argv.stats){
+    console.info(`\nVM statistics:\n${vm.stats}`);
+  }
+  process.exit(r);
+});
+
+process.on('SIGINT', function() {
+  vm.kill();
 });
