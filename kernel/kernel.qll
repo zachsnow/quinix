@@ -3,52 +3,36 @@
 // * Configure interrupt handlers.
 // * Enter idle loop.
 namespace kernel {
-  // Assembly-level support functions.
-  namespace support {
-    function halt(message: byte[]): void;
-    function wait(): byte;
+  function log(message: byte[]): void {
+    // Hard-code for now.
+    var debugOutputControl = <unsafe * byte> 0x302;
+    var debugOutputBuffer = <unsafe * byte> 0x303;
 
-    type interrupt_handler: (byte) => void;
-    function interrupt(handler: interrupt_handler, interrupt: byte): void;
+    // Copy.
+    debugOutputBuffer[0] = len message;
+    for(var i = 0; i < len message && i < 0xff; i = i + 1){
+      debugOutputBuffer[i + 1] = message[i];
+    }
+
+    // Write.
+    *debugOutputControl = 0x1;
+
+    // Wait for success.
+    while(*debugOutputControl == 0x2){}
   }
 
-  // Print the given message and halt the machine.
   function panic(message: byte[]): void {
-    // We can't assume that `peripherals` has been initialized.
-    var peripheralTable: *byte = <* byte>0x100;
-    if(peripherals::debug_output_ptr){
-      peripherals::buffered_write(peripherals::debug_output_ptr, message);
-    }
-    else if(peripheralTable + 0x1 == 0x3){
-      // If the debug output peripheral is mapped in the
-      // exected location, write the given message.
-      var debugOutputControl: *byte = <* byte> 0x302;
-      var debugOutputBuffer: *byte = <* byte> 0x303;
-
-      var i = 0;
-      var n = len s;
-      debugOutputBuffer[0] = n;
-      while(i < n){
-          debugOutputBuffer[i + 1] = s[i];
-          i = i + 1;
-      }
-
-      *debugOutputControl = 0x1;
-
-      while(*debugOutputControl == 0x2){}
-    }
-
+    log(message);
     support::halt(message);
   }
 
   function init(): void {
     peripherals::init();
-    syscall::init();
-    memory::init();
     scheduler::init();
   }
 }
 
 function main(): void {
   kernel::init();
+  kernel::support::wait();
 }

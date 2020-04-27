@@ -1,12 +1,4 @@
 namespace kernel {
-  // Assembly-level support functions.
-  namespace support {
-    function halt(code: byte): void;
-    function wait(): byte;
-
-    function interrupt(interrupt: byte, handler: () => void): void;
-  }
-
   function print(message: byte[]): void {
     var debugOutputControl = <unsafe * byte> 0x302;
     var debugOutputBuffer = <unsafe * byte> 0x303;
@@ -24,12 +16,18 @@ namespace kernel {
     while(*debugOutputControl == 0x2){}
   }
 
+  global count: byte = 0;
+
   .interrupt function _on_timer(): void {
     print('Tick...\n');
+    if(count % 5 == 0){
+      print('...Tock!\n');
+    }
+    count = count + 1;
   }
 
   function init(): void {
-    kernel::support::interrupt(0x2, _on_timer);
+    support::interrupt(0x2, _on_timer);
 
     var timerControl = <unsafe * byte>0x300;
     *timerControl = 1000;

@@ -87,14 +87,14 @@ namespace kernel::peripherals {
 
   type buffered_peripheral = struct {
     control: byte;
-    buffer: byte[];
+    buffer: byte;
   };
 
   function buffered_write(peripheral: * buffered_peripheral, data: byte[]): byte {
-    for()
+
   }
 
-  export function init(): void {
+  function init(): void {
     // Initialize all peripherals.
     for(var i = 0; i < len init_table; i++){
       var entry = init_table[i];
