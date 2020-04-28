@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { logger, readFiles, parseFile } from '../src/lib/util';
+import { logger, readFiles, InternalError } from '../src/lib/util';
 import { parseArguments } from '../src/lib/cli';
 import { LowLevelProgram } from '../src/lowlevel/lowlevel';
 import { parse } from '../src/lowlevel/parser';
@@ -165,11 +165,17 @@ async function main(): Promise<number | undefined>{
 main().then((r) => {
   process.exit(r || 0);
 }).catch((e) => {
-  if(e.location){
+  if(e instanceof InternalError){
+    // Compiler error.
+    console.error(`error: ${e.message}`);
+  }
+  else if(e.location){
+    // Syntax error.
     console.error(`error: ${e.location.filename}(${e.location.start.line}): ${e.message}`);
   }
   else {
-    console.error(e);
+    // Uknown error.
+    console.error(`error: unknown: ${e}`);
   }
   process.exit(-1);
 });
