@@ -359,10 +359,8 @@ class IdentifierType extends Type {
 
     const thisType = this.resolve(context);
 
-    // This type has no underlying mapped type; maybe we'll use this for
-    // global abstract types? For now this should be impossible.
+    // This type has no underlying mapped type in the current context.
     if(thisType === this){
-      this.error(context, `abstract type ${this}`);
       return false;
     }
 
