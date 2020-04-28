@@ -146,8 +146,23 @@ class VarStatement extends Statement {
     // Create storage for this variable.
     compiler.allocateStorage(this.identifier, this.concreteType.size);
 
-    // Local declarations without initializers just allocate the space.
+    // Local declarations without initializers zero out the space.
     if(!this.expression){
+      const vr = compiler.allocateRegister();
+      const r = compiler.allocateRegister();
+      compiler.emitIdentifier(this.identifier, 'local', vr, false);
+      compiler.emit([
+        new ConstantDirective(r, new ImmediateConstant(0)),
+      ]);
+      compiler.emitStaticStore(vr, r, this.concreteType.size, 'zero out');
+      if(this.concreteType instanceof ArrayType && this.concreteType.length !== undefined){
+        compiler.emit([
+          new ConstantDirective(r, new ImmediateConstant(this.concreteType.length)).comment('array size'),
+        ]);
+        compiler.emitStaticStore(vr, r, 1, 'initialize array size');
+      }
+      compiler.deallocateRegister(vr);
+      compiler.deallocateRegister(r);
       return;
     }
 
