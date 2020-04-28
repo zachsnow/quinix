@@ -171,7 +171,7 @@ main().then((r) => {
   }
   else if(e.location){
     // Syntax error.
-    console.error(`error: ${e.location.filename}(${e.location.start.line}): ${e.message}`);
+    console.error(`error: ${e.location.filename}(${e.location.start.line})[${e.location.start.column}]: ${e.message}`);
   }
   else {
     // Uknown error.

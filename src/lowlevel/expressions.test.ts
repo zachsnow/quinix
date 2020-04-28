@@ -15,7 +15,7 @@ describe('Expressions', () => {
   const one = new IntLiteralExpression(2);
   const two = new IntLiteralExpression(2);
   const range = {
-    start: { line: 0 },
+    start: { line: 0, column: 0 },
   };
   const text = 'some expression';
 

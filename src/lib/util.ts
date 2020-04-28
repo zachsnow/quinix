@@ -196,20 +196,12 @@ class HasTags {
 }
 
 class Location {
-  private filename: string;
-  private line: number;
-  private text: string;
-
-  public constructor(filename: string, line: number, text: string){
-    this.filename = filename;
-    this.line = line;
-    this.text = text;
-  }
+  public constructor(private filename: string, private line: number, private column: number, private text: string){}
 
   public toString(){
     const parts = this.text.split('\n');
     const text = parts.length > 1 ? `${parts[0]}...` : this.text;
-    return `${this.filename}(${this.line}): ${text}`;
+    return `${this.filename}(${this.line})[${this.column}]: ${text}`;
   }
 }
 
@@ -220,6 +212,7 @@ interface IParseOptions {
 
 interface IFilePosition {
   line: number;
+  column: number;
 }
 
 interface IFileRange {
@@ -237,7 +230,7 @@ class HasLocation {
       this.location = this.location;
     }
     else {
-      this.location = new Location(options?.filename || 'stdin', locationOrRange.start.line, text!);
+      this.location = new Location(options?.filename || 'stdin', locationOrRange.start.line, locationOrRange.start.column, text!);
     }
     return this;
   }
