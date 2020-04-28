@@ -200,6 +200,9 @@ class DebugOutputPeripheral extends Peripheral {
       const characters = [];
       for(let i = 1; i < size; i++){
         let codePoint = this.mapping.view[this.BUFFER_ADDR + i];
+        if(!codePoint){
+          break;
+        }
         characters.push(String.fromCodePoint(codePoint));
       }
       const s = characters.join('');
