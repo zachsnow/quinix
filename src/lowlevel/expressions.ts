@@ -1296,13 +1296,10 @@ class UnaryExpression extends Expression {
 
 @expression
 class CallExpression extends Expression {
-  private expression: Expression;
-  private args: Expression[];
+  private argTypes: Type[] = [];
 
-  public constructor(expression: Expression, args: Expression[]){
+  public constructor(private expression: Expression, private args: Expression[]){
     super();
-    this.expression = expression;
-    this.args = args;
   }
 
   public typecheck(context: TypeChecker): Type {
@@ -1321,9 +1318,11 @@ class CallExpression extends Expression {
         const argType = arg.typecheck(context);
         const expectedType = cType.argument(i);
 
-        if(!argType.isEqualTo(expectedType, context)){
+        if(!expectedType.isEqualTo(argType, context)){
           this.error(context, `expected ${expectedType}, actual ${argType}`);
         }
+
+        this.argTypes.push(expectedType);
       });
 
       // The resulting type is the function's return type.
@@ -1339,12 +1338,13 @@ class CallExpression extends Expression {
     const tr = this.expression.compile(compiler, lvalue);
 
     // Compile the arguments.
-    const args = this.args.map((arg) => {
+    const args = this.args.map((arg, i) => {
       const r = arg.compile(compiler, lvalue);
+      const expectedType = this.argTypes[i];
       return {
         register: r,
-        size: arg.concreteType.size,
-        isIntegral: arg.concreteType.isIntegral(),
+        size: expectedType.concreteType.size,
+        isIntegral: expectedType.concreteType.isIntegral(),
       };
     });
 
