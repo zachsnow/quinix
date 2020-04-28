@@ -1215,7 +1215,16 @@ class UnaryExpression extends Expression {
 
   public get isAssignable() {
     // Dereferences are assignable.
-    return this.operator === '*';
+    if(this.operator === '*'){
+      return true;
+    }
+
+    // `len x` is assignable when `x` is assignable;
+    // it's like writing to x[-1], basically.
+    if(this.operator === 'len'){
+      return this.expression.isAssignable;
+    }
+    return false;
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
@@ -1268,9 +1277,11 @@ class UnaryExpression extends Expression {
       case 'len': {
         // This should be an array, so it's the address of the size.
         const er = this.expression.compile(compiler);
-        compiler.emit([
-          new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
-        ]);
+        if(this.needsDereference(lvalue)){
+          compiler.emit([
+            new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
+          ]);
+        }
         return er;
       }
       default:
