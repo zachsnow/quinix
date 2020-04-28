@@ -1,6 +1,7 @@
 import { Immediate } from '../lib/base-types';
-import { indent, HasTags, HasLocation, unique, mixin } from '../lib/util';
+import { indent, HasTags, HasLocation, InternalError, mixin, SymbolTable } from '../lib/util';
 import { TypeChecker, KindChecker } from './typechecker';
+import { TypeTable } from './tables';
 
 ///////////////////////////////////////////////////////////////////////
 // Types.
@@ -32,7 +33,7 @@ abstract class Type extends mixin(HasTags, HasLocation) {
    * @param type
    */
   public isEqualTo(type: Type, context: TypeChecker){
-    const emptyContext = new TypeChecker(undefined, undefined, context.namespace);
+    const emptyContext = context.extend(new TypeTable(), new SymbolTable());
     return this.isUnifiableWith(type, emptyContext);
   }
 
@@ -65,7 +66,7 @@ abstract class Type extends mixin(HasTags, HasLocation) {
   private _concreteType?: Type;
   public get concreteType(): Type {
     if(!this._concreteType){
-      throw new Error(`${this} has not been kindchecked`);
+      throw new InternalError(this.withLocation(`${this} has not been kindchecked`));
     }
     return this._concreteType;
   }
@@ -287,6 +288,8 @@ class FunctionType extends Type {
 
 @type
 class IdentifierType extends Type {
+  public readonly ERROR_IDENTIFIER: string = '<error>';
+
   private identifier: string;
   private qualifiedIdentifier?: string;
 
@@ -296,7 +299,7 @@ class IdentifierType extends Type {
 
     const builtins: string[] = Array.from(Builtins);
     if(builtins.indexOf(this.identifier) !== -1){
-      throw new Error(`invalid identifier ${this.identifier}`);
+      throw new InternalError(this.withLocation(`invalid identifier ${this.identifier}`));
     }
   }
 
@@ -305,6 +308,11 @@ class IdentifierType extends Type {
     const lookup = context.typeTable.lookup(context.namespace, this.identifier);
     if(lookup === undefined){
       this.error(context, `unknown type identifier ${this.identifier}`);
+
+      // We don't have a real qualified identifier for this, but we expect
+      // to have *something* during type checking. Instead of stopping compilation
+      // entirely, we'll stumble along.
+      this.qualifiedIdentifier = this.ERROR_IDENTIFIER;
       return;
     }
 
@@ -329,15 +337,22 @@ class IdentifierType extends Type {
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
     if(this.qualifiedIdentifier === undefined){
-      throw new Error(`${this} has not been kindchecked`);
+      throw new InternalError(this.withLocation(`${this} has not been kindchecked`));
     }
 
     // Nominal equality to support recursive types.
     if(type instanceof IdentifierType){
       if(type.qualifiedIdentifier === undefined){
-        throw new Error(`${type} has not been kindchecked`);
+        throw new InternalError(type.withLocation(`${type} has not been kindchecked`));
       }
+
       if(this.qualifiedIdentifier === type.qualifiedIdentifier){
+        return true;
+      }
+
+      // If we've already shown an error associated with this identifier,
+      // just shut up about it.
+      if(this.qualifiedIdentifier === this.ERROR_IDENTIFIER){
         return true;
       }
     }
@@ -345,9 +360,9 @@ class IdentifierType extends Type {
     const thisType = this.resolve(context);
 
     // This type has no underlying mapped type; maybe we'll use this for
-    // global abstract types? For now this should be impossible
+    // global abstract types? For now this should be impossible.
     if(thisType === this){
-      context.warning(`abstract type ${this}`);
+      this.error(context, `abstract type ${this}`);
       return false;
     }
 
@@ -369,7 +384,7 @@ class IdentifierType extends Type {
   }
 
   public get size(): number {
-    throw new Error(`unable to determine size of identifier type ${this.identifier}`);
+    throw new InternalError(this.withLocation(`unable to determine size of identifier type ${this.identifier}`));
   }
 
   public toString(){
@@ -525,7 +540,7 @@ class StructType extends Type {
     });
 
     if(member === undefined){
-      throw new Error(`invalid member ${identifier} (${this.members})`);
+      throw new InternalError(this.withLocation(`invalid member ${identifier} (${this.members})`));
     }
     return offset;
   }

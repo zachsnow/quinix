@@ -249,6 +249,13 @@ class HasLocation {
   public warning(messages: Messages, message: string): void {
     messages.warning(message, this.location);
   }
+
+  public withLocation(s: string){
+    if(!this.location){
+      return s;
+    }
+    return `${this.location}: ${s}`;
+  }
 }
 
 
