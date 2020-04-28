@@ -7,8 +7,6 @@ import { Instruction, Operation, Register, Immediate } from './instructions';
 const log = logger('vm:peripherals');
 
 abstract class Peripheral {
-  public static MMU_IDENTIFIER = 0xff;
-
   /**
    * The peripheral's display name.
    */
