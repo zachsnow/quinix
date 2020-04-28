@@ -145,14 +145,14 @@ class VM {
   private readonly INTERRUPT_TABLE_COUNT_ADDR: Address = Register.REGISTER_COUNT + 0x2;
   private readonly INTERRUPT_TABLE_ENTRIES_ADDR: Address = this.INTERRUPT_TABLE_COUNT_ADDR + 0x1;
 
-  // Interrupt handler code:
+  // Interrupt handler code @ 0x0100:
   //  byte: handler 1 code
   //  ...
   //  byte: handler 2 code
   //  ...
   private readonly INTERRUPT_HANDLERS_ADDR: Address = 0x0100;
 
-  // Peripheral table layout @ 0x0100:
+  // Peripheral table layout @ 0x0200:
   //  byte: entry count
   //  byte: entry 1 identifier
   //  byte: entry 1 address
@@ -275,6 +275,8 @@ class VM {
 
       baseAddress += peripheralSize;
     });
+
+    this.memory[this.PERIPHERAL_TABLE_COUNT_ADDR] = this.peripherals.length;
 
     this.showPeripherals();
   }
