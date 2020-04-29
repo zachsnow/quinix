@@ -470,7 +470,11 @@ class ArrayType extends Type {
   }
 
   public get size(): number {
-    return this.length === undefined ? 1 : this.length + 1;
+    // Include space for capacity and size for stack-allocated arrays.
+    if(this.length !== undefined){
+      return this.length + 2;
+    }
+    return 1;
   }
 }
 

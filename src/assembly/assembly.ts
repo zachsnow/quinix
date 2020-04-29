@@ -133,14 +133,15 @@ class TextData extends Data {
   }
 
   public get size(){
-    // Strings are prefixed by their length in codepoints.
-    return this.codePoints.length + 1;
+    // Strings are prefixed by their capacity and size in codepoints.
+    return this.codePoints.length + 2;
   }
 
   public assemble(assembler: Assembler): Instruction[] {
     // String literals are assembled as their length followed by
     // their codepoints as bytes. They are *not* zero terminated.
     const instructions: Instruction[] = [];
+    instructions.push(Instruction.createImmediate(this.codePoints.length));
     instructions.push(Instruction.createImmediate(this.codePoints.length));
     for(let i = 0; i < this.codePoints.length; i++){
       instructions.push(Instruction.createImmediate(this.codePoints[i]));

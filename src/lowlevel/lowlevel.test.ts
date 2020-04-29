@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { LowLevelProgram } from './lowlevel';
+import { Compiler } from './compiler';
 import { parse as _parse } from './parser';
 import { VM, VMResult } from '../vm/vm';
 import { Immediate } from '../lib/base-types';
@@ -986,6 +987,54 @@ describe('QLLC end-to-end', () => {
     `);
   });
 
+  test('stack allocate array (capacity)', () => {
+    return expectRunToBe(10, `
+      function main(): byte {
+        var ar: byte[10];
+        return capacity ar;
+      }
+    `);
+  });
+
+  test('stack allocate array (len)', () => {
+    return expectRunToBe(10, `
+      function main(): byte {
+        var ar: byte[10];
+        return len ar;
+      }
+    `);
+  });
+
+  test('stack allocate array, change len', () => {
+    return expectRunToBe(5, `
+      function main(): byte {
+        var ar: byte[10];
+        len ar = 5;
+        return len ar;
+      }
+    `);
+  });
+
+  test('stack allocate array, change len (capacity)', () => {
+    return expectRunToBe(10, `
+      function main(): byte {
+        var ar: byte[10];
+        len ar = 5;
+        return capacity ar;
+      }
+    `);
+  });
+
+  test('stack allocate array, change len invalid', () => {
+    return expectRunToBe(Compiler.CAPACITY_ERROR, `
+      function main(): byte {
+        var ar: byte[10];
+        len ar = 20;
+        return 0;
+      }
+    `);
+  });
+
   test('heap allocate too much', () => {
     return expectRunToBe(0, `
       function main(): byte {
@@ -1232,7 +1281,7 @@ describe('QLLC end-to-end', () => {
         };
         return ps[3].x;
       }
-    `, true, 2000);
+    `, true, 3000);
   });
 
   test('heap allocate array of structs, initializer too short', () => {
@@ -1288,6 +1337,16 @@ describe('QLLC end-to-end', () => {
         var b: * byte = null;
         var bb: ** byte = null;
         return <unsafe byte>b + <unsafe byte>bb;
+      }
+    `);
+  });
+
+  test('deref null', () => {
+    return expectRunToBe(Compiler.NULL_ERROR, `
+      function main(): byte {
+        var b: * byte = null;
+        *b = 23;
+        return 42;
       }
     `);
   });

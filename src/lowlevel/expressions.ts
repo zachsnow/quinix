@@ -66,6 +66,15 @@ abstract class Expression extends mixin(HasTags, HasLocation) {
   public abstract compile(compiler: Compiler, lvalue?: boolean): Register;
 
   /**
+   * Some assignments (namely, assignments to an array's `len`) require a check.
+   *
+   * @param compiler the `compiler` managing register allocation, storage, etc.
+   * @param dr the register holding the destination.
+   * @param sr the register holding the source.
+   */
+  public compileAssignmentCheck(compiler: Compiler, dr: Register, ar: Register): void {}
+
+  /**
    * Returns whether the code generated for this expression needs to include a dereference.
    *
    * @param lvalue whether this expression is being compield as an "lvalue".
@@ -228,7 +237,7 @@ class BoolLiteralExpression extends Expression {
   }
 }
 
-function compileLiteralExpressions(hint: string, compiler: Compiler, expressions: Expression[], size?: number): Register {
+function compileLiteralExpressions(hint: string, compiler: Compiler, expressions: Expression[], capacity?: number): Register {
   // We can only compile non-integral literals when our compiler supports storage.
   if(!(compiler instanceof StorageCompiler)){
     throw new InternalError(`expected storage when compiling literal expression`);
@@ -236,8 +245,8 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, expressions
 
   const identifier = compiler.generateIdentifier(hint);
 
-  // Allocate local storage; include enough space for the size, if requested.
-  let bytes = size === undefined ? 0 : 1;
+  // Allocate local storage; include enough space for the capacity and size, if requested.
+  let bytes = capacity === undefined ? 0 : 2;
   expressions.forEach((expression) => {
     bytes += expression.concreteType.size;
   });
@@ -249,12 +258,14 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, expressions
   compiler.emitIdentifier(identifier, 'local', r, false);
   compiler.emitMove(ri, r, 'initialize destination pointer');
 
-  // Emit the size, if requested.
-  if(size !== undefined){
+  // Emit the capacity and initial size, if requested.
+  if(capacity !== undefined){
     const sr = compiler.allocateRegister();
     compiler.emit([
-      new ConstantDirective(sr, new ImmediateConstant(size)).comment(`size ${size}`),
+      new ConstantDirective(sr, new ImmediateConstant(capacity)).comment(`capacity ${capacity}`),
     ]);
+    compiler.emitStaticStore(ri, sr, 1, `store capacity`);
+    compiler.emitIncrement(ri, 1, 'len array');
     compiler.emitStaticStore(ri, sr, 1, `store size`);
     compiler.emitIncrement(ri, 1, 'array[0]');
     compiler.deallocateRegister(sr);
@@ -715,15 +726,15 @@ class NewArrayExpression extends Expression {
       compiler.emitMove(sr, cr, 'new[]: all elements size');
     }
 
-    // Add space for the array size.
+    // Add space for the array capacity and size.
     const tsr = compiler.allocateRegister();
     compiler.emitMove(tsr, sr);
-    compiler.emitIncrement(tsr, 1, 'new[]: array size');
+    compiler.emitIncrement(tsr, 2, 'new[]: array capacity and size');
 
     // Allocate the storage; this deallocates `tsr`.
     const dr = compiler.emitNew(tsr, 'new[]');
 
-    // Verify that the return is not null.
+    // Verify that the return is not null; if it is, we are out of memory.
     const endRef = compiler.generateReference('new_end');
     const endR = compiler.allocateRegister();
     compiler.emit([
@@ -731,8 +742,17 @@ class NewArrayExpression extends Expression {
       new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, dr, endR)),
     ]);
 
-    // Write array size..
-    compiler.emitStaticStore(dr, cr, 1, 'new[]: store array size');
+    // Address of first element of destination.
+    const adr = compiler.allocateRegister();
+    compiler.emit([
+      new InstructionDirective(Instruction.createOperation(Operation.MOV, adr, dr)).comment('new[]: array address'),
+    ]);
+
+    // Set capacity and size.
+    compiler.emitStaticStore(adr, cr, 1, 'new[]: store array capacity');
+    compiler.emitIncrement(adr, 1, 'new[]: array size address');
+    compiler.emitStaticStore(adr, cr, 1, 'new[]: store array size');
+    compiler.emitIncrement(adr, 1, 'new[]: array[0] address');
 
     // Write to destination; `dr` is a pointer to our new memory.
     let er;
@@ -747,12 +767,6 @@ class NewArrayExpression extends Expression {
       ]);
       isZero = true;
     }
-
-    // Address of first element of destination.
-    const adr = compiler.allocateRegister();
-    compiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, adr, dr, Compiler.ONE)).comment('new[]: destination[0]'),
-    ]);
 
     // Ellipsis means we are using the value represented by `er` multiple times.
     if(this.ellipsis){
@@ -775,8 +789,6 @@ class NewArrayExpression extends Expression {
     }
 
     // `er` is a pointer to an array.
-    const minRef = compiler.generateReference('min');
-    const minR = compiler.allocateRegister(); // Min calculation jump address.
     const esr = compiler.allocateRegister(); // Size of expression in bytes.
     const tr = compiler.allocateRegister(); // Temporary.
 
@@ -793,17 +805,12 @@ class NewArrayExpression extends Expression {
       ]);
     }
 
-    // We should copy the minimum of `sr` and `esr` bytes, so set `sr` to `esr` if `esr` is less than `sr`.
-    compiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.LT, tr, esr, sr)),
-      new ConstantDirective(minR, new ReferenceConstant(minRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, tr, minR)),
-      new InstructionDirective(Instruction.createOperation(Operation.MOV, sr, esr)),
-      new LabelDirective(minRef).comment('new[]: minimum size'),
-    ]);
-
+    // Currently we don't allow assignment between things of mismatched sizes; otherwise,
+    // we should copy the minimum of `sr` and `esr` bytes, so set `sr` to `esr` if `esr` is
+    // less than `sr`.
+    //
     // Finally we can copy.  First find the beginning of the expression array.
-    compiler.emitIncrement(er, 1, 'new[]: source[0]');
+    compiler.emitIncrement(er, 2, 'new[]: source[0]');
 
     if(isZero){
       compiler.emitDynamicStore(adr, er, sr, 'new[]: initialize');
@@ -815,10 +822,10 @@ class NewArrayExpression extends Expression {
     compiler.deallocateRegister(sr);
     compiler.deallocateRegister(adr);
     compiler.deallocateRegister(er);
-    compiler.deallocateRegister(minR);
     compiler.deallocateRegister(esr);
     compiler.deallocateRegister(tr);
 
+    // End, so we can jump here if memory allocation fails and we have nothing to initialize.
     compiler.emit([
       new LabelDirective(endRef),
     ]);
@@ -1143,7 +1150,7 @@ class BinaryExpression extends Expression {
   }
 }
 
-type UnaryOperator = '-' | '+' | '*' | '&' | '!' | 'len';
+type UnaryOperator = '-' | '+' | '*' | '&' | '!' | 'len' | 'capacity';
 
 @expression
 class UnaryExpression extends Expression {
@@ -1160,16 +1167,6 @@ class UnaryExpression extends Expression {
     const type = this.expression.typecheck(context);
 
     switch(this.operator){
-      case '*': {
-        const cType = type.resolve(context);
-        if(cType instanceof PointerType){
-          return cType.dereference();
-        }
-
-        this.error(context, `expected pointer type, actual ${type}`);
-        return Type.Byte;
-      }
-
       case '+':
       case '-': {
         if(type.isNumeric(context)){
@@ -1179,7 +1176,6 @@ class UnaryExpression extends Expression {
         this.error(context, `expected numeric type, actual ${type}`);
         return Type.Byte;
       }
-
       case '!': {
         if(!type.isIntegral(context)){
           this.error(context, `expected integral type, actual ${type}`);
@@ -1187,7 +1183,19 @@ class UnaryExpression extends Expression {
         return Type.Bool;
       }
 
-      case '&':
+      case '*': {
+        const cType = type.resolve(context);
+        if(cType instanceof PointerType){
+          if(!type.tagged('.notnull')){
+            //this.warning(context, `possibly null pointer type ${type}`);
+          }
+          return cType.dereference();
+        }
+
+        this.error(context, `expected pointer type, actual ${type}`);
+        return Type.Byte;
+      }
+      case '&': {
         // We can't take the address of void.
         if(type.isConvertibleTo(Type.Void, context)){
           this.error(context, `expected non-void type, actual ${type}`);
@@ -1198,10 +1206,13 @@ class UnaryExpression extends Expression {
           this.error(context, `expected assignable expression`);
         }
 
-        // Otherwise we can take the address of anything.
-        return new PointerType(type);
+        // Otherwise we can take the address of anything,
+        // and we know that the pointer is not null.
+        return new PointerType(type).tag(['.notnull']);
+      }
 
-      case 'len': {
+      case 'len':
+      case 'capacity': {
         const cType = type.resolve(context);
         if(!(cType instanceof ArrayType)){
           this.error(context, `expected array type, actual ${type}`);
@@ -1243,9 +1254,25 @@ class UnaryExpression extends Expression {
         compiler.deallocateRegister(zr);
         return er;
       }
+      case '!': {
+        const er = this.expression.compile(compiler);
+
+        // We want !0 == 1, and !(non-zero) == 0. This is exactly the semantics of `NEQ`.
+        const r = compiler.allocateRegister();
+        compiler.emit([
+          new ConstantDirective(r, new ImmediateConstant(0)).comment(`${this}`),
+          new InstructionDirective(Instruction.createOperation(Operation.NEQ, r, r, er)),
+        ]);
+        compiler.deallocateRegister(er);
+        return r;
+      }
+
       case '*': {
         // Compile the nested value as an rvalue.
         const r = this.expression.compile(compiler, false);
+
+        // TODO: eliminate this check when possible.
+        compiler.emitNullCheck(r);
 
         // Not all expressions of the form `*e` must be dereferenced. For instance,
         // if `e` is an identifier refering to a struct, then `e` is already the address
@@ -1262,21 +1289,23 @@ class UnaryExpression extends Expression {
         // if we compile it as an lvalue, we'll get an address.
         return this.expression.compile(compiler, true);
       }
-      case '!': {
+
+      case 'capacity': {
+        // This should be an array, so it's the address of the capacity.
         const er = this.expression.compile(compiler);
 
-        // We want !0 == 1, and !(non-zero) == 0. This is exactly the semantics of `NEQ`.
-        const r = compiler.allocateRegister();
-        compiler.emit([
-          new ConstantDirective(r, new ImmediateConstant(0)).comment(`${this}`),
-          new InstructionDirective(Instruction.createOperation(Operation.NEQ, r, r, er)),
-        ]);
-        compiler.deallocateRegister(er);
-        return r;
+        if(this.needsDereference(lvalue)){
+          compiler.emit([
+            new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
+          ]);
+        }
+        return er;
       }
       case 'len': {
-        // This should be an array, so it's the address of the size.
+        // This should be an array, so it's the address of the capacity, and the size
+        // is one byte after.
         const er = this.expression.compile(compiler);
+        compiler.emitIncrement(er, 1, 'len');
         if(this.needsDereference(lvalue)){
           compiler.emit([
             new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
@@ -1287,6 +1316,25 @@ class UnaryExpression extends Expression {
       default:
         throw new InternalError(`unexpected unary operator ${this.operator}`);
     }
+  }
+
+  public compileAssignmentCheck(compiler: Compiler, lr: Register, vr: Register): void {
+    switch(this.operator){
+      case 'len': {
+        // HACK: we have the address of the `len` of the array, not the address of the array
+        // itself, so subtract 1.
+        const ar = compiler.allocateRegister();
+        compiler.emit([
+          new InstructionDirective(Instruction.createOperation(Operation.SUB, ar, lr, Compiler.ONE)),
+        ]);
+        compiler.emitCapacityCheck(ar, vr);
+        compiler.deallocateRegister(ar);
+        break;
+      }
+      default:
+        break;
+    }
+    return;
   }
 
   public toString(){
@@ -1307,6 +1355,10 @@ class CallExpression extends Expression {
     const cType = type.resolve(context);
 
     if(cType instanceof FunctionType){
+      if(!type.tagged('.notnull')){
+        this.warning(context, `possibly null function type ${type}`);
+      }
+
       // Check the correct number of arguments.
       if(this.args.length !== cType.arity){
         this.error(context, `expected ${cType.arity} arguments, actual ${this.args.length}`);
@@ -1336,6 +1388,9 @@ class CallExpression extends Expression {
   public compile(compiler: Compiler, lvalue?: boolean): Register {
     // Compile the target location of the function to call.
     const tr = this.expression.compile(compiler, lvalue);
+
+    // TODO: remove this when possible.
+    compiler.emitNullCheck(tr);
 
     // Compile the arguments.
     const args = this.args.map((arg, i) => {
@@ -1385,8 +1440,8 @@ abstract class SuffixExpression extends Expression {
     }, expression);
   }
 
-  public static createIndex(index: Expression, range: IFileRange, text: string, options?: IParseOptions): Suffix {
-    return { index, range, text, options };
+  public static createIndex(index: Expression, unsafe: boolean, range: IFileRange, text: string, options?: IParseOptions): Suffix {
+    return { index, unsafe, range, text, options };
   }
 
   public static createMember(identifier: string, pointer: boolean, range: IFileRange, text: string, options?: IParseOptions): Suffix {
@@ -1463,6 +1518,11 @@ class ArrowExpression extends SuffixExpression {
       this.error(context, `expected pointer to struct type, actual ${type}`);
       return Type.Error;
     }
+
+    if(!type.tagged('.notnull')){
+      //this.warning(context, `possibly null pointer to struct type ${type}`);
+    }
+
     const structType = cType.dereference().resolve(context);
     if(!(structType instanceof StructType)){
       this.error(context, `expected pointer to struct type, actual ${type}`);
@@ -1482,6 +1542,9 @@ class ArrowExpression extends SuffixExpression {
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
     const er = this.expression.compile(compiler);
+
+    // TODO: remove when not null.
+    compiler.emitNullCheck(er);
 
     // We only need to adjust our pointer when we are indexing into the object;
     // if we are referencing the first value, we don't need to.
@@ -1505,6 +1568,7 @@ class ArrowExpression extends SuffixExpression {
 
 type Suffix = {
   index?: Expression;
+  unsafe?: boolean;
   identifier?: string;
   pointer?: boolean;
   range: IFileRange;
@@ -1514,12 +1578,13 @@ type Suffix = {
 
 @expression
 class IndexExpression extends SuffixExpression {
-  public readonly index: Expression;
   private stride?: number;
 
-  public constructor(expression: Expression, index: Expression){
+  public constructor(expression: Expression,
+    public readonly index: Expression,
+    private readonly unsafe: boolean = false
+  ){
     super(expression);
-    this.index = index;
   }
 
   public typecheck(context: TypeChecker): Type {
@@ -1533,6 +1598,9 @@ class IndexExpression extends SuffixExpression {
       elementType = cType.index();
     }
     else if(cType instanceof PointerType) {
+      if(!this.unsafe){
+        this.error(context, `unsafe index on ${type}`);
+      }
       elementType = cType.dereference();
     }
     else if(cType === Type.Error){
@@ -1561,7 +1629,15 @@ class IndexExpression extends SuffixExpression {
     const er = this.expression.compile(compiler);
     const ir = this.index.compile(compiler);
 
-    // TODO: bounds check!
+    // If the expression is a pointer, we should check that it is not null.
+    if(this.unsafe){
+      compiler.emitNullCheck(er);
+    }
+
+    // If the expression is an array, we should insert bounds checks.
+    if(this.expression.concreteType instanceof ArrayType && !this.unsafe){
+      compiler.emitBoundsCheck(er, ir);
+    }
 
     // The left side is an array; we need to know the size of each element
     // so that we can index into the correct location. So we multiply the index
@@ -1575,9 +1651,9 @@ class IndexExpression extends SuffixExpression {
       compiler.deallocateRegister(sr);
     }
 
-    // If we are indexing into an array, take into account the size.
+    // If we are indexing into an array, take into account the capacity and size.
     if(this.expression.concreteType instanceof ArrayType){
-      compiler.emitIncrement(er);
+      compiler.emitIncrement(er, 2, 'array start');
     }
 
     // Then we add the actual offset to the array.

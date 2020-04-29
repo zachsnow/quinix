@@ -49,6 +49,7 @@ Tokens
   / NamespaceToken / GlobalToken / TypeToken / FunctionToken
 
 LenToken = tok:"len" !Identifier { return tok; }
+CapacityToken = tok:"capacity" !Identifier { return tok; }
 NullToken = tok:"null" !Identifier { return tok; }
 SizeofToken = tok:"sizeof" !Identifier { return tok; }
 NewToken = tok:"new" !Identifier { return tok; }

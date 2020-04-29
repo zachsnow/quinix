@@ -155,11 +155,12 @@ class VarStatement extends Statement {
         new ConstantDirective(r, new ImmediateConstant(0)),
       ]);
       compiler.emitStaticStore(vr, r, this.concreteType.size, 'zero out');
+
       if(this.concreteType instanceof ArrayType && this.concreteType.length !== undefined){
         compiler.emit([
           new ConstantDirective(r, new ImmediateConstant(this.concreteType.length)).comment('array size'),
         ]);
-        compiler.emitStaticStore(vr, r, 1, 'initialize array size');
+        compiler.emitStaticStore(vr, r, 2, 'initialize array capacity and size');
       }
       compiler.deallocateRegister(vr);
       compiler.deallocateRegister(r);
@@ -226,6 +227,11 @@ class AssignmentStatement extends Statement {
   public compile(compiler: Compiler): void {
     const ar = this.assignable.compile(compiler, true);
     const er = this.expression.compile(compiler);
+
+    // Special case: if we are assigning to `len` we need to ensure
+    // that the length we are assigning is less than or equal to the capacity
+    // of the array.
+    this.assignable.compileAssignmentCheck(compiler, ar, er);
 
     if(this.assignable.concreteType.isIntegral()){
       compiler.emitStaticStore(ar, er, 1, `${this}`);
