@@ -14,10 +14,6 @@ import { Compiler } from '../lowlevel/compiler';
 const log = logger('vm');
 
 type Registers = number[];
-type InterruptFrame = {
-  state: State;
-  waiting: boolean;
-}
 
 /**
  * Records statistics about a running VM.
@@ -60,12 +56,19 @@ class Stats {
 class State {
   public registers: Registers;
 
+  public killed: boolean = false;
+  public waiting: boolean = false;
+  public faulting: boolean = false;
+
   constructor(){
     this.registers = new Array<number>(Register.REGISTER_COUNT).fill(0x00000000);
   }
 
   public reset(){
     this.registers.fill(0x00000000);
+    this.killed = false;
+    this.waiting = false;
+    this.faulting = false;
   }
 
   public toString(count: number = 8){
@@ -80,19 +83,6 @@ class State {
     const ip = display(Register.IP, this.registers[Register.IP]);
 
     return ['[', genericRegisters, ip, ']'].join(' ');
-  }
-
-  public store(waiting: boolean) : InterruptFrame {
-    const state = new State();
-    state.registers.splice(0, Register.REGISTER_COUNT, ...this.registers);
-    return {
-      state,
-      waiting,
-    };
-  }
-
-  public restore(frame: InterruptFrame){
-    this.registers.splice(0, Register.REGISTER_COUNT, ...frame.state.registers);
   }
 };
 
@@ -113,6 +103,10 @@ type VMOptions = {
 }
 
 type Interrupt = number;
+namespace Interrupt {
+  export const RETURN = 0x0;
+  export const FAULT = 0x1;
+}
 
 type PeripheralAddressMap = { [address: number]: PeripheralMapping };
 
@@ -126,8 +120,6 @@ class VM {
    *
    */
   private resumeInterrupt?: ResolvablePromise<void>;
-  private killed: boolean = false;
-  private waiting: boolean = false;
 
   // Interrupt table layout @ 0x0000:
   //  byte: enabled
@@ -185,7 +177,6 @@ class VM {
   private readonly state: State;
 
   private maxCycles?: number;
-  private cycles: number = 0;
 
   // Breakpoint addresses.
   private breakpointAddresses: { [ address: number ]: Breakpoint } = {};
@@ -223,18 +214,27 @@ class VM {
     this.maxCycles = options.cycles;
   }
 
-  public fault(message: string): never {
-    // TODO: trigger an interrupt.
-    throw new Error(`vm: fault: ${message}`);
+  private critical(message: string): never {
+    throw new Error(`vm: critical fault: ${message}`);
+  }
+
+  public fault(message: string): void {
+    log(`fault: ${message}`);
+
+    if(this.state.faulting){
+      throw new Error(`fault: double fault: ${message}`);
+    }
+
+    this.state.faulting = true;
+    if(!this.prepareInterrupt(Interrupt.FAULT)){
+      throw new Error(`fault: unhandled fault: ${message}`);
+    }
   }
 
   private reset(){
     this.stats.reset();
     this.state.reset();
-    this.cycles = 0;
     this.memory.fill(Operation.HALT);
-    this.waiting = false;
-    this.killed = false;
   }
 
   private loadPeripherals(){
@@ -253,7 +253,7 @@ class VM {
       }
 
       // Update peripheral table.
-      const tableAddress = this.PERIPHERAL_TABLE_ENTRIES_ADDR + 2 * i
+      const tableAddress = this.PERIPHERAL_TABLE_ENTRIES_ADDR + 2 * i;
       this.memory[tableAddress] = peripheral.identifier;
       this.memory[tableAddress + 1] = baseAddress;
 
@@ -315,7 +315,7 @@ class VM {
       // Not all peripherals map an interrupt.
       const peripheral = mapping.peripheral;
       const interrupt = peripheral.interrupt;
-      if(interrupt === 0x0){
+      if(interrupt === Interrupt.RETURN){
         return;
       }
 
@@ -336,7 +336,6 @@ class VM {
         });
 
         // Map handler address.
-        log(`mapping ${interrupt} to ${baseHandlerAddress}`)
         this.memory[this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt] = baseHandlerAddress;
       }
 
@@ -384,7 +383,7 @@ class VM {
    * Kill the machine.
    */
   public kill(): void {
-    this.killed = true;
+    this.state.killed = true;
   }
 
   /**
@@ -428,8 +427,8 @@ class VM {
    * @param interrupt the interrupt to trigger.
    */
   public interrupt(interrupt: Interrupt): boolean {
-    if(interrupt === 0x0 || interrupt === 0x1){
-      this.fault(`invalid interrupt: ${Immediate.toString(interrupt, 1)}`);
+    if(interrupt === Interrupt.RETURN){
+      this.critical(`invalid interrupt: ${Immediate.toString(interrupt, 1)}`);
     }
 
     if(this.prepareInterrupt(interrupt)){
@@ -457,10 +456,10 @@ class VM {
    */
   private async nextInterrupt(): Promise<void> {
     if(this.resumeInterrupt){
-      this.fault(`waiting before previous wait has completed`);
+      this.critical(`waiting before previous wait has completed`);
     }
 
-    this.waiting = true;
+    this.state.waiting = true;
 
     this.resumeInterrupt = new ResolvablePromise<void>();
     return this.resumeInterrupt.promise;
@@ -498,7 +497,7 @@ class VM {
           // execution.
           log('wait');
           this.stats.waited = true;
-          this.waiting = true;
+          this.state.waiting = true;
           await this.nextInterrupt();
           break;
 
@@ -508,7 +507,7 @@ class VM {
           return r;
       }
 
-      if(this.killed){
+      if(this.state.killed){
         log(`killed`);
         return -1;
       }
@@ -541,16 +540,22 @@ class VM {
    */
   private prepareInterrupt(interrupt: Interrupt): boolean {
     // Special cases.
-    if(interrupt === 0x0){
+    if(interrupt === Interrupt.RETURN){
       log(`interrupt 0x0: return`);
 
       // Restore registers, including `ip`.
       this.interruptRestore();
 
+      // A successful return clears the faulting flag because either
+      // we are returning from the fault handler, or we weren't faulting
+      // in the first place.
+      this.state.faulting = false;
+
       // If we restored an `ip` of 0 we performed an invalid return,
       // bail out.
       if(!this.state.registers[Register.IP]){
         this.fault(`invalid interrupt return`);
+        return true;
       }
 
       // Re-enable interrupts.
@@ -559,18 +564,14 @@ class VM {
       // Re-enable MMU.
       this.mmu.enable();
 
-      return true;
-    }
-    else if (interrupt === 0x1){
-      // HACK: this is just for release for now; we simulate an interrupt + interrupt
-      // return without actually doing anything, and then release.
-      this.stats.interruptsHandled++;
-      this.state.registers[Register.IP]++;
+      // We set the fault flag upon fault so that
+
       return true;
     }
 
-    // NOTE: all direct memory accesses are to *physical* memory.
-    if(!this.memory[this.INTERRUPT_TABLE_ENABLED_ADDR]){
+    // Fault is not masked by disabling interrupts.
+    const isMasked = !this.memory[this.INTERRUPT_TABLE_ENABLED_ADDR];
+    if(!this.state.faulting && isMasked){
       this.stats.interruptsIgnored++;
       log(`interrupt ${Immediate.toString(interrupt)}: interrupts disabled`);
       return false;
@@ -580,13 +581,14 @@ class VM {
     const handlerCount = this.memory[this.INTERRUPT_TABLE_COUNT_ADDR];
     if(interrupt > handlerCount){
       this.fault(`invalid interrupt ${Immediate.toString(interrupt)} (${handlerCount} mapped)`);
+      return true;
     }
 
     // Load handler address; a 0x0 indicates that the interrupt handler
     // is not currently mapped and should be ignored.
     const handler = this.memory[this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt];
     if(handler === 0x0){
-      log(`interrupt ${Immediate.toString(interrupt)}: handler not mapped ${Immediate.toString(this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt)}`);
+      log(`interrupt ${Immediate.toString(interrupt)}: handler not mapped at address ${Immediate.toString(this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt)}`);
       return false;
     }
 
@@ -599,8 +601,20 @@ class VM {
     // Advance so we save the *next* instruction, not the current instruction.
     this.state.registers[Register.IP]++;
 
-    // Store state.
-    this.interruptStore();
+    // Store state. If an interrupt handler is interrupted by fault, we *replace* it with
+    // the fault handler, but we do not store the state. When the fault
+    // handler returns, it returns as though from the replaced handler.
+    //
+    // This means that faults that occur in an interrupt handler "cancel" the rest of
+    // the interrupt handler.
+    //
+    // The only time we skip storing the interrupt state is when we were masked,
+    // as that means we are in the process of handling a double fault and we want
+    // the next interrupt return to return to the location when the *original* interrupt
+    // was triggered.
+    if(!isMasked){
+      this.interruptStore();
+    }
 
     // Jump to register.
     this.state.registers[Register.IP] = handler;
@@ -658,11 +672,13 @@ class VM {
       let physicalIp = mmu.translate(virtualIp, AccessFlags.Execute);
       if(physicalIp === undefined){
         this.fault(`memory fault: ${Address.toString(virtualIp)} not executable fetching instruction`);
+        return 'continue';
       }
 
       // The physical address must fit within the constraints
       if(physicalIp < 0 || physicalIp >= this.memorySize){
         this.fault(`memory fault: ${Address.toString(physicalIp)} out of bounds fetching instruction`);
+        return 'continue';
       }
 
       // Fetch and decode the instruction.
@@ -672,6 +688,7 @@ class VM {
       // Invalid instruction.
       if(decoded.immediate !== undefined){
         this.fault(`invalid instruction: ${decoded}`);
+        return 'continue';
       }
 
       log(`${state}: ${Immediate.toString(encoded)}: ${decoded}`);
@@ -694,7 +711,7 @@ class VM {
             // return (int 0x0), we should carry on waiting. Otherwise we want to execute the
             // body of the interrupt, so we `continue` (to release for peripherals and then
             // resume execution).
-            return !interrupt && this.waiting ? 'wait' : 'continue';
+            return !interrupt && this.state.waiting ? 'wait' : 'continue';
           }
         }
 
@@ -709,10 +726,12 @@ class VM {
           const physicalAddress = mmu.translate(virtualAddress, AccessFlags.Read);
           if(physicalAddress === undefined){
             this.fault(`memory fault: ${Address.toString(virtualAddress)} invalid mapping reading -- ${decoded}`);
+            return 'continue';
           }
 
           if(physicalAddress >= this.memorySize){
             this.fault(`memory fault: ${Address.toString(physicalAddress)} out of bounds reading -- ${decoded}`);
+            return 'continue';
           }
 
           const value =  memory[physicalAddress];
@@ -730,10 +749,12 @@ class VM {
           const physicalAddress = mmu.translate(virtualAddress, AccessFlags.Write);
           if(physicalAddress === undefined){
             this.fault(`memory fault: ${Address.toString(virtualAddress)} invalid mapping writing -- ${decoded}`);
+            return 'continue';
           }
 
           if(physicalAddress >= this.memorySize){
             this.fault(`memory fault: ${Address.toString(physicalAddress)} out of bounds writing -- ${decoded}`);
+            return 'continue';
           }
 
           const value = registers[decoded.sr0!];
@@ -755,10 +776,12 @@ class VM {
           const physicalAddress = mmu.translate(virtualAddress, AccessFlags.Read);
           if(physicalAddress === undefined){
             this.fault(`memory fault: ${Address.toString(virtualAddress)} invalid mapping`);
+            return 'continue';
           }
 
           if(physicalAddress >= this.memorySize){
             this.fault(`memory fault: ${Address.toString(physicalAddress)} out of bounds`);
+            return 'continue';
           }
 
           const value = memory[physicalAddress];
@@ -830,6 +853,7 @@ class VM {
 
         default:
           this.fault(`unimplemented instruction: ${decoded.operation}`);
+          return 'continue';
       }
 
       // Advance.
@@ -843,7 +867,7 @@ class VM {
 
       // Machine total limit.
       if(maxCycles !== undefined && (this.stats.cycles >= maxCycles)){
-        this.fault(`exceeded max cycles ${this.maxCycles}`);
+        this.critical(`exceeded max cycles ${this.maxCycles}`);
       }
 
       // Per-step limit; release so that peripherals can run.
