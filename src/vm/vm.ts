@@ -14,10 +14,6 @@ import { Compiler } from '../lowlevel/compiler';
 const log = logger('vm');
 
 type Registers = number[];
-type InterruptFrame = {
-  state: State;
-  waiting: boolean;
-}
 
 /**
  * Records statistics about a running VM.
@@ -81,19 +77,6 @@ class State {
 
     return ['[', genericRegisters, ip, ']'].join(' ');
   }
-
-  public store(waiting: boolean) : InterruptFrame {
-    const state = new State();
-    state.registers.splice(0, Register.REGISTER_COUNT, ...this.registers);
-    return {
-      state,
-      waiting,
-    };
-  }
-
-  public restore(frame: InterruptFrame){
-    this.registers.splice(0, Register.REGISTER_COUNT, ...frame.state.registers);
-  }
 };
 
 type BreakpointType = 'execute' | 'read' | 'write';
@@ -113,6 +96,11 @@ type VMOptions = {
 }
 
 type Interrupt = number;
+namespace Interrupt {
+  export const RETURN = 0x0;
+  export const FAULT = 0x1;
+  export const RELEASE = 0x2;
+}
 
 type PeripheralAddressMap = { [address: number]: PeripheralMapping };
 
@@ -185,7 +173,6 @@ class VM {
   private readonly state: State;
 
   private maxCycles?: number;
-  private cycles: number = 0;
 
   // Breakpoint addresses.
   private breakpointAddresses: { [ address: number ]: Breakpoint } = {};
@@ -223,15 +210,20 @@ class VM {
     this.maxCycles = options.cycles;
   }
 
-  public fault(message: string): never {
-    // TODO: trigger an interrupt.
+  private critical(message: string): never {
+    throw new Error(`vm: critical fault: ${message}`);
+  }
+
+  public fault(message: string): void {
+    if(this.prepareInterrupt(Interrupt.FAULT)){
+      return;
+    }
     throw new Error(`vm: fault: ${message}`);
   }
 
   private reset(){
     this.stats.reset();
     this.state.reset();
-    this.cycles = 0;
     this.memory.fill(Operation.HALT);
     this.waiting = false;
     this.killed = false;
@@ -253,7 +245,7 @@ class VM {
       }
 
       // Update peripheral table.
-      const tableAddress = this.PERIPHERAL_TABLE_ENTRIES_ADDR + 2 * i
+      const tableAddress = this.PERIPHERAL_TABLE_ENTRIES_ADDR + 2 * i;
       this.memory[tableAddress] = peripheral.identifier;
       this.memory[tableAddress + 1] = baseAddress;
 
@@ -315,7 +307,7 @@ class VM {
       // Not all peripherals map an interrupt.
       const peripheral = mapping.peripheral;
       const interrupt = peripheral.interrupt;
-      if(interrupt === 0x0){
+      if(interrupt === Interrupt.RETURN){
         return;
       }
 
@@ -428,8 +420,8 @@ class VM {
    * @param interrupt the interrupt to trigger.
    */
   public interrupt(interrupt: Interrupt): boolean {
-    if(interrupt === 0x0 || interrupt === 0x1){
-      this.fault(`invalid interrupt: ${Immediate.toString(interrupt, 1)}`);
+    if(interrupt === Interrupt.RETURN || interrupt === Interrupt.RELEASE){
+      this.critical(`invalid interrupt: ${Immediate.toString(interrupt, 1)}`);
     }
 
     if(this.prepareInterrupt(interrupt)){
@@ -457,7 +449,7 @@ class VM {
    */
   private async nextInterrupt(): Promise<void> {
     if(this.resumeInterrupt){
-      this.fault(`waiting before previous wait has completed`);
+      this.critical(`waiting before previous wait has completed`);
     }
 
     this.waiting = true;
@@ -541,7 +533,7 @@ class VM {
    */
   private prepareInterrupt(interrupt: Interrupt): boolean {
     // Special cases.
-    if(interrupt === 0x0){
+    if(interrupt === Interrupt.RETURN){
       log(`interrupt 0x0: return`);
 
       // Restore registers, including `ip`.
@@ -551,6 +543,7 @@ class VM {
       // bail out.
       if(!this.state.registers[Register.IP]){
         this.fault(`invalid interrupt return`);
+        return true;
       }
 
       // Re-enable interrupts.
@@ -561,7 +554,8 @@ class VM {
 
       return true;
     }
-    else if (interrupt === 0x1){
+
+    if (interrupt === Interrupt.RELEASE){
       // HACK: this is just for release for now; we simulate an interrupt + interrupt
       // return without actually doing anything, and then release.
       this.stats.interruptsHandled++;
@@ -580,6 +574,7 @@ class VM {
     const handlerCount = this.memory[this.INTERRUPT_TABLE_COUNT_ADDR];
     if(interrupt > handlerCount){
       this.fault(`invalid interrupt ${Immediate.toString(interrupt)} (${handlerCount} mapped)`);
+      return true;
     }
 
     // Load handler address; a 0x0 indicates that the interrupt handler
@@ -658,11 +653,13 @@ class VM {
       let physicalIp = mmu.translate(virtualIp, AccessFlags.Execute);
       if(physicalIp === undefined){
         this.fault(`memory fault: ${Address.toString(virtualIp)} not executable fetching instruction`);
+        return 'continue';
       }
 
       // The physical address must fit within the constraints
       if(physicalIp < 0 || physicalIp >= this.memorySize){
         this.fault(`memory fault: ${Address.toString(physicalIp)} out of bounds fetching instruction`);
+        return 'continue';
       }
 
       // Fetch and decode the instruction.
@@ -672,6 +669,7 @@ class VM {
       // Invalid instruction.
       if(decoded.immediate !== undefined){
         this.fault(`invalid instruction: ${decoded}`);
+        return 'continue';
       }
 
       log(`${state}: ${Immediate.toString(encoded)}: ${decoded}`);
@@ -709,10 +707,12 @@ class VM {
           const physicalAddress = mmu.translate(virtualAddress, AccessFlags.Read);
           if(physicalAddress === undefined){
             this.fault(`memory fault: ${Address.toString(virtualAddress)} invalid mapping reading -- ${decoded}`);
+            return 'continue';
           }
 
           if(physicalAddress >= this.memorySize){
             this.fault(`memory fault: ${Address.toString(physicalAddress)} out of bounds reading -- ${decoded}`);
+            return 'continue';
           }
 
           const value =  memory[physicalAddress];
@@ -730,10 +730,12 @@ class VM {
           const physicalAddress = mmu.translate(virtualAddress, AccessFlags.Write);
           if(physicalAddress === undefined){
             this.fault(`memory fault: ${Address.toString(virtualAddress)} invalid mapping writing -- ${decoded}`);
+            return 'continue';
           }
 
           if(physicalAddress >= this.memorySize){
             this.fault(`memory fault: ${Address.toString(physicalAddress)} out of bounds writing -- ${decoded}`);
+            return 'continue';
           }
 
           const value = registers[decoded.sr0!];
@@ -755,10 +757,12 @@ class VM {
           const physicalAddress = mmu.translate(virtualAddress, AccessFlags.Read);
           if(physicalAddress === undefined){
             this.fault(`memory fault: ${Address.toString(virtualAddress)} invalid mapping`);
+            return 'continue';
           }
 
           if(physicalAddress >= this.memorySize){
             this.fault(`memory fault: ${Address.toString(physicalAddress)} out of bounds`);
+            return 'continue';
           }
 
           const value = memory[physicalAddress];
@@ -830,6 +834,7 @@ class VM {
 
         default:
           this.fault(`unimplemented instruction: ${decoded.operation}`);
+          return 'continue';
       }
 
       // Advance.
@@ -843,7 +848,7 @@ class VM {
 
       // Machine total limit.
       if(maxCycles !== undefined && (this.stats.cycles >= maxCycles)){
-        this.fault(`exceeded max cycles ${this.maxCycles}`);
+        this.critical(`exceeded max cycles ${this.maxCycles}`);
       }
 
       // Per-step limit; release so that peripherals can run.
