@@ -564,19 +564,14 @@ class VM {
       // Re-enable MMU.
       this.mmu.enable();
 
+      // We set the fault flag upon fault so that
+
       return true;
     }
 
-    if (interrupt === Interrupt.RELEASE){
-      // HACK: this is just for release for now; we simulate an interrupt + interrupt
-      // return without actually doing anything, and then release.
-      this.stats.interruptsHandled++;
-      this.state.registers[Register.IP]++;
-      return true;
-    }
-
-    // NOTE: all direct memory accesses are to *physical* memory.
-    if(!this.memory[this.INTERRUPT_TABLE_ENABLED_ADDR]){
+    // Fault is not masked by disabling interrupts.
+    const isMasked = !this.memory[this.INTERRUPT_TABLE_ENABLED_ADDR];
+    if(!this.state.faulting && isMasked){
       this.stats.interruptsIgnored++;
       log(`interrupt ${Immediate.toString(interrupt)}: interrupts disabled`);
       return false;
@@ -593,7 +588,7 @@ class VM {
     // is not currently mapped and should be ignored.
     const handler = this.memory[this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt];
     if(handler === 0x0){
-      log(`interrupt ${Immediate.toString(interrupt)}: handler not mapped ${Immediate.toString(this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt)}`);
+      log(`interrupt ${Immediate.toString(interrupt)}: handler not mapped at address ${Immediate.toString(this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt)}`);
       return false;
     }
 
@@ -606,8 +601,20 @@ class VM {
     // Advance so we save the *next* instruction, not the current instruction.
     this.state.registers[Register.IP]++;
 
-    // Store state.
-    this.interruptStore();
+    // Store state. If an interrupt handler is interrupted by fault, we *replace* it with
+    // the fault handler, but we do not store the state. When the fault
+    // handler returns, it returns as though from the replaced handler.
+    //
+    // This means that faults that occur in an interrupt handler "cancel" the rest of
+    // the interrupt handler.
+    //
+    // The only time we skip storing the interrupt state is when we were masked,
+    // as that means we are in the process of handling a double fault and we want
+    // the next interrupt return to return to the location when the *original* interrupt
+    // was triggered.
+    if(!isMasked){
+      this.interruptStore();
+    }
 
     // Jump to register.
     this.state.registers[Register.IP] = handler;
