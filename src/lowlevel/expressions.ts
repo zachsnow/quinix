@@ -228,7 +228,7 @@ class BoolLiteralExpression extends Expression {
   }
 }
 
-function compileLiteralExpressions(hint: string, compiler: Compiler, expressions: Expression[], size?: number): Register {
+function compileLiteralExpressions(hint: string, compiler: Compiler, expressions: Expression[], capacity?: number): Register {
   // We can only compile non-integral literals when our compiler supports storage.
   if(!(compiler instanceof StorageCompiler)){
     throw new InternalError(`expected storage when compiling literal expression`);
@@ -236,8 +236,8 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, expressions
 
   const identifier = compiler.generateIdentifier(hint);
 
-  // Allocate local storage; include enough space for the size, if requested.
-  let bytes = size === undefined ? 0 : 1;
+  // Allocate local storage; include enough space for the capacity and size, if requested.
+  let bytes = capacity === undefined ? 0 : 2;
   expressions.forEach((expression) => {
     bytes += expression.concreteType.size;
   });
@@ -249,12 +249,14 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, expressions
   compiler.emitIdentifier(identifier, 'local', r, false);
   compiler.emitMove(ri, r, 'initialize destination pointer');
 
-  // Emit the size, if requested.
-  if(size !== undefined){
+  // Emit the capacity and initial size, if requested.
+  if(capacity !== undefined){
     const sr = compiler.allocateRegister();
     compiler.emit([
-      new ConstantDirective(sr, new ImmediateConstant(size)).comment(`size ${size}`),
+      new ConstantDirective(sr, new ImmediateConstant(capacity)).comment(`capacity ${capacity}`),
     ]);
+    compiler.emitStaticStore(ri, sr, 1, `store capacity`);
+    compiler.emitIncrement(ri, 1, 'len array');
     compiler.emitStaticStore(ri, sr, 1, `store size`);
     compiler.emitIncrement(ri, 1, 'array[0]');
     compiler.deallocateRegister(sr);
@@ -715,15 +717,15 @@ class NewArrayExpression extends Expression {
       compiler.emitMove(sr, cr, 'new[]: all elements size');
     }
 
-    // Add space for the array size.
+    // Add space for the array capacity and size.
     const tsr = compiler.allocateRegister();
     compiler.emitMove(tsr, sr);
-    compiler.emitIncrement(tsr, 1, 'new[]: array size');
+    compiler.emitIncrement(tsr, 2, 'new[]: array capacity and size');
 
     // Allocate the storage; this deallocates `tsr`.
     const dr = compiler.emitNew(tsr, 'new[]');
 
-    // Verify that the return is not null.
+    // Verify that the return is not null; if it is, we are out of memory.
     const endRef = compiler.generateReference('new_end');
     const endR = compiler.allocateRegister();
     compiler.emit([
@@ -731,8 +733,17 @@ class NewArrayExpression extends Expression {
       new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, dr, endR)),
     ]);
 
-    // Write array size..
-    compiler.emitStaticStore(dr, cr, 1, 'new[]: store array size');
+    // Address of first element of destination.
+    const adr = compiler.allocateRegister();
+    compiler.emit([
+      new InstructionDirective(Instruction.createOperation(Operation.MOV, adr, dr)).comment('new[]: array address'),
+    ]);
+
+    // Set capacity and size.
+    compiler.emitStaticStore(adr, cr, 1, 'new[]: store array capacity');
+    compiler.emitIncrement(adr, 1, 'new[]: array size address');
+    compiler.emitStaticStore(adr, cr, 1, 'new[]: store array size');
+    compiler.emitIncrement(adr, 1, 'new[]: array[0] address');
 
     // Write to destination; `dr` is a pointer to our new memory.
     let er;
@@ -747,12 +758,6 @@ class NewArrayExpression extends Expression {
       ]);
       isZero = true;
     }
-
-    // Address of first element of destination.
-    const adr = compiler.allocateRegister();
-    compiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, adr, dr, Compiler.ONE)).comment('new[]: destination[0]'),
-    ]);
 
     // Ellipsis means we are using the value represented by `er` multiple times.
     if(this.ellipsis){
@@ -775,8 +780,6 @@ class NewArrayExpression extends Expression {
     }
 
     // `er` is a pointer to an array.
-    const minRef = compiler.generateReference('min');
-    const minR = compiler.allocateRegister(); // Min calculation jump address.
     const esr = compiler.allocateRegister(); // Size of expression in bytes.
     const tr = compiler.allocateRegister(); // Temporary.
 
@@ -793,17 +796,12 @@ class NewArrayExpression extends Expression {
       ]);
     }
 
-    // We should copy the minimum of `sr` and `esr` bytes, so set `sr` to `esr` if `esr` is less than `sr`.
-    compiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.LT, tr, esr, sr)),
-      new ConstantDirective(minR, new ReferenceConstant(minRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, tr, minR)),
-      new InstructionDirective(Instruction.createOperation(Operation.MOV, sr, esr)),
-      new LabelDirective(minRef).comment('new[]: minimum size'),
-    ]);
-
+    // Currently we don't allow assignment between things of mismatched sizes; otherwise,
+    // we should copy the minimum of `sr` and `esr` bytes, so set `sr` to `esr` if `esr` is
+    // less than `sr`.
+    //
     // Finally we can copy.  First find the beginning of the expression array.
-    compiler.emitIncrement(er, 1, 'new[]: source[0]');
+    compiler.emitIncrement(er, 2, 'new[]: source[0]');
 
     if(isZero){
       compiler.emitDynamicStore(adr, er, sr, 'new[]: initialize');
@@ -815,10 +813,10 @@ class NewArrayExpression extends Expression {
     compiler.deallocateRegister(sr);
     compiler.deallocateRegister(adr);
     compiler.deallocateRegister(er);
-    compiler.deallocateRegister(minR);
     compiler.deallocateRegister(esr);
     compiler.deallocateRegister(tr);
 
+    // End, so we can jump here if memory allocation fails and we have nothing to initialize.
     compiler.emit([
       new LabelDirective(endRef),
     ]);
@@ -1275,8 +1273,10 @@ class UnaryExpression extends Expression {
         return r;
       }
       case 'len': {
-        // This should be an array, so it's the address of the size.
+        // This should be an array, so it's the address of the capacity, and the size
+        // is one byte after.
         const er = this.expression.compile(compiler);
+        compiler.emitIncrement(er, 1, 'len');
         if(this.needsDereference(lvalue)){
           compiler.emit([
             new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
@@ -1575,9 +1575,9 @@ class IndexExpression extends SuffixExpression {
       compiler.deallocateRegister(sr);
     }
 
-    // If we are indexing into an array, take into account the size.
+    // If we are indexing into an array, take into account the capacity and size.
     if(this.expression.concreteType instanceof ArrayType){
-      compiler.emitIncrement(er);
+      compiler.emitIncrement(er, 2, 'array start');
     }
 
     // Then we add the actual offset to the array.
