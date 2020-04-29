@@ -1167,6 +1167,16 @@ describe('QLLC end-to-end', () => {
     `, true);
   });
 
+  test('heap allocate array (capacity)', () => {
+    return expectRunToBe(10, `
+      function main(): byte {
+        var b: byte[] = new byte [10];
+        b[5] = 10;
+        return capacity b;
+      }
+    `, true);
+  });
+
   test('heap allocate array (infer)', () => {
     return expectRunToBe(13, `
       function main(): byte {
@@ -1204,6 +1214,17 @@ describe('QLLC end-to-end', () => {
         var ps = new Point[13];
         ps[3].x = 4;
         return len ps;
+      }
+    `, true);
+  });
+
+  test('heap allocate array of structs (capacity)', () => {
+    return expectRunToBe(13, `
+      type Point = struct { x: byte; y: byte; };
+      function main(): byte {
+        var ps = new Point[13];
+        ps[3].x = 4;
+        return capacity ps;
       }
     `, true);
   });
