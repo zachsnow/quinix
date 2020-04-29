@@ -71,6 +71,7 @@ UnaryOperator
     / "&"
     / "!"
     / LenToken
+    / CapacityToken
 
 MultiplicativeExpression
     = e:PrefixExpression tail:(_ MultiplicativeOperator _ PrefixExpression)* {

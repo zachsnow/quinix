@@ -1141,7 +1141,7 @@ class BinaryExpression extends Expression {
   }
 }
 
-type UnaryOperator = '-' | '+' | '*' | '&' | '!' | 'len';
+type UnaryOperator = '-' | '+' | '*' | '&' | '!' | 'len' | 'capacity';
 
 @expression
 class UnaryExpression extends Expression {
@@ -1158,16 +1158,6 @@ class UnaryExpression extends Expression {
     const type = this.expression.typecheck(context);
 
     switch(this.operator){
-      case '*': {
-        const cType = type.resolve(context);
-        if(cType instanceof PointerType){
-          return cType.dereference();
-        }
-
-        this.error(context, `expected pointer type, actual ${type}`);
-        return Type.Byte;
-      }
-
       case '+':
       case '-': {
         if(type.isNumeric(context)){
@@ -1177,7 +1167,6 @@ class UnaryExpression extends Expression {
         this.error(context, `expected numeric type, actual ${type}`);
         return Type.Byte;
       }
-
       case '!': {
         if(!type.isIntegral(context)){
           this.error(context, `expected integral type, actual ${type}`);
@@ -1185,7 +1174,19 @@ class UnaryExpression extends Expression {
         return Type.Bool;
       }
 
-      case '&':
+      case '*': {
+        const cType = type.resolve(context);
+        if(cType instanceof PointerType){
+          if(!type.tagged('.notnull')){
+            //this.warning(context, `possibly null pointer type ${type}`);
+          }
+          return cType.dereference();
+        }
+
+        this.error(context, `expected pointer type, actual ${type}`);
+        return Type.Byte;
+      }
+      case '&': {
         // We can't take the address of void.
         if(type.isConvertibleTo(Type.Void, context)){
           this.error(context, `expected non-void type, actual ${type}`);
@@ -1196,10 +1197,13 @@ class UnaryExpression extends Expression {
           this.error(context, `expected assignable expression`);
         }
 
-        // Otherwise we can take the address of anything.
-        return new PointerType(type);
+        // Otherwise we can take the address of anything,
+        // and we know that the pointer is not null.
+        return new PointerType(type).tag(['.notnull']);
+      }
 
-      case 'len': {
+      case 'len':
+      case 'capacity': {
         const cType = type.resolve(context);
         if(!(cType instanceof ArrayType)){
           this.error(context, `expected array type, actual ${type}`);
@@ -1241,6 +1245,19 @@ class UnaryExpression extends Expression {
         compiler.deallocateRegister(zr);
         return er;
       }
+      case '!': {
+        const er = this.expression.compile(compiler);
+
+        // We want !0 == 1, and !(non-zero) == 0. This is exactly the semantics of `NEQ`.
+        const r = compiler.allocateRegister();
+        compiler.emit([
+          new ConstantDirective(r, new ImmediateConstant(0)).comment(`${this}`),
+          new InstructionDirective(Instruction.createOperation(Operation.NEQ, r, r, er)),
+        ]);
+        compiler.deallocateRegister(er);
+        return r;
+      }
+
       case '*': {
         // Compile the nested value as an rvalue.
         const r = this.expression.compile(compiler, false);
@@ -1260,17 +1277,17 @@ class UnaryExpression extends Expression {
         // if we compile it as an lvalue, we'll get an address.
         return this.expression.compile(compiler, true);
       }
-      case '!': {
+
+      case 'capacity': {
+        // This should be an array, so it's the address of the capacity.
         const er = this.expression.compile(compiler);
 
-        // We want !0 == 1, and !(non-zero) == 0. This is exactly the semantics of `NEQ`.
-        const r = compiler.allocateRegister();
-        compiler.emit([
-          new ConstantDirective(r, new ImmediateConstant(0)).comment(`${this}`),
-          new InstructionDirective(Instruction.createOperation(Operation.NEQ, r, r, er)),
-        ]);
-        compiler.deallocateRegister(er);
-        return r;
+        if(this.needsDereference(lvalue)){
+          compiler.emit([
+            new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
+          ]);
+        }
+        return er;
       }
       case 'len': {
         // This should be an array, so it's the address of the capacity, and the size
