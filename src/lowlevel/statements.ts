@@ -228,6 +228,11 @@ class AssignmentStatement extends Statement {
     const ar = this.assignable.compile(compiler, true);
     const er = this.expression.compile(compiler);
 
+    // Special case: if we are assigning to `len` we need to ensure
+    // that the length we are assigning is less than or equal to the capacity
+    // of the array.
+    this.assignable.compileAssignmentCheck(compiler, ar, er);
+
     if(this.assignable.concreteType.isIntegral()){
       compiler.emitStaticStore(ar, er, 1, `${this}`);
     }

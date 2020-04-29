@@ -98,6 +98,10 @@ type CallArgument = {
 }
 
 class Compiler {
+  public static readonly NULL_ERROR = 0xe0000000;
+  public static readonly BOUNDS_ERROR = 0xe0000001;
+  public static readonly CAPACITY_ERROR = 0xe0000002;
+
   /**
    * Holds the stack pointer.
    */
@@ -135,7 +139,6 @@ class Compiler {
    * The fully qualified identifier for the memory allocator.
    */
   private readonly allocator: string;
-
 
   /**
    * The default memory deallocator; implemented in `lib/system.qll`.
@@ -705,6 +708,72 @@ class Compiler {
 
   public emitIncrement(r: Register, n: number = 1, comment: string = ''): void {
     this.emit(this.increment(r, n, comment));
+  }
+
+  public emitNullCheck(r: Register): void {
+    const er = this.allocateRegister();
+    const endRef = this.generateReference('null_check_end');
+
+    this.emit([
+      new ConstantDirective(er, new ReferenceConstant(endRef)),
+      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, r, er)),
+      new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.NULL_ERROR)).comment('null error'),
+      new InstructionDirective(Instruction.createOperation(Operation.HALT)),
+      new LabelDirective(endRef),
+    ]);
+
+    this.deallocateRegister(er);
+  }
+
+  /**
+   * Emits a bounds check.
+   *
+   * @param ar the register holding the address of the array.
+   * @param ir the register holding the index, in elements.
+   */
+  public emitBoundsCheck(ar: Register, ir: Register): void {
+    const sr = this.allocateRegister();
+    const er = this.allocateRegister();
+    const endRef = this.generateReference('bounds_check_end');
+
+    this.emitMove(sr, ar, 'array address');
+    this.emitIncrement(sr, 1, 'array size address');
+    this.emit([
+      new InstructionDirective(Instruction.createOperation(Operation.LOAD, sr, sr)).comment('array size'),
+      new InstructionDirective(Instruction.createOperation(Operation.LT, sr, ir, sr)),
+      new ConstantDirective(er, new ReferenceConstant(endRef)),
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, sr, er)),
+      new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.BOUNDS_ERROR)).comment('bounds error'),
+      new InstructionDirective(Instruction.createOperation(Operation.HALT)),
+      new LabelDirective(endRef),
+    ]);
+
+    this.deallocateRegister(er);
+    this.deallocateRegister(sr);
+  }
+
+  /**
+   * Emits a check that the new length for an array fits within
+   * the array's capacity.
+   *
+   * @param ar the register holding the address of the array.
+   * @param lr the register holding the new length, in elements.
+   */
+  public emitCapacityCheck(ar: Register, lr: Register): void {
+    const endRef = this.generateReference('len_check_end');
+
+    const cr = this.allocateRegister();
+    const er = this.allocateRegister();
+
+    this.emit([
+      new InstructionDirective(Instruction.createOperation(Operation.LOAD, cr, ar)),
+      new InstructionDirective(Instruction.createOperation(Operation.GT, cr, lr, cr)),
+      new ConstantDirective(er, new ReferenceConstant(endRef)),
+      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, er)),
+      new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.CAPACITY_ERROR)).comment('capacity error'),
+      new InstructionDirective(Instruction.createOperation(Operation.HALT)),
+      new LabelDirective(endRef),
+    ]);
   }
 }
 

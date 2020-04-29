@@ -222,7 +222,7 @@ class FunctionDeclaration extends Declaration {
   }
 
   private get type() {
-    return new FunctionType(this.parameters.map((param) => param.type), this.returnType).tag(this.tags);
+    return new FunctionType(this.parameters.map((param) => param.type), this.returnType).tag(this.tags).tag(['.notnull']);
   }
 
   public kindcheck(context: TypeChecker): void {

@@ -66,6 +66,15 @@ abstract class Expression extends mixin(HasTags, HasLocation) {
   public abstract compile(compiler: Compiler, lvalue?: boolean): Register;
 
   /**
+   * Some assignments (namely, assignments to an array's `len`) require a check.
+   *
+   * @param compiler the `compiler` managing register allocation, storage, etc.
+   * @param dr the register holding the destination.
+   * @param sr the register holding the source.
+   */
+  public compileAssignmentCheck(compiler: Compiler, dr: Register, ar: Register): void {}
+
+  /**
    * Returns whether the code generated for this expression needs to include a dereference.
    *
    * @param lvalue whether this expression is being compield as an "lvalue".
@@ -1262,6 +1271,9 @@ class UnaryExpression extends Expression {
         // Compile the nested value as an rvalue.
         const r = this.expression.compile(compiler, false);
 
+        // TODO: eliminate this check when possible.
+        compiler.emitNullCheck(r);
+
         // Not all expressions of the form `*e` must be dereferenced. For instance,
         // if `e` is an identifier refering to a struct, then `e` is already the address
         // of the struct.
@@ -1306,6 +1318,25 @@ class UnaryExpression extends Expression {
     }
   }
 
+  public compileAssignmentCheck(compiler: Compiler, lr: Register, vr: Register): void {
+    switch(this.operator){
+      case 'len': {
+        // HACK: we have the address of the `len` of the array, not the address of the array
+        // itself, so subtract 1.
+        const ar = compiler.allocateRegister();
+        compiler.emit([
+          new InstructionDirective(Instruction.createOperation(Operation.SUB, ar, lr, Compiler.ONE)),
+        ]);
+        compiler.emitCapacityCheck(ar, vr);
+        compiler.deallocateRegister(ar);
+        break;
+      }
+      default:
+        break;
+    }
+    return;
+  }
+
   public toString(){
     return `${this.operator}(${this.expression})`;
   }
@@ -1324,6 +1355,10 @@ class CallExpression extends Expression {
     const cType = type.resolve(context);
 
     if(cType instanceof FunctionType){
+      if(!type.tagged('.notnull')){
+        this.warning(context, `possibly null function type ${type}`);
+      }
+
       // Check the correct number of arguments.
       if(this.args.length !== cType.arity){
         this.error(context, `expected ${cType.arity} arguments, actual ${this.args.length}`);
@@ -1353,6 +1388,9 @@ class CallExpression extends Expression {
   public compile(compiler: Compiler, lvalue?: boolean): Register {
     // Compile the target location of the function to call.
     const tr = this.expression.compile(compiler, lvalue);
+
+    // TODO: remove this when possible.
+    compiler.emitNullCheck(tr);
 
     // Compile the arguments.
     const args = this.args.map((arg, i) => {
@@ -1402,8 +1440,8 @@ abstract class SuffixExpression extends Expression {
     }, expression);
   }
 
-  public static createIndex(index: Expression, range: IFileRange, text: string, options?: IParseOptions): Suffix {
-    return { index, range, text, options };
+  public static createIndex(index: Expression, unsafe: boolean, range: IFileRange, text: string, options?: IParseOptions): Suffix {
+    return { index, unsafe, range, text, options };
   }
 
   public static createMember(identifier: string, pointer: boolean, range: IFileRange, text: string, options?: IParseOptions): Suffix {
@@ -1480,6 +1518,11 @@ class ArrowExpression extends SuffixExpression {
       this.error(context, `expected pointer to struct type, actual ${type}`);
       return Type.Error;
     }
+
+    if(!type.tagged('.notnull')){
+      //this.warning(context, `possibly null pointer to struct type ${type}`);
+    }
+
     const structType = cType.dereference().resolve(context);
     if(!(structType instanceof StructType)){
       this.error(context, `expected pointer to struct type, actual ${type}`);
@@ -1499,6 +1542,9 @@ class ArrowExpression extends SuffixExpression {
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
     const er = this.expression.compile(compiler);
+
+    // TODO: remove when not null.
+    compiler.emitNullCheck(er);
 
     // We only need to adjust our pointer when we are indexing into the object;
     // if we are referencing the first value, we don't need to.
@@ -1522,6 +1568,7 @@ class ArrowExpression extends SuffixExpression {
 
 type Suffix = {
   index?: Expression;
+  unsafe?: boolean;
   identifier?: string;
   pointer?: boolean;
   range: IFileRange;
@@ -1531,12 +1578,13 @@ type Suffix = {
 
 @expression
 class IndexExpression extends SuffixExpression {
-  public readonly index: Expression;
   private stride?: number;
 
-  public constructor(expression: Expression, index: Expression){
+  public constructor(expression: Expression,
+    public readonly index: Expression,
+    private readonly unsafe: boolean = false
+  ){
     super(expression);
-    this.index = index;
   }
 
   public typecheck(context: TypeChecker): Type {
@@ -1550,6 +1598,9 @@ class IndexExpression extends SuffixExpression {
       elementType = cType.index();
     }
     else if(cType instanceof PointerType) {
+      if(!this.unsafe){
+        this.error(context, `unsafe index on ${type}`);
+      }
       elementType = cType.dereference();
     }
     else if(cType === Type.Error){
@@ -1578,7 +1629,15 @@ class IndexExpression extends SuffixExpression {
     const er = this.expression.compile(compiler);
     const ir = this.index.compile(compiler);
 
-    // TODO: bounds check!
+    // If the expression is a pointer, we should check that it is not null.
+    if(this.unsafe){
+      compiler.emitNullCheck(er);
+    }
+
+    // If the expression is an array, we should insert bounds checks.
+    if(this.expression.concreteType instanceof ArrayType && !this.unsafe){
+      compiler.emitBoundsCheck(er, ir);
+    }
 
     // The left side is an array; we need to know the size of each element
     // so that we can index into the correct location. So we multiply the index

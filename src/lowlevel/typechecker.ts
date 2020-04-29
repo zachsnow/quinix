@@ -1,6 +1,7 @@
 import { Messages, Location, HasLocation } from '../lib/util';
 import { TypeTable, StorageTable } from './tables';
 
+
 /**
  * Has environment information for typechecking; also tracks errors.
  */

@@ -23,7 +23,7 @@ PostfixExpression
     / e:PrimaryExpression tail:(PostfixExpressionSuffix)* { return SuffixExpression.build(e, tail).at(location(), text(), options); }
 
 PostfixExpressionSuffix
-    = _ "[" _ e:Expression _ "]" { return SuffixExpression.createIndex(e, location(), text(), options); }
+    = _ "[" _ u:UnsafeToken? _ e:Expression _ "]" { return SuffixExpression.createIndex(e, !!u, location(), text(), options); }
     / _ "." _ id:Identifier { return SuffixExpression.createMember(id, false, location(), text(), options); }
     / _ "->" _ id:Identifier { return SuffixExpression.createMember(id, true, location(), text(), options); }
 
