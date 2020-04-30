@@ -570,7 +570,7 @@ class NewExpression extends Expression {
     if(this.expression){
       const type = this.expression.typecheck(context, this.type);
 
-      if(!this.type.isEqualTo(type, context)){
+      if(!this.type.isEqualTo(type)){
         this.error(context, `expected ${this.type}, actual ${type}`);
       }
     }
@@ -686,7 +686,7 @@ class NewArrayExpression extends Expression {
       const compareType = this.ellipsis ? this.elementType : this.type;
       const type = this.expression.typecheck(context, compareType);
 
-      if(!compareType.isEqualTo(type, context)){
+      if(!compareType.isEqualTo(type)){
         this.error(context, `new array initializer expected ${compareType}, actual ${type}`);
       }
     }
@@ -958,7 +958,7 @@ class BinaryExpression extends Expression {
         if(!tRight.isNumeric(context)){
           this.error(context, `expected numeric type, actual ${tRight}`);
         }
-        if(!tLeft.isEqualTo(tRight, context)){
+        if(!tLeft.isEqualTo(tRight)){
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
         }
 
@@ -976,7 +976,7 @@ class BinaryExpression extends Expression {
         }
 
         // Both sides must have the same type.
-        if(!tLeft.isEqualTo(tRight, context)){
+        if(!tLeft.isEqualTo(tRight)){
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
         }
 
@@ -994,7 +994,7 @@ class BinaryExpression extends Expression {
         if(!tRight.isNumeric(context)){
           this.error(context, `expected numeric type, actual ${tRight}`);
         }
-        if(!tLeft.isEqualTo(tRight, context)){
+        if(!tLeft.isEqualTo(tRight)){
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
         }
         return Type.Bool;
@@ -1008,7 +1008,7 @@ class BinaryExpression extends Expression {
         if(!tRight.isIntegral(context)){
           this.error(context, `expected integral type, actual ${tRight}`);
         }
-        if(!tLeft.isEqualTo(tRight, context)){
+        if(!tLeft.isEqualTo(tRight)){
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
         }
 
@@ -1700,7 +1700,7 @@ class ConditionalExpression extends Expression {
     // Each branch of the conditional should have the same type.
     const ifType = this.ifExpression.typecheck(context);
     const elseType = this.elseExpression.typecheck(context);
-    if(!ifType.isEqualTo(elseType, context)){
+    if(!ifType.isEqualTo(elseType)){
       this.error(context, `expected ${ifType}, actual ${elseType}`);
     }
 

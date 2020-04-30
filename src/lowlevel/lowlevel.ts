@@ -221,7 +221,7 @@ class FunctionDeclaration extends Declaration {
     this.tag(tags);
   }
 
-  private get type() {
+  private get type(): FunctionType {
     return new FunctionType(this.parameters.map((param) => param.type), this.returnType).tag(this.tags).tag(['.notnull']);
   }
 

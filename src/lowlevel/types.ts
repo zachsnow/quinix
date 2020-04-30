@@ -19,10 +19,11 @@ function type(constructor: Function){
  */
 abstract class Type extends mixin(HasTags, HasLocation) {
   /**
-   * Check that the type is valid.
+   * Check that the type is valid, recording errors on the given `context`.
+   * `kindchecker` is used to verify recursive types are valid.
    *
-   * @param context
-   * @param visitedTypes the type identifiers that have been passed through.
+   * @param context the context in which to kindcheck.
+   * @param kindchecker the kind-checking context in which to kindcheck.
    */
   public abstract kindcheck(context: TypeChecker, kindchecker: KindChecker): void;
 
@@ -30,10 +31,10 @@ abstract class Type extends mixin(HasTags, HasLocation) {
    * Checks type equality. Type names *are not* resolved. This means that
    * e.g. `byte` is not equal to `int` when `type int = byte`.
    *
-   * @param type
+   * @param type the type to check for equality with this type.
    */
-  public isEqualTo(type: Type, context: TypeChecker){
-    const emptyContext = context.extend(new TypeTable(), new SymbolTable());
+  public isEqualTo(type: Type){
+    const emptyContext = new TypeChecker();
     return this.isUnifiableWith(type, emptyContext);
   }
 
@@ -61,7 +62,7 @@ abstract class Type extends mixin(HasTags, HasLocation) {
    *
    * @internal
    */
-   abstract isUnifiableWith(type: Type, context: TypeChecker): boolean;
+  public abstract isUnifiableWith(type: Type, context: TypeChecker): boolean;
 
   private _concreteType?: Type;
   public get concreteType(): Type {
@@ -70,6 +71,7 @@ abstract class Type extends mixin(HasTags, HasLocation) {
     }
     return this._concreteType;
   }
+
   /**
    * Resolves the type to its concrete type.
    *
@@ -149,6 +151,7 @@ class TypedIdentifier {
 
 const Builtins = ['byte', 'void', 'bool', '<error>'] as const;
 type Builtin = (typeof Builtins)[number];
+
 
 /**
  * Represets the built-in base types supported by QLL.
