@@ -26,7 +26,11 @@ class TypeChecker extends Messages {
       symbolTable ?? this.symbolTable,
       namespace ?? this.namespace,
     );
+
+    // Always copy the messages.
     context.messages = this.messages;
+
+    // We only enter / exit loops via `loop()`.
     context.loopCount = this.loopCount;
     return context;
   }

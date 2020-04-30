@@ -1035,21 +1035,21 @@ describe('QLLC end-to-end', () => {
     `);
   });
 
-  test('heap allocate too much', () => {
-    return expectRunToBe(0, `
-      function main(): byte {
-        var b = new byte [0x2000];
-        return <unsafe byte>b;
-      }
-    `, true);
-  });
-
   test('heap allocate', () => {
     return expectRunToBe(10, `
       function main(): byte {
         var b: * byte = new byte;
         *b = 10;
         return *b;
+      }
+    `, true);
+  });
+
+  test('heap allocate too much', () => {
+    return expectRunToBe(0, `
+      function main(): byte {
+        var b = new byte [0x2000];
+        return <unsafe byte>b;
       }
     `, true);
   });

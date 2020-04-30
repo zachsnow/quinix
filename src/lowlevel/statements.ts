@@ -23,12 +23,6 @@ abstract class Statement extends mixin(HasTags, HasLocation) {
   public abstract typecheck(context: TypeChecker): void;
   public abstract compile(compiler: Compiler): void;
 
-  public static compile(s: Statement): AssemblyProgram {
-    const compiler = new Compiler('statement');
-    s.compile(compiler);
-    return new AssemblyProgram(compiler.compile());
-  }
-
   /**
    * Returns `true` if all paths through this statement reach
    * a `return`.
@@ -36,6 +30,13 @@ abstract class Statement extends mixin(HasTags, HasLocation) {
   public returns(): boolean {
     return false;
   }
+
+  public static compile(s: Statement): AssemblyProgram {
+    const compiler = new Compiler('statement');
+    s.compile(compiler);
+    return new AssemblyProgram(compiler.compile());
+  }
+
 }
 interface Statement extends HasTags, HasLocation {}
 
@@ -525,7 +526,7 @@ class ReturnStatement extends Statement {
     const returnType = this.expression ? this.expression.typecheck(context) : Type.Void;
     const storage = context.symbolTable.get('return');
 
-    if(!returnType.isEqualTo(storage.type, context)){
+    if(!returnType.isEqualTo(storage.type)){
       this.error(context, `expected ${storage.type}, actual ${returnType}`);
     }
   }
