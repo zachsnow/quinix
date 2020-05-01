@@ -86,6 +86,10 @@ class SymbolTable<T> {
    * @param identifier the bare identifier to generate lookups for
    */
   private lookups(namespace: string, identifier: string): string[] {
+    if(!namespace){
+      return [ identifier ];
+    }
+
     const parts = namespace.split('::');
     const lookups: string[] = [];
     parts.forEach((part, i) => {
@@ -108,10 +112,6 @@ class SymbolTable<T> {
    * @param identifier
    */
   public lookup(namespace: string, identifier: string): { qualifiedIdentifier: string, value: T } | undefined {
-    if(!namespace){
-      throw new Error(`invalid lookup without namespace ${identifier}`);
-    }
-
     let lookup = this.lookups(namespace, identifier).find((lookup) => {
       return this.has(lookup);
     });

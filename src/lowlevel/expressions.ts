@@ -1370,7 +1370,7 @@ class CallExpression extends Expression {
         const argType = arg.typecheck(context);
         const expectedType = cType.argument(i);
 
-        if(!expectedType.isEqualTo(argType, context)){
+        if(!expectedType.isEqualTo(argType)){
           this.error(context, `expected ${expectedType}, actual ${argType}`);
         }
 
