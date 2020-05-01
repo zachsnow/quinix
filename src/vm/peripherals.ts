@@ -1,8 +1,9 @@
 import readline from 'readline';
-import { logger, stringToCodePoints } from '../lib/util';
+import { logger, stringToCodePoints, ResolvablePromise, codePointsToString, release } from '../lib/util';
 import { VM, Interrupt } from './vm';
 import { Memory, Address, Offset } from '../lib/base-types';
 import { Instruction, Operation, Register, Immediate } from './instructions';
+import fs from 'fs';
 
 const log = logger('vm:peripherals');
 
@@ -143,29 +144,44 @@ class TimerPeripheral extends Peripheral {
   }
 }
 
-/**
- * A peripheral to write zero-terminated unicode strings to stdout.
- */
-class DebugOutputPeripheral extends Peripheral {
-  public readonly name = "debug-output";
-  public readonly identifier = 0x00000003;
-
-  public readonly io = 0x01;
+abstract class BufferedPeripheral extends Peripheral {
+  public readonly io = 0x1;
   public readonly shared: Offset;
 
-  private readonly DEFAULT_BUFFER_SIZE = 0x100;
+  protected readonly CONTROL_ADDR = 0x0;
+  private readonly CAPACITY_ADDR = 0x1;
+  private readonly SIZE_ADDR = 0x2;
+  private readonly BUFFER_ADDR = 0x3;
 
-  private readonly CONTROL_ADDR = 0x0;
-  private readonly BUFFER_ADDR = 0x1;
+  private readonly DEFAULT_BUFFER_SIZE = 0x100 - this.BUFFER_ADDR;
 
-  private readonly COMPLETE = 0x0;
+  private readonly READY = 0x0;
   private readonly WRITE = 0x1;
-  private readonly PENDING = 0x2;
+  private readonly READ = 0x2;
+  private readonly PENDING = 0x3;
   private readonly ERROR = 0xffffffff;
+
+  private readonly bufferSize: number;
+
+  private inputBuffer?: number[];
+  private outputBuffer: number[] = [];
 
   public constructor(bufferSize?: Offset){
     super();
-    this.shared = bufferSize || this.DEFAULT_BUFFER_SIZE;
+
+    this.bufferSize = bufferSize ?? this.DEFAULT_BUFFER_SIZE;
+    this.shared = 0x2 + this.bufferSize;
+  }
+
+  public map(vm: VM, mapping: PeripheralMapping): void {
+    super.map(vm, mapping);
+
+    if(!this.mapping){
+      this.unmapped();
+    }
+
+    this.mapping.view[this.CAPACITY_ADDR] = this.bufferSize;
+    this.mapping.view[this.SIZE_ADDR] = 0x0;
   }
 
   public notify(address: Address): void {
@@ -173,46 +189,169 @@ class DebugOutputPeripheral extends Peripheral {
       this.unmapped();
     }
 
-    log(`${this.name}: notified ${Immediate.toString(address)}`);
-
-    // Verify we are attempting to write.
     const control = this.mapping.view[this.CONTROL_ADDR];
-    if(control !== this.WRITE){
-      log(`${this.name}: invalid control ${Immediate.toString(control)}`);
-      this.mapping.view[this.CONTROL_ADDR] = this.ERROR;
+
+    log(`${this.name}: notified buffered peripheral: ${Immediate.toString(control, 1)}`);
+
+    if(control === this.WRITE){
+      this.mapping.view[this.CONTROL_ADDR] = this.PENDING;
+      const isComplete = this.readShared();
+      if(!isComplete){
+        this.ready();
+        return;
+      }
+      const outputBuffer = this.outputBuffer;
+      this.outputBuffer = [];
+      this.onWrite(outputBuffer).then(() => {
+        this.ready();
+      }).catch((e) => {
+        this.error(e);
+      });
       return;
     }
 
-    // Mark pending.
-    this.mapping.view[this.CONTROL_ADDR] = this.PENDING;
-
-    // Make this non-blocking for "realism".
-    setTimeout(() => {
-      if(!this.mapping){
-        this.unmapped();
+    if(control === this.READ){
+      this.mapping.view[this.CONTROL_ADDR] = this.PENDING;
+      if(this.inputBuffer){
+        this.writeShared();
+        this.ready();
+        return;
       }
+      this.onRead().then((data) => {
+        this.inputBuffer = data;
+        this.writeShared();
+        this.ready();
+      }).catch((e) => {
+        this.error(e);
+      });
+      return;
+    }
 
-      log(`${this.name}: reading string...`);
+    this.error(`unsupported operation ${Immediate.toString(control)}`);
+  }
 
-      // Extract a string.
-      const size = Math.min(this.mapping.view[this.BUFFER_ADDR] + 1, this.shared);
+  /**
+   * Called when the client program triggers a `WRITE` control.
+   * Derived classes implementing output peripherals should implement
+   * this.
+   *
+   * @param data the data that was written by the client program
+   * to the shared buffer.
+   */
+  protected async onWrite(data: number[]): Promise<void> {
+    return Promise.reject('write not supported');
+  }
 
-      const characters = [];
-      for(let i = 1; i < size; i++){
-        let codePoint = this.mapping.view[this.BUFFER_ADDR + i];
-        if(!codePoint){
-          break;
-        }
-        characters.push(String.fromCodePoint(codePoint));
-      }
-      const s = characters.join('');
+  /**
+   * Called when the client program triggers a `READ` control.
+   * Derived classes implementing input peripherals should implement
+   * this.
+   *
+   * @returns a promise that resolves to the data that should
+   * be returned to the client program.
+   */
+  protected async onRead(): Promise<number[]> {
+    return Promise.reject('read not supported.')
+  }
 
-      log(`${this.name}: read '${s}'`);
+  /**
+   * Returns the data in the buffer. Supports buffered writes by the
+   * client, where the client writes a size value larger than the actual
+   * buffer, triggers `WRITE` with a full buffer, and repeats with
+   * smaller sizes until a write fits within the buffer.
+   *
+   * @returns whether the client program has finished writing to
+   * the shared memory.
+   */
+  private readShared(): boolean {
+    if(!this.mapping){
+      this.unmapped();
+    }
 
-      process.stdout.write(s);
+    // Get shared data.
+    const sourceSize = this.mapping.view[this.SIZE_ADDR];
+    const size = Math.min(sourceSize, this.bufferSize);
+    for(var i = 0; i < size; i++){
+      this.outputBuffer.push(this.mapping.view[this.BUFFER_ADDR + i]);
+    }
 
-      this.mapping.view[this.CONTROL_ADDR] = this.COMPLETE;
-    });
+    return sourceSize <= this.bufferSize;
+  }
+
+  /**
+   * Writes data to the shared buffer. Supports buffered reads
+   * by the client, where the client reads a buffer, sees that
+   * the peripheral has indicated it has more than a full buffer
+   * of data, and continues to call read until it reads a size
+   * that fits within the buffer.
+   *
+   * @returns whether the client has consumed the entire
+   * input buffer.
+   */
+  protected writeShared(): boolean {
+    if(!this.mapping){
+      this.unmapped();
+    }
+    if(!this.inputBuffer){
+      throw new Error();
+    }
+
+    const dataSize = this.inputBuffer.length;
+    const size = Math.min(this.bufferSize, dataSize);
+
+    this.mapping.view[this.SIZE_ADDR] = size;
+
+    for(var i = 0; i < size; i++){
+      this.mapping.view[this.BUFFER_ADDR + i] = this.inputBuffer[i];
+    }
+    this.inputBuffer.splice(0, size);
+
+    if(dataSize <= this.bufferSize){
+      this.inputBuffer = undefined;
+    }
+    return !!this.inputBuffer;
+  }
+
+  /**
+   * Mark the peripheral as ready.
+   *
+   * @param message optional message to log.
+   */
+  protected ready(message: string = 'complete'){
+    log(`${this.name}: ${message}`);
+    if(!this.mapping){
+      this.unmapped();
+    }
+    this.mapping.view[this.CONTROL_ADDR] = this.READY;
+  }
+
+  /**
+   * Mark the peripheral as in an error state.
+   *
+   * @param message optional error to log.
+   */
+  protected error(message: string = 'error'){
+    log(`${this.name}: ${message}`);
+    if(!this.mapping){
+      this.unmapped();
+    }
+    this.mapping.view[this.CONTROL_ADDR] = this.ERROR;
+  }
+}
+
+/**
+ * A peripheral to write zero-terminated unicode strings to stdout.
+ */
+class DebugOutputPeripheral extends BufferedPeripheral {
+  public readonly name = "debug-output";
+  public readonly identifier = 0x00000003;
+
+  public async onWrite(data: number[]): Promise<void> {
+    // Release for "realism".
+    await release();
+
+    const s = codePointsToString(data);
+    process.stdout.write(s);
   }
 }
 
@@ -221,38 +360,16 @@ class DebugOutputPeripheral extends Peripheral {
  * Ideally we'll replace this with a keyboard peripheral and a
  * kernel library.
  */
-class DebugInputPeripheral extends Peripheral {
+class DebugInputPeripheral extends BufferedPeripheral {
   public readonly name = "debug-input";
   public readonly identifier = 0x00000004;
 
-  public readonly io = 0x01;
-  public readonly shared: Offset;
+  private resolvablePromise?: ResolvablePromise<number[]>;
 
-  private readonly DEFAULT_BUFFER_SIZE = 0x100;
+  private buffer: number[] = [];
 
-  private readonly CONTROL_ADDR = 0x0;
-  private readonly BUFFER_ADDR = 0x1;
-
-  private readonly COMPLETE = 0x0;
-  private readonly READ = 0x1;
-  private readonly PENDING = 0x2;
-  private readonly MORE = 0x3;
-  private readonly ERROR = 0xffffffff;
-
-  private buffer = '';
-  private listening = false;
-
-  public constructor(bufferSize?: Offset){
+  public constructor(){
     super();
-    this.shared = bufferSize || this.DEFAULT_BUFFER_SIZE;
-  }
-
-  public map(vm: VM, mapping: PeripheralMapping){
-    super.map(vm, mapping);
-    this.listening = false;
-    this.buffer = '';
-
-    // Bind for easier listener removal.
     this.listener = this.listener.bind(this);
   }
 
@@ -262,74 +379,48 @@ class DebugInputPeripheral extends Peripheral {
     process.stdin.off('end', this.listener);
   }
 
-  public notify(address: Address): void {
-    if(!this.mapping){
-      this.unmapped();
+  protected onRead(): Promise<number[]> {
+    if(this.resolvablePromise){
+      this.resolvablePromise.reject('read while pending');
     }
 
-    // Verify we are attempting to read.
-    const control = this.mapping.view[this.CONTROL_ADDR];
-    if(control !== this.READ){
-      log(`${this.name}: invalid control byte ${Immediate.toString(control)}`);
-      this.mapping.view[this.CONTROL_ADDR] = this.ERROR;
-      return;
-    }
-
-    // Don't allow overlapping reads.
-    if(this.listening){
-      log(`${this.name}: already listening`);
-      this.mapping.view[this.CONTROL_ADDR] = this.ERROR;
-      return;
-    }
-
-    // Mark pending.
-    this.mapping.view[this.CONTROL_ADDR] = this.PENDING;
-
-    // Start listening.
-    this.listening = true;
-    this.buffer = '';
-
+    this.resolvablePromise = new ResolvablePromise<number[]>();
     process.stdin.on('data', this.listener);
     process.stdin.on('end', this.listener);
+    return this.resolvablePromise.promise;
   }
 
   private listener(data?: Buffer){
-    if(!this.mapping){
+    if(!this.mapping || !this.resolvablePromise){
       this.unmapped();
     }
 
     // End.
     if(data === undefined){
-      log(`${this.name}: end of data`);
-      this.mapping.view[this.CONTROL_ADDR] = this.ERROR;
+      this.resolvablePromise.reject('end of input');
       return;
     }
 
     // Data.
-    this.buffer += data.toString("utf8");
-    const i = this.buffer.indexOf('\n');
+    const text = data.toString("utf8");
+    const i = text.indexOf('\n');
     if(i === -1){
+      log(`${this.name}: no newline, bufferring...`);
+      this.buffer.push(...stringToCodePoints(text));
       return;
     }
 
-    // Now we have an input; for now just write it out and be done.
-    //
-    // TODO: if it's longer than the buffer, do better!
-    const input = this.buffer.substr(0, i);
-    const codePoints = stringToCodePoints(input);
-    const size = Math.min(this.shared - 1, codePoints.length);
+    const left = text.substr(0, i);
+    const right = text.substr(i + 1);
 
-    // Set size.
-    this.mapping.view[this.BUFFER_ADDR] = codePoints.length;
+    this.buffer.push(...stringToCodePoints(left));
+    const buffer = this.buffer;
+    this.buffer = stringToCodePoints(right);
 
-    // Write codepoints.
-    for(let i = 1; i < size; i++){
-      this.mapping.view[this.BUFFER_ADDR + i] = codePoints[i - 1];
-    }
+    log(`${this.name}: newline, resolving`, buffer);
 
-    // Done.
-    this.mapping.view[this.CONTROL_ADDR] = this.COMPLETE;
-    this.listening = false;
+    this.resolvablePromise.resolve(buffer);
+
     process.stdin.off('data', this.listener);
     process.stdin.off('end', this.listener);
   }
@@ -459,11 +550,37 @@ class KeypressPeripheral extends Peripheral {
   }
 }
 
+/**
+ * A simple peripheral for reading files from the host file system.
+ */
+class DebugReadFilePeripheral extends BufferedPeripheral {
+  public readonly name = 'debug-read-file';
+  public readonly identifier = 0x00000011;
+
+  private path: string = '';
+
+  protected async onWrite(data: number[]): Promise<void> {
+    this.path = codePointsToString(data);
+    return;
+  }
+
+  protected async onRead(): Promise<number[]> {
+    if(!this.path){
+      throw new Error('no path');
+    }
+    log(`${this.name}: reading path ${this.path}`);
+    const text = await fs.promises.readFile(this.path, 'utf-8');
+    log(`${this.name}: read path`);
+    return stringToCodePoints(text);
+  }
+}
+
 export {
   Peripheral, PeripheralMapping,
   DebugBreakPeripheral,
   DebugOutputPeripheral,
   DebugInputPeripheral,
+  DebugReadFilePeripheral,
   TimerPeripheral,
   KeypressPeripheral,
 };
