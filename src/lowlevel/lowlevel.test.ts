@@ -170,7 +170,25 @@ describe('QLLC typechecking', () => {
           break;
         }
       `)).toContain(`break outside of for or while`);
-    })
+    });
+
+    test('heap allocate array, initializer too short', () => {
+      return expect(errors(`
+        function main(): byte {
+          var ps = new byte[3] = [1,2];
+          return ps[0];
+        }
+      `)).toContain(`new array initializer expected byte[0x03], actual byte[0x02]`);
+    });
+
+    test('heap allocate array, initializer too long', () => {
+      return expect(errors(`
+        function main(): byte {
+          var ps = new byte[2] = [1,2,3];
+          return ps[0];
+        }
+      `)).toContain(`new array initializer expected byte[0x02], actual byte[0x03]`);
+    });
   });
 
   describe('Type inference', () => {
@@ -1303,53 +1321,6 @@ describe('QLLC end-to-end', () => {
         return ps[3].x;
       }
     `, true, 3000);
-  });
-
-  test('heap allocate array of structs, initializer too short', () => {
-    return expectRunToBe(0, `
-      type Point = struct { x: byte; y: byte; };
-      function main(): byte {
-        var ps = new Point[10] = [
-          Point {
-            x = 55,
-            y = 66,
-          },
-          Point {
-            x = 22,
-            y = 33,
-          },
-          Point {
-            x = 100,
-            y = 200,
-          }
-        ];
-        return ps[3].x;
-      }
-    `, true);
-  });
-
-  test('heap allocate array of structs, initializer too long', () => {
-    return expectRunToBe(0, `
-      type Point = struct { x: byte; y: byte; };
-      function main(): byte {
-        var ps = new Point[2] = [
-          Point {
-            x = 55,
-            y = 66,
-          },
-          Point {
-            x = 22,
-            y = 33,
-          },
-          Point {
-            x = 100,
-            y = 200,
-          },
-        ];
-        var qs = new Point;
-        return (*qs).x;
-      }
-    `, true, 2000);
   });
 
   test('null', () => {
