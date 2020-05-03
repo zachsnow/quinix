@@ -19,23 +19,23 @@ namespace kernel {
     // This function will be called by the timer interrupt handler.
     // Its argument will be a pointer to the current values of all registers.
     function schedule_task(state: * state): void {
-      log('scheduler: scheduling...\n');
+      log('scheduler: scheduling...');
 
       // Invalid state.
       if(!current_task || !tasks){
-        panic('scheduler: no tasks!\n');
+        panic('scheduler: no tasks!');
       }
 
       // Already running the only task.
       if(tasks == current_task && !current_task->next){
-        log('scheduler: already running only task\n');
+        log('scheduler: already running only task');
         return;
       }
 
       // Save the current task's state.
       current_task->state = *state;
 
-      // Schedule the next task.
+      // Schedule the next task; loop around to the beginning.
       current_task = current_task->next;
       if(!current_task){
         current_task = tasks;
@@ -59,7 +59,7 @@ namespace kernel {
     }
 
     function init(): void {
-      log('scheduler: initializing...\n');
+      log('scheduler: initializing...');
 
       // Create task 0. When we receive our first
       // request to schedule a task, this is the task

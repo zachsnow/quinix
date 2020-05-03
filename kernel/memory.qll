@@ -1,10 +1,11 @@
 namespace memory {
   type flags = byte;
-
-  global flag_present: .constant byte = 0b0001;
-  global flag_read: .constant byte = 0b0010;
-  global flag_write: .constant byte = 0b0100;
-  global flag_execute: .constant byte = 0b1000;
+  namespace flags {
+    .constant global PRESENT: byte = 0b0001;
+    .constant global READ: byte = 0b0010;
+    .constant global WRITE: byte = 0b0100;
+    .constant global EXECUTE: byte = 0b1000;
+  }
 
   type page = struct {
     virtual_address: byte;

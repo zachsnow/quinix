@@ -24,8 +24,6 @@ namespace kernel::syscall {
     var source: * byte = translate_handle(handle);
     var source_end: * byte = translate_handle_end(handle);
 
-
-
   }
 
   function write(): errors::error {
