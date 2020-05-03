@@ -7,7 +7,7 @@ import {
   Peripheral, PeripheralMapping,
   TimerPeripheral,
   DebugOutputPeripheral, DebugInputPeripheral, DebugBreakPeripheral,
-  DebugReadFilePeripheral,
+  DebugFilePeripheral,
 
 } from './peripherals';
 import { Compiler } from '../lowlevel/compiler';
@@ -202,7 +202,7 @@ class VM {
       new DebugBreakPeripheral(),
       new DebugOutputPeripheral(),
       new DebugInputPeripheral(),
-      new DebugReadFilePeripheral(),
+      new DebugFilePeripheral(),
 
     ];
 
@@ -678,7 +678,7 @@ class VM {
         return 'continue';
       }
 
-      // The physical address must fit within the constraints
+      // The physical address must fit within the constraints of "physical" memory.
       if(physicalIp < 0 || physicalIp >= this.memorySize){
         this.fault(`memory fault: ${Address.toString(physicalIp)} out of bounds fetching instruction`);
         return 'continue';
