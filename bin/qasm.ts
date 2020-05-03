@@ -15,7 +15,7 @@ const log = logger('qasm');
 interface Options {
   output: string;
   assemble: boolean;
-  lib: boolean;
+  std: boolean;
   nosystem: boolean;
   files: string[];
 }
@@ -37,7 +37,7 @@ const argv = parseArguments<Options>('qasm',
         type: 'boolean',
         default: false,
       },
-      lib: {
+      std: {
         describe: "include the standard library; it doesn't do much yet",
         type: 'boolean',
         default: false,
@@ -86,8 +86,8 @@ function resolveLibrary(filename: string){
 async function main(): Promise<number | undefined> {
   const filenames = argv.files;
 
-  if(argv.lib){
-    filenames.push(resolveLibrary('lib.qasm'));
+  if(argv.std){
+    filenames.push(resolveLibrary('std.qasm'));
   }
   if(!argv.nosystem){
     filenames.push(resolveLibrary('system.qasm'));

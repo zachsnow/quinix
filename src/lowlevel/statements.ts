@@ -252,6 +252,7 @@ class AssignmentStatement extends Statement {
 
 class ExpressionStatement extends Statement {
   private expression: Expression;
+  private type?: Type;
 
   public constructor(expression: Expression){
     super();
@@ -264,6 +265,8 @@ class ExpressionStatement extends Statement {
     if(!type.isConvertibleTo(Type.Void, context)){
       log(`expected ${Type.Void}, actual ${type}`);
     }
+
+    this.type = type;
   }
 
   public compile(compiler: Compiler): void {
@@ -273,6 +276,13 @@ class ExpressionStatement extends Statement {
 
   public toString(){
     return `${this.expression};`;
+  }
+
+  public returns(){
+    if(!this.type){
+      throw new InternalError(`${this} has not been typechecked`);
+    }
+    return this.type.tagged('.abort');
   }
 }
 

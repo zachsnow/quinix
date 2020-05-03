@@ -7,6 +7,7 @@ import {
   Peripheral, PeripheralMapping,
   TimerPeripheral,
   DebugOutputPeripheral, DebugInputPeripheral, DebugBreakPeripheral,
+  DebugReadFilePeripheral,
 
 } from './peripherals';
 import { Compiler } from '../lowlevel/compiler';
@@ -196,11 +197,13 @@ class VM {
 
     // Peripherals.
     this.peripherals = options.peripherals ?? [
+      mmu,
       new TimerPeripheral(),
       new DebugBreakPeripheral(),
       new DebugOutputPeripheral(),
       new DebugInputPeripheral(),
-      mmu,
+      new DebugReadFilePeripheral(),
+
     ];
 
     // Peripheral frequency.

@@ -1,5 +1,5 @@
 //
-// Print information about hardware peripherals.
+// Print information about hardware peripherals, interrupts, and so on.
 //
 type peripheral_table_entry = struct {
     identifier: byte;

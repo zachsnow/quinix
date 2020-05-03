@@ -1,7 +1,9 @@
 ///////////////////////////////////////////////////////////////////////
-// The Quinix standard library.
+// The Quinix standard library OS interface. The idea is that
+// `std.qll` will implement most of the library and then this
+// will connect it to the OS via syscalls.
 //
-// NOTE: there's no operating system yet, so this is just a sketch.
+// Since there's no operating system yet, this is just a sketch.
 ///////////////////////////////////////////////////////////////////////
 namespace lib {
   namespace support {
@@ -47,7 +49,7 @@ namespace lib {
     return read(debug_input_handle, buffer);
   }
 
-  function output(text: string): error {
+  function print(text: string): error {
     return write(debug_output_handle, text);
   }
 
