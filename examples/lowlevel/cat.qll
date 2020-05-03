@@ -1,5 +1,5 @@
-.constant global debugFileReadControl: *byte = <unsafe * byte> 0x503;
-.constant global debugFileReadBuffer: byte[] = <unsafe byte[]> 0x504;
+.constant global debugFileControl: *byte = <unsafe * byte> 0x503;
+.constant global debugFileBuffer: byte[] = <unsafe byte[]> 0x504;
 
 function main(): byte {
   var buffer: byte[0x100];
@@ -8,11 +8,11 @@ function main(): byte {
     return -1;
   }
 
-  if(!std::buffered::write(debugFileReadControl, debugFileReadBuffer, buffer)){
+  if(!std::buffered::write(debugFileControl, debugFileBuffer, buffer)){
     return -1;
   }
 
-  if(!std::buffered::read(debugFileReadControl, debugFileReadBuffer, buffer)){
+  if(!std::buffered::read(debugFileControl, debugFileBuffer, buffer)){
     return -1;
   }
 

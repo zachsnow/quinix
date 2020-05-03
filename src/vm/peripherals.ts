@@ -553,15 +553,21 @@ class KeypressPeripheral extends Peripheral {
 /**
  * A simple peripheral for reading files from the host file system.
  */
-class DebugReadFilePeripheral extends BufferedPeripheral {
-  public readonly name = 'debug-read-file';
+class DebugFilePeripheral extends BufferedPeripheral {
+  public readonly name = 'debug-file';
   public readonly identifier = 0x00000011;
 
   private path: string = '';
 
   protected async onWrite(data: number[]): Promise<void> {
-    this.path = codePointsToString(data);
-    return;
+    if(!this.path){
+      this.path = codePointsToString(data);
+      return;
+    }
+
+    log(`${this.name}: writing path ${this.path}`);
+    await fs.promises.writeFile(this.path, codePointsToString(data), 'utf-8');
+    log(`${this.name}: write complete`);
   }
 
   protected async onRead(): Promise<number[]> {
@@ -570,7 +576,7 @@ class DebugReadFilePeripheral extends BufferedPeripheral {
     }
     log(`${this.name}: reading path ${this.path}`);
     const text = await fs.promises.readFile(this.path, 'utf-8');
-    log(`${this.name}: read path`);
+    log(`${this.name}: read complete`);
     return stringToCodePoints(text);
   }
 }
@@ -580,7 +586,7 @@ export {
   DebugBreakPeripheral,
   DebugOutputPeripheral,
   DebugInputPeripheral,
-  DebugReadFilePeripheral,
+  DebugFilePeripheral,
   TimerPeripheral,
   KeypressPeripheral,
 };
