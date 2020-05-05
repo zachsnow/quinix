@@ -642,9 +642,9 @@ class Compiler {
   /**
    * Emits a reference to the given identifier.
    *
-   * @param identifier the identifier to reference
-   * @param storage the storage class of the reference
-   * @param dr the destination register in which to store the reference
+   * @param identifier the identifier to reference.
+   * @param storage the storage class of the reference.
+   * @param dr the destination register in which to store the reference.
    * @param dereference whether to emit a dereference of the address, too.
    */
   public emitIdentifier(identifier: string, storage: Storage, dr: Register, dereference: boolean): void {
