@@ -23,7 +23,9 @@ NamespaceDeclaration
     }
 
 TypeDeclaration
-    = tags:TagList? "type" _ i:Identifier _ "=" _ t:Type _ ";" { return new TypeDeclaration(i, t, tags || []).at(location(), text(), options); }
+    = tags:TagList? "type" _ i:Identifier _ "=" _ t:Type _ ";" {
+        return new TypeDeclaration(i, t, tags || []).at(location(), text(), options);
+    }
 
 GlobalDeclaration
     = tags:TagList? _ "global" _ ti:TypedIdentifier _ tail:("=" _ Expression _)? ";" {
@@ -31,8 +33,15 @@ GlobalDeclaration
     }
 
 FunctionDeclaration
-    = tags:TagList? _ "function" _ i:Identifier _ "(" _ args:TypedArgumentList? _ ")" _ ":" _ r:Type _ b:FunctionBody {
-        return new FunctionDeclaration(i, args || [], r, tags || [], b).at(location(), text(), options);;
+    = tags:TagList? _ "function" _ id:Identifier _ tyArgs:TypeVariableList? _ "(" _ args:TypedArgumentList? _ ")" _ ":" _ r:Type _ b:FunctionBody {
+        return new FunctionDeclaration(
+            id,
+            tyArgs || [],
+            args || [],
+            r,
+            tags || [],
+            b,
+        ).at(location(), text(), options);
     }
 
 FunctionBody
@@ -40,4 +49,12 @@ FunctionBody
     / ";" { return; }
 
 TypedArgumentList
-    = ti:TypedIdentifier tis:(_ "," _ TypedIdentifier)* { return [ti, ...tis.map((ti: any) => ti[3])]; }
+    = ti:TypedIdentifier tis:(_ "," _ TypedIdentifier)* {
+        return [ti, ...tis.map((ti: any) => ti[3])];
+    }
+
+TypeVariableList
+    = "<" _ ids:IdentifierList _ ">" { return ids; }
+
+IdentifierList
+    = id:Identifier ids:(_ "," _ Identifier)* { return [id, ...ids.map((t: any) => t[3])];}

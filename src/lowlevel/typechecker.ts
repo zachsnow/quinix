@@ -78,6 +78,14 @@ class KindChecker {
   private directs: string[] = [];
 
   /**
+   *
+   * @param qualifiedIdentifiers the identifiers to assume valid.
+   */
+  public assume(qualifiedIdentifiers: string[]): void {
+    this.visiteds.push(...qualifiedIdentifiers);
+  }
+
+  /**
    * Returns a new kindchecker that has directly visited the given
    * fully qualified identifier.
    *

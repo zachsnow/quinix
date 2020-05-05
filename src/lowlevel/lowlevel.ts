@@ -14,7 +14,7 @@ import {
 import { VM } from '../vm/vm';
 import { Instruction, Operation } from '../vm/instructions';
 import { Type, TypedIdentifier, TypedStorage, FunctionType } from './types';
-import { Expression, StringLiteralExpression, IntLiteralExpression } from './expressions';
+import { Expression, StringLiteralExpression } from './expressions';
 import { BlockStatement } from './statements';
 import { TypeChecker, KindChecker } from './typechecker';
 import { mixin, HasTags, HasLocation } from '../lib/util';
@@ -204,25 +204,43 @@ class GlobalDeclaration extends Declaration {
 }
 
 /**
+ * Represents an instantiation of a template function.
+ */
+type Instantiation = {
+  identity: string;
+  type: FunctionType;
+};
+
+/**
  * A function declaration. Functions can either be pre-declarations,
  * which do not have a body block, or declarations proper, which do.
+ *
+ * Function declarations can declare functions or function templates.
  */
 class FunctionDeclaration extends Declaration {
-  private parameters: TypedIdentifier[];
-  private returnType: Type;
-  private block?: BlockStatement;
+  private instantiations: Instantiation[] = [];
 
-  public constructor(identifier: string, parameters: TypedIdentifier[], returnType: Type, tags: string[], block?: BlockStatement){
+  public constructor(
+      identifier: string,
+      private typeVariables: string[],
+      private parameters: TypedIdentifier[],
+      private returnType: Type,
+      tags: string[],
+      private block?: BlockStatement
+  ){
     super(identifier);
-    this.parameters = parameters;
-    this.returnType = returnType;
-    this.block = block;
-
     this.tag(tags);
   }
 
   private get type(): FunctionType {
-    return new FunctionType(this.parameters.map((param) => param.type), this.returnType).tag(this.tags).tag(['.notnull']);
+    const parameterTypes = this.parameters.map((param) => param.type);
+    const functionType = new FunctionType(
+      this.typeVariables,
+      parameterTypes,
+      this.returnType,
+      this.instantiator.bind(this),
+    );
+    return functionType.tag(this.tags).tag(['.notnull']);
   }
 
   public kindcheck(context: TypeChecker): void {
@@ -235,37 +253,76 @@ class FunctionDeclaration extends Declaration {
   }
 
   public typecheck(context: TypeChecker): void {
-    const isVoid = this.returnType.isConvertibleTo(Type.Void, context);
-
-    // Function pre-declaration (with no block) doesn't need a type-check.
-    if(this.block){
-      const nestedContext = context.extend(undefined, context.symbolTable.extend());
-      this.parameters.forEach((parameter) => {
-        nestedContext.symbolTable.set(parameter.identifier, new TypedStorage(parameter.type, 'parameter'));
-      });
-      nestedContext.symbolTable.set('return', new TypedStorage(this.returnType, 'local'));
-
-      this.block.typecheck(nestedContext);
-
-      // All paths through a function must return.
-      if(!isVoid && !this.block.returns()){
-        this.error(context, `non-void function missing return`);
+    // We can't typecheck function declarations that are templated;
+    // instead they are typechecked when they are instantiated.
+    if(this.typeVariables.length){
+      if(!this.block){
+        this.error(context, `template functions cannot be pre-declared`);
       }
+      return;
+    }
+
+    // Otherwise, we already have a fully instantiated type, and
+    // can check it immediately.
+    if(this.block){
+      this.instantiator(context, this.type);
+    }
+  }
+
+  private instantiator(context: TypeChecker, type: FunctionType): void {
+    // We never instantiate pre-declarations.
+    if(!this.block){
+      throw new InternalError(`instantiating pre-declaration ${this}`);
+    }
+
+    // Save the instantiation; if we have already checked this instantiation,
+    // we're done.
+    const identity = type.toIdentity();
+    const instantiation = this.instantiations.find((instantiation) => {
+      return identity === instantiation.identity;
+    });
+    if(instantiation){
+      return;
+    }
+    this.instantiations.push({
+      identity,
+      type,
+    });
+
+    // Kindcheck.
+    type.kindcheck(context, new KindChecker());
+
+    // Check argument and return types.
+    const returnType = type.apply();
+
+    const nestedContext = context.extend(undefined, context.symbolTable.extend());
+    this.parameters.forEach((parameter, i) => {
+      const argumentType = type.argumentTypes[i];
+      nestedContext.symbolTable.set(parameter.identifier, new TypedStorage(argumentType, 'parameter'));
+    });
+    nestedContext.symbolTable.set('return', new TypedStorage(returnType, 'local'));
+
+    this.block.typecheck(nestedContext);
+
+    // All paths through a function must return.
+    const isVoid = returnType.isConvertibleTo(Type.Void, context);
+    if(!isVoid && !this.block.returns()){
+      this.error(context, `non-void function missing return`);
     }
 
     // Check for interrupt handler correctness.
     if(this.interrupt){
-      if(this.type.arity > 0){
-        this.error(context, `interrupt expected no arguments, actual ${this.type}`);
+      if(type.arity > 0){
+        this.error(context, `interrupt expected no arguments, actual ${type}`);
       }
       if(!isVoid){
-        this.error(context, `interrupt expected void return type, actual ${this.returnType}`);
+        this.error(context, `interrupt expected void return type, actual ${returnType}`);
       }
     }
 
     // For now we can't return non-integral types, like old C.
-    if(!isVoid && !this.returnType.isIntegral(context)){
-      this.error(context, `expected integral return type, actual ${this.returnType}`);
+    if(!isVoid && !returnType.isIntegral(context)){
+      this.error(context, `expected integral return type, actual ${returnType}`);
     }
   }
 
@@ -274,20 +331,44 @@ class FunctionDeclaration extends Declaration {
       throw new InternalError(`${this} has not been pre-typechecked`);
     }
 
-    if(this.block){
-      const compilerClass = this.interrupt ? InterruptCompiler : FunctionCompiler;
-      const compiler = new compilerClass(this.qualifiedIdentifier, this.parameters.map((parameter) => {
-        return {
-          identifier: parameter.identifier,
-          size: parameter.type.concreteType.size,
-        };
-      }));
-
-      this.block.compile(compiler);
-      return compiler.compile();
+    // No directives for pre-declarations.
+    if(!this.block){
+      return [];
     }
 
-    return [];
+    // Compile each instantiation we've called. For non-template
+    // types we will only have a single instantiation.
+    const directives: Directive[] = [];
+    this.instantiations.forEach((instantiation, i) => {
+      // Since we compile multiple instantiations for the same qualified
+      // identifier, we make the prefix unique by appending the
+      // instantiation index.
+      const prefix = `${this.qualifiedIdentifier!}_${i}$`;
+
+      // We can't directly use the parameters because they may be
+      // templated, and we need the *instantiated* parameters.
+      const functionType = instantiation.type;
+      const parameters = this.parameters.map((parameter, i) => {
+        return {
+          identifier: parameter.identifier,
+          size: functionType.argumentTypes[i].concreteType.size,
+        };
+      });
+      const compilerClass = this.interrupt ? InterruptCompiler : FunctionCompiler;
+      const compiler = new compilerClass(prefix, parameters);
+
+      // Compile the body.
+      this.block!.compile(compiler);
+
+      // Don't mangle non-template functions.
+      const reference = this.typeVariables.length ?
+        new Reference(`${this.qualifiedIdentifier!}<${instantiation.identity}>`, true) :
+        new Reference(this.qualifiedIdentifier!);
+
+      directives.push(...compiler.compile(reference));
+    });
+
+    return directives;
   }
 
   private get interrupt(): boolean {

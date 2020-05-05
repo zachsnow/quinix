@@ -1,5 +1,5 @@
 import { Immediate } from '../lib/base-types';
-import { indent, HasTags, HasLocation, InternalError, mixin, SymbolTable } from '../lib/util';
+import { indent, HasTags, HasLocation, InternalError, mixin, SymbolTable, unique, duplicates } from '../lib/util';
 import { TypeChecker, KindChecker } from './typechecker';
 import { TypeTable } from './tables';
 
@@ -64,7 +64,28 @@ abstract class Type extends mixin(HasTags, HasLocation) {
    */
   public abstract isUnifiableWith(type: Type, context: TypeChecker): boolean;
 
+  /**
+   * Substitute the given type-table, returning an instantiated type.
+   * The given `typeTable` is a substitution mapping identifiers to
+   * types.
+   *
+   * @param typeTable the substitution to substitute.
+   */
+  public abstract substitute(typeTable: TypeTable): Type;
+
+  /**
+   * Return a string identifier that uniquely identifies this
+   * type. Equal types (ideally up to alpha-conversion, but that's not
+   * required) should have equal identifiers, non-equal types must
+   * have non-equal identifiers.
+   */
+  public abstract toIdentity(): string;
+
   private _concreteType?: Type;
+
+  /**
+   * Returns the concrete type of this type.
+   */
   public get concreteType(): Type {
     if(!this._concreteType){
       throw new InternalError(this.withLocation(`${this} has not been kindchecked`));
@@ -203,31 +224,109 @@ class BuiltinType extends Type {
     return false;
   }
 
-  public toString(){
+  public toString(minimal: boolean = false){
     return this.withTags(this.builtin);
+  }
+
+  public toIdentity(){
+    return this.builtin;
   }
 
   public get size(): number {
     return this.builtin === 'void' ? 0 : 1;
   }
+
+  public substitute(typeTable: TypeTable) {
+    return this;
+  }
+}
+
+@type
+class VariableType extends Type {
+  private static id = 0;
+  private id: number = VariableType.id++;
+
+  public constructor(public binding?: Type){
+    super();
+  }
+
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
+    throw new InternalError();
+  }
+
+  public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    if(this.binding){
+      return this.binding.isUnifiableWith(type, context);
+    }
+    this.binding = type;
+    return true;
+  }
+
+  public get size(): number {
+    throw new InternalError();
+  }
+
+  public toIdentity(): string {
+    throw new InternalError();
+  }
+
+  public toString(): string {
+    if(this.binding){
+      return `'${this.id} -> ${this.binding}`;
+    }
+    return `'${this.id}`;
+  }
+
+  public substitute(typeTable: TypeTable): Type {
+    throw new InternalError();
+  }
 }
 
 @type
 class FunctionType extends Type {
-  private returnType: Type;
-  public argumentTypes: Type[];
+  public constructor(
+    /**
+     * The function's template type variables, if any.
+     */
+    public readonly typeVariables: string[],
 
-  public constructor(argumentTypes: Type[], returnType: Type){
+    /**
+     * Function argument types.
+     */
+    public readonly argumentTypes: Type[],
+
+    /**
+     * Function return type.
+     */
+    private returnType: Type,
+
+    /**
+     * If this is a template function, the `instantiator` is called
+     * whenever the template is instantiated.
+     */
+    private instantiator?: (context: TypeChecker, type: FunctionType) => void
+  ){
     super();
-    this.returnType = returnType;
-    this.argumentTypes = argumentTypes;
+
+    if(typeVariables.length && !instantiator){
+      throw new InternalError(`expected instantiator for variables ${typeVariables.join(', ')}`);
+    }
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
-    const nestedKindchecker = kindchecker.pointer();
+    if(this.typeVariables.length){
+      // Validate type variables.
+      const duplicateTypeVariables = duplicates(this.typeVariables);
+      if(duplicateTypeVariables.length){
+        this.error(context, `duplicate type variables ${duplicateTypeVariables.join(', ')}`);
+      }
 
-    // Function types are valid so long as their argument and return types
-    // are valid.
+      // Defer kindchecking the function type until instantiation time.
+      return;
+    }
+
+    // Otherwise we can kindcheck immediately.
+    const nestedKindchecker = kindchecker.pointer();
     this.returnType.kindcheck(context, nestedKindchecker);
     this.argumentTypes.forEach((type) => {
       type.kindcheck(context, nestedKindchecker);
@@ -238,6 +337,11 @@ class FunctionType extends Type {
     const concreteType = type.resolve(context);
 
     if(concreteType instanceof FunctionType){
+      // Can't unify uninstantiated template functions.
+      if(this.typeVariables.length){
+        return false;
+      }
+
       // Return types must unify.
       if(!this.returnType.isUnifiableWith(concreteType.returnType, context)){
         return false;
@@ -249,15 +353,98 @@ class FunctionType extends Type {
       }
 
       // Argument types must unify.
-      const argumentsMatch = this.argumentTypes.map((argType, i) => {
-        if(!argType.isUnifiableWith(concreteType.argumentTypes[i], context)){
-          return false;
-        }
+      return this.argumentTypes.every((argType, i) => {
+        // Reverse order for proper variance.
+        return concreteType.argumentTypes[i].isUnifiableWith(argType, context);
       });
-
-      return argumentsMatch.indexOf(false) === -1;
     }
+
     return false;
+  }
+
+  /**
+   * Instantiate this template function type with the given type arguments.
+   *
+   * @param context the context in which this template is being instantiated.
+   * @param typeArgs the type arguments with which to instantiate this template.
+   */
+  public instantiate(context: TypeChecker, typeArgs: Type[]): FunctionType {
+    // Check that we passed the right number of arguments.
+    if(this.typeVariables.length !== typeArgs.length){
+      this.error(context, `expected ${this.typeVariables.length} type arguments, actual ${typeArgs.length}`);
+    }
+
+    // Build a substitution mapping type variables to type arguments.
+    const typeTable = new TypeTable();
+    this.typeVariables.forEach((tv, i) => {
+      typeTable.set(tv, typeArgs[i] || Type.Error);
+    });
+
+    // Substitute the type with the mapping, removing type variables.
+    // Now it will be unifiable etc.
+    const type = new FunctionType([], this.argumentTypes, this.returnType);
+    const iType = type.substitute(typeTable).tag(this.tags);
+
+    // Kindcheck.
+    iType.kindcheck(context, new KindChecker());
+
+    // Call the instantiator so we can typecheck.
+    if(this.instantiator){
+      this.instantiator(context, iType);
+    }
+
+    return iType;
+  }
+
+  public infer(context: TypeChecker, argTypes: Type[], contextual?: Type): FunctionType {
+    // Construct the expected type of the function after instantiation;
+    // the return type is the contextual type if it is given. We don't always
+    // have one, in which case we infer one via unification.
+    const returnType = contextual || new VariableType();
+    const expected = new FunctionType([], argTypes, returnType);
+
+    // Build a substitution mapping type variables to new variables
+    // that can bind during unification.
+    const typeTable = new TypeTable();
+    const typeArgs: VariableType[] = [];
+    this.typeVariables.forEach((tv, i) => {
+      const type = new VariableType();
+      typeTable.set(tv, type);
+      typeArgs.push(type);
+    });
+
+    // Construct a new function with no type variables, substituting
+    // with the mapping.
+    const actual = new FunctionType(
+      [],
+      this.argumentTypes.map((argumentType) => argumentType.substitute(typeTable)),
+      this.returnType.substitute(typeTable),
+    );
+
+    // If the types can't unify, there's no inferred instantation.
+    if(!expected.isUnifiableWith(actual, context)){
+      return this;
+    }
+
+    // If we can't infer *all* type variables, there's no inferred instantiation.
+    //
+    // TODO: build a smaller substitution so we can see what we inferred.
+    if(!typeArgs.every((arg) => !!arg.binding)){
+      return this;
+    }
+
+    // Otherwise, we inferred an instantiation. Extract it and instantiate
+    // this template function.
+    return this.instantiate(context, typeArgs.map((arg) => arg.binding!));
+  }
+
+  public substitute(typeTable: TypeTable): FunctionType {
+    return new FunctionType(
+      this.typeVariables,
+      this.argumentTypes.map((argumentType) => argumentType.substitute(typeTable)),
+      this.returnType.substitute(typeTable),
+      this.instantiator,
+    )
   }
 
   /**
@@ -268,24 +455,21 @@ class FunctionType extends Type {
   }
 
   /**
-   * Returns the type of the ith argument of this function type.
-   *
-   * @param i the index of the argument.
-   */
-  public argument(i: number): Type{
-    return this.argumentTypes[i];
-  }
-
-  /**
    * Returns the return type of this function type.
    */
   public apply(){
     return this.returnType;
   }
 
+  public toIdentity(){
+    const args = this.argumentTypes.map((arg) => arg.toIdentity()).join(', ');
+    return `(${args}) => ${this.returnType.toIdentity()}`;
+  }
+
   public toString(){
     const args = this.argumentTypes.map((arg) => arg.toString()).join(', ');
-    return this.withTags(`(${args}) => ${this.returnType.toString()}`);
+    const tvs = this.typeVariables.length ? `<${this.typeVariables.join(', ')}>` : '';
+    return this.withTags(`${tvs}(${args}) => ${this.returnType.toString()}`);
   }
 }
 
@@ -384,8 +568,20 @@ class IdentifierType extends Type {
     return this;
   }
 
+  public substitute(typeTable: TypeTable): Type {
+    // If we have bound this type variable, replace it, otherwise leave it alone.
+    if(typeTable.has(this.identifier)){
+      return typeTable.get(this.identifier);
+    }
+    return this;
+  }
+
   public get size(): number {
     throw new InternalError(this.withLocation(`unable to determine size of identifier type ${this.identifier}`));
+  }
+
+  public toIdentity(){
+    return this.identifier;
   }
 
   public toString(){
@@ -429,8 +625,16 @@ class PointerType extends Type {
     return this.type;
   }
 
+  public toIdentity() {
+    return `* ${this.type.toIdentity()}`;
+  }
+
   public toString(){
     return this.withTags(`* ${this.type}`);
+  }
+
+  public substitute(typeTable: TypeTable): Type {
+    return new PointerType(this.type.substitute(typeTable));
   }
 }
 
@@ -462,10 +666,6 @@ class ArrayType extends Type {
     return this.type;
   }
 
-  public toString(){
-    return this.withTags(`${this.type}[${this.length === undefined ? '' : Immediate.toString(this.length, 1)}]`);
-  }
-
   public static build(type: Type, lengths: (number|undefined)[]): Type {
     return lengths.reduce((type, length) => {
       return new ArrayType(type, length);
@@ -478,6 +678,18 @@ class ArrayType extends Type {
       return this.length + 2;
     }
     return 1;
+  }
+
+  public substitute(typeTable: TypeTable): Type {
+    return new ArrayType(this.type.substitute(typeTable), this.length);
+  }
+
+  public toString(){
+    return this.withTags(`${this.type}[${this.length === undefined ? '' : Immediate.toString(this.length, 1)}]`);
+  }
+
+  public toIdentity(){
+    return `${this.type.toIdentity()}[${this.length === undefined ? '' : Immediate.toString(this.length, 1)}]}`;
   }
 }
 
@@ -564,6 +776,23 @@ class StructType extends Type {
     }).join('\n');
 
     return this.withTags('struct {' + indent('\n' + members) + '\n}');
+  }
+
+  public toIdentity(){
+    const members = this.members.map((member) => {
+      return `${member.identifier}: ${member.type.toIdentity()};`;
+    }).join('\n');
+
+    return this.withTags('struct {' + indent('\n' + members) + '\n}');
+  }
+
+  public substitute(typeTable: TypeTable): Type {
+    return new StructType(this.members.map((member) => {
+      return {
+        identifier: member.identifier,
+        type: member.type.substitute(typeTable),
+      };
+    }));
   }
 }
 

@@ -256,7 +256,7 @@ class Compiler {
   }
 
   /**
-   * Compile the emitted block.
+   * Compile the emitted block under the given reference.
    */
   public compile(): Directive[] {
     return [
@@ -1019,9 +1019,9 @@ class FunctionCompiler extends StorageCompiler {
     return directives;
   }
 
-  public compile(): Directive[] {
+  public compile(reference?: Reference): Directive[] {
     return [
-      new LabelDirective(new Reference(this.prefix)),
+      new LabelDirective(reference || new Reference(this.prefix)),
       ...this.prologue(),
       ...super.compile(),
       ...this.epilogue(),

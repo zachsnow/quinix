@@ -131,13 +131,11 @@ interface Expression extends HasTags, HasLocation {}
 
 @expression
 class IdentifierExpression extends Expression {
-  private identifier: string;
   private qualifiedIdentifier?: string;
   private storage?: Storage;
 
-  public constructor(identifier: string){
+  public constructor(private identifier: string, private typeArgs: Type[]){
     super();
-    this.identifier = identifier;
   }
 
   public typecheck(context: TypeChecker): Type {
@@ -150,7 +148,30 @@ class IdentifierExpression extends Expression {
     this.storage = lookup.value.storage;
     this.qualifiedIdentifier = lookup.qualifiedIdentifier;
 
-    return lookup.value.type;
+    const type = lookup.value.type;
+
+    // For now we eagerly instantiate templates so that we don't
+    // have template types floating around.
+    if(this.typeArgs.length){
+      // All types must be kindchecked.
+      this.typeArgs.forEach((typeArg) => {
+        typeArg.kindcheck(context, new KindChecker());
+      });
+
+      // Only functions can be templated.
+      if(!(type instanceof FunctionType)){
+        this.error(context, `unexpected type arguments ${this.typeArgs.join(', ')}`);
+        return Type.Error;
+      }
+
+      // We mangle the identifier in the same way as when we compile
+      // each template instantiation so that when we compile the reference
+      // to this function we will find it.
+      const instantiatedType = type.instantiate(context, this.typeArgs);
+      this.qualifiedIdentifier = `${this.qualifiedIdentifier}<${instantiatedType.toIdentity()}>`;
+      return instantiatedType;
+    }
+    return type;
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
@@ -1350,39 +1371,63 @@ class CallExpression extends Expression {
     super();
   }
 
-  public typecheck(context: TypeChecker): Type {
-    const type = this.expression.typecheck(context)
-    const cType = type.resolve(context);
+  public typecheck(context: TypeChecker, contextual?: Type): Type {
+    const type = this.expression.typecheck(context);
 
-    if(cType instanceof FunctionType){
-      if(!type.tagged('.notnull')){
-        this.warning(context, `possibly null function type ${type}`);
-      }
+    const ccType = type.resolve(context);
+    if(!(ccType instanceof FunctionType)){
+      this.error(context, `expected function type, actual ${type}`);
+      return Type.Error;
+    }
+    let cType: FunctionType = ccType;
 
-      // Check the correct number of arguments.
-      if(this.args.length !== cType.arity){
-        this.error(context, `expected ${cType.arity} arguments, actual ${this.args.length}`);
-      }
-
-      // Check each argument's type; we check (at most) the expected
-      // number of arguments as we've already raised an error above.
-      this.args.slice(0, cType.arity).forEach((arg, i) => {
-        const argType = arg.typecheck(context);
-        const expectedType = cType.argument(i);
-
-        if(!expectedType.isEqualTo(argType)){
-          this.error(context, `expected ${expectedType}, actual ${argType}`);
-        }
-
-        this.argTypes.push(expectedType);
+    // We can only call functions, not templated functions. If we find
+    // an uninstantiated template, we try to infer an instantation.
+    if(cType.typeVariables.length){
+      // When attempting to infer an instantiation we don't have a
+      // contextual type, which is annoying when we want to pass `null`.
+      //
+      // TODO: push argument typechecking into `infer` and we might be
+      // able to use a different argument's type to completely infer
+      // the instantiation and thereby identify a contextual type.
+      const argTypes = this.args.map((arg) => {
+        return arg.typecheck(context);
       });
+      const inferredType = cType.infer(context, argTypes, contextual);
 
-      // The resulting type is the function's return type.
-      return cType.apply();
+      // If we can't infer a proper function that's an error.
+      if(inferredType.typeVariables.length){
+        this.error(context, `expected function type, actual ${type}, inferred ${inferredType}`);
+        return Type.Error;
+      }
+      cType = inferredType;
     }
 
-    this.error(context, `expected function type, actual ${type}`);
-    return Type.Error;
+    if(!type.tagged('.notnull')){
+      this.warning(context, `possibly null function type ${type}`);
+    }
+
+    // Check the correct number of arguments.
+    if(this.args.length !== cType.arity){
+      this.error(context, `expected ${cType.arity} arguments, actual ${this.args.length}`);
+    }
+
+    // Check each argument's type; we check (at most) the expected
+    // number of arguments as we've already raised an error above.
+    const argumentTypes = cType.argumentTypes;
+    this.args.slice(0, cType.arity).forEach((arg, i) => {
+      const expectedType = argumentTypes[i];
+      const argType = arg.typecheck(context, expectedType);
+
+      if(!expectedType.isEqualTo(argType)){
+        this.error(context, `expected ${expectedType}, actual ${argType}`);
+      }
+
+      this.argTypes.push(expectedType);
+    });
+
+    // The resulting type is the function's return type.
+    return cType.apply();
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
