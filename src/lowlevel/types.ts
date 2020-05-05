@@ -93,6 +93,10 @@ abstract class Type extends mixin(HasTags, HasLocation) {
     return this._concreteType;
   }
 
+  public get kindchecked(): boolean {
+    return !!this._concreteType;
+  }
+
   /**
    * Resolves the type to its concrete type.
    *
@@ -330,6 +334,9 @@ class FunctionType extends Type {
     this.returnType.kindcheck(context, nestedKindchecker);
     this.argumentTypes.forEach((type) => {
       type.kindcheck(context, nestedKindchecker);
+      if(type.isConvertibleTo(Type.Void, context)){
+        this.error(context, `invalid void argument`);
+      }
     });
   }
 
@@ -369,6 +376,11 @@ class FunctionType extends Type {
    * @param typeArgs the type arguments with which to instantiate this template.
    */
   public instantiate(context: TypeChecker, typeArgs: Type[], source?: Location): FunctionType {
+    // Can't instantiate a function that hasn't been kindchecked.
+    if(!this.kindchecked){
+      throw new InternalError(`${this} has not been kindchecked`);
+    }
+
     // Check that we passed the right number of arguments.
     if(this.typeVariables.length !== typeArgs.length){
       this.error(context, `expected ${this.typeVariables.length} type arguments, actual ${typeArgs.length}`);
@@ -721,6 +733,9 @@ class StructType extends Type {
     // A struct type is valid if its members are valid.
     this.members.forEach((member) => {
       member.type.kindcheck(context, nestedKindchecker);
+      if(member.type.isConvertibleTo(Type.Void, context)){
+        this.error(context, `invalid void struct member`);
+      }
     });
   }
 
@@ -758,7 +773,7 @@ class StructType extends Type {
     });
 
     if(member === undefined){
-      throw new InternalError(this.withLocation(`invalid member ${identifier} (${this.members})`));
+      throw new InternalError(this.withLocation(`invalid struct member ${identifier} (${this.members})`));
     }
     return offset;
   }
@@ -784,7 +799,7 @@ class StructType extends Type {
       return `${member.identifier}: ${member.type.toIdentity()};`;
     }).join('\n');
 
-    return this.withTags('struct {' + indent('\n' + members) + '\n}');
+    return 'struct {' + indent('\n' + members) + '\n}';
   }
 
   public substitute(typeTable: TypeTable): Type {
