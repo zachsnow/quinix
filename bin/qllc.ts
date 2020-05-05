@@ -167,7 +167,7 @@ main().then((r) => {
 }).catch((e) => {
   if(e instanceof InternalError){
     // Compiler error.
-    console.error(`error: ${e.message}`);
+    console.error(`error: ${e.message}\n${e.stack}`);
   }
   else if(e.location){
     // Syntax error.
@@ -175,7 +175,7 @@ main().then((r) => {
   }
   else {
     // Uknown error.
-    console.error(`error: unknown: ${e}`);
+    console.error(`error: unknown: ${e}\n${e.stack}`);
   }
   process.exit(-1);
 });
