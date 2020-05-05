@@ -83,7 +83,7 @@ DestinationRegister
 
 Reference
   = "@" id:QualifiedIdentifier { return new Reference(id); }
-  / "@" id:QuotedIdentifier { return new Reference(id, true); }
+  / "@" id:QuotedIdentifier { return new Reference(id); }
 
 QualifiedIdentifier
   = i:Identifier tail:("::" Identifier)* { return [i, ...tail.map((t: any) => t[1])].join('::'); }

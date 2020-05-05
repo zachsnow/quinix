@@ -17,17 +17,13 @@ class Assembler extends Messages {
  * quoted (@`some label that can contain anything!`).
  */
 class Reference {
+  private static QUALIFIED_IDENTIFIER_REGEX = /^[a-zA-Z_][a-zA-Z_0-9\$]+(::[a-zA-Z_][a-zA-Z_0-9\$]+)*$/;
+
   public constructor(
     /**
      * The name of the reference.
      */
     private readonly name: string,
-
-    /**
-     * Whether this is a quoted reference; a quoted reference
-     * is one whose name can contain any character at all.
-     */
-    private readonly quoted: boolean = false,
   ){}
 
   public preassemble(assembler: Assembler, ip: Address): void {
@@ -45,11 +41,11 @@ class Reference {
   }
 
   public toString(){
-    const name = this.quoted ?
-      "`" + this.name + "`" :
-      this.name;
-
-    return `@${name}`;
+    // Try to output "nice", unquoted references.
+    if(!Reference.QUALIFIED_IDENTIFIER_REGEX.exec(this.name)){
+      return "@`" + this.name + "`";
+    }
+    return `@${this.name}`;
   }
 }
 
