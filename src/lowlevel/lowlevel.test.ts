@@ -71,6 +71,12 @@ describe('QLLC parsing', () => {
         };
       `).declarations.length).toBe(5);
     });
+
+    test('template function', () => {
+      expect(parse(`
+        function foo<T>(t: T): void {}
+      `).declarations.length).toBe(1);
+    });
   });
 });
 

@@ -5,7 +5,7 @@ import {
 import { Expression, BinaryExpression,
   IntLiteralExpression, BoolLiteralExpression, StringLiteralExpression,
   SuffixExpression, DotExpression, ArrowExpression, IndexExpression,
-  NewExpression, NewArrayExpression,
+  NewExpression, NewArrayExpression, IdentifierExpression,
 } from './expressions';
 
 const parse: (text: string) => Expression = _parse;
@@ -179,5 +179,14 @@ describe('Expressions', () => {
     expect((n as any).size.toString()).toBe('3');
     expect((n as any).ellipsis).toBeFalsy();
     expect((n as any).expression.toString()).toBe(`[ 1, 2, 3 ]`);
+  });
+
+  test('template instantiation', () => {
+    const id = parse('foo<byte, * byte>');
+    expect(id).toBeInstanceOf(IdentifierExpression);
+    expect((id as any).identifier).toBe('foo');
+    expect((id as any).typeArgs.length).toBe(2);
+    expect((id as any).typeArgs[0].toString()).toBe('byte');
+    expect((id as any).typeArgs[1].toString()).toBe('* byte');
   });
 });
