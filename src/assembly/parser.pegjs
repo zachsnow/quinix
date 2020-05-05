@@ -83,12 +83,16 @@ DestinationRegister
 
 Reference
   = "@" id:QualifiedIdentifier { return new Reference(id); }
+  / "@" id:QuotedIdentifier { return new Reference(id, true); }
 
 QualifiedIdentifier
   = i:Identifier tail:("::" Identifier)* { return [i, ...tail.map((t: any) => t[1])].join('::'); }
 
 Identifier
   = character:[a-zA-Z_] characters:[a-zA-Z_0-9\$]* { return character + characters.join(''); }
+
+QuotedIdentifier
+  = "`" characters:[^`\n]* "`" { return characters.join(''); }
 
 Number
   = "0x" number:[0-9a-fA-F]+ { return parseInt(number.join(''), 16); }

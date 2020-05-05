@@ -10,15 +10,25 @@ class Assembler extends Messages {
 }
 
 /**
- * A label introduced by label or data directive, and used by a constant
- * directives. Labels must be unique across a program.
+ * A reference introduced by label or data directive, and used by a constant
+ * directives. References must be unique across a program.
+ *
+ * References take 2 forms, unquoted (@some_qualified::label) and
+ * quoted (@`some label that can contain anything!`).
  */
 class Reference {
-  private readonly name: string;
+  public constructor(
+    /**
+     * The name of the reference.
+     */
+    private readonly name: string,
 
-  public constructor(name: string){
-    this.name = name;
-  }
+    /**
+     * Whether this is a quoted reference; a quoted reference
+     * is one whose name can contain any character at all.
+     */
+    private readonly quoted: boolean = false,
+  ){}
 
   public preassemble(assembler: Assembler, ip: Address): void {
     assembler.addressTable.set(this.name, ip);
@@ -35,7 +45,11 @@ class Reference {
   }
 
   public toString(){
-    return `@${this.name}`;
+    const name = this.quoted ?
+      "`" + this.name + "`" :
+      this.name;
+
+    return `@${name}`;
   }
 }
 
