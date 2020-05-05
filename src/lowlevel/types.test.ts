@@ -1,6 +1,7 @@
 import { parse as _parse } from './types-parser';
 import { Type, ArrayType, PointerType, StructType, IdentifierType, BuiltinType, FunctionType } from './types';
 import { TypeChecker, KindChecker } from './typechecker';
+import { IdentifierExpression } from './expressions';
 
 const parse: (text: string) => Type = _parse;
 
@@ -117,5 +118,53 @@ describe('Types', () => {
     const nested = t.index() as ArrayType;
     expect(nested.index()).toBe(t1);
     expect(nested.length === 7);
+  });
+
+  fdescribe('templates', () => {
+    test('simple instantiation', () => {
+      const instantiations: FunctionType[] = [];
+      var f = new FunctionType(
+        ['A', 'B'],
+        [new IdentifierType('A'), new PointerType(new IdentifierType('B'))],
+        new IdentifierType('B'),
+        (context, type) => { instantiations.push(type); },
+      );
+      expect(f.toString()).toBe('<A, B>(A, * B) => B');
+
+
+      const context = new TypeChecker();
+      f.kindcheck(context, new KindChecker());
+      expect(f.instantiate(context, [ Type.Byte, t1 ]).toString()).toBe('(byte, * t1) => t1');
+
+      expect(instantiations.length).toBe(1);
+    });
+
+    test('invalid definition: duplicate type variables', () => {
+      const instantiations: FunctionType[] = [];
+      var f = new FunctionType(
+        ['A', 'A'],
+        [new IdentifierType('A')],
+        new IdentifierType('A'),
+        (context, type) => { instantiations.push(type); },
+      );
+      const context = new TypeChecker();
+      f.kindcheck(context, new KindChecker());
+      expect(context.errors.map((e) => e.text)).toContain('duplicate type variables A');
+    });
+
+    test('invalid instantiation: void', () => {
+      const instantiations: FunctionType[] = [];
+      var f = new FunctionType(
+        ['A'],
+        [new IdentifierType('A')],
+        Type.Byte,
+        (context, type) => { instantiations.push(type); },
+      );
+      const context = new TypeChecker();
+      f.kindcheck(context, new KindChecker());
+      const type = f.instantiate(context, [Type.Void]);
+      expect(context.errors.map((e) => e.text)).toContain('invalid void argument');
+      expect(instantiations.length).toBe(1);
+    });
   });
 });
