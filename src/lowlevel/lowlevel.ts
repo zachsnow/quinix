@@ -239,7 +239,7 @@ class FunctionDeclaration extends Declaration {
       parameterTypes,
       this.returnType,
       this.instantiator.bind(this),
-    );
+    ).at(this.location);
     return functionType.tag(this.tags).tag(['.notnull']);
   }
 

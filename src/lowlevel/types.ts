@@ -1,5 +1,5 @@
 import { Immediate } from '../lib/base-types';
-import { indent, HasTags, HasLocation, InternalError, mixin, SymbolTable, unique, duplicates } from '../lib/util';
+import { indent, HasTags, Location, HasLocation, InternalError, mixin, SymbolTable, unique, duplicates } from '../lib/util';
 import { TypeChecker, KindChecker } from './typechecker';
 import { TypeTable } from './tables';
 
@@ -237,7 +237,7 @@ class BuiltinType extends Type {
   }
 
   public substitute(typeTable: TypeTable) {
-    return this;
+    return new BuiltinType(this.builtin).at(this.location);
   }
 }
 
@@ -368,7 +368,7 @@ class FunctionType extends Type {
    * @param context the context in which this template is being instantiated.
    * @param typeArgs the type arguments with which to instantiate this template.
    */
-  public instantiate(context: TypeChecker, typeArgs: Type[]): FunctionType {
+  public instantiate(context: TypeChecker, typeArgs: Type[], source?: Location): FunctionType {
     // Check that we passed the right number of arguments.
     if(this.typeVariables.length !== typeArgs.length){
       this.error(context, `expected ${this.typeVariables.length} type arguments, actual ${typeArgs.length}`);
@@ -382,7 +382,7 @@ class FunctionType extends Type {
 
     // Substitute the type with the mapping, removing type variables.
     // Now it will be unifiable etc.
-    const type = new FunctionType([], this.argumentTypes, this.returnType);
+    const type = new FunctionType([], this.argumentTypes, this.returnType).at(this.location);
     const iType = type.substitute(typeTable).tag(this.tags);
 
     // Kindcheck.
@@ -390,18 +390,19 @@ class FunctionType extends Type {
 
     // Call the instantiator so we can typecheck.
     if(this.instantiator){
-      this.instantiator(context, iType);
+      const instantiationContext = context.fromSource(source || this.location);
+      this.instantiator(instantiationContext, iType);
     }
 
     return iType;
   }
 
-  public infer(context: TypeChecker, argTypes: Type[], contextual?: Type): FunctionType {
+  public infer(context: TypeChecker, argTypes: Type[], contextual?: Type, source?: Location): FunctionType {
     // Construct the expected type of the function after instantiation;
     // the return type is the contextual type if it is given. We don't always
     // have one, in which case we infer one via unification.
     const returnType = contextual || new VariableType();
-    const expected = new FunctionType([], argTypes, returnType);
+    const expected = new FunctionType([], argTypes, returnType).at(this.location);
 
     // Build a substitution mapping type variables to new variables
     // that can bind during unification.
@@ -419,7 +420,7 @@ class FunctionType extends Type {
       [],
       this.argumentTypes.map((argumentType) => argumentType.substitute(typeTable)),
       this.returnType.substitute(typeTable),
-    );
+    ).at(this.location);
 
     // If the types can't unify, there's no inferred instantation.
     if(!expected.isUnifiableWith(actual, context)){
@@ -435,7 +436,7 @@ class FunctionType extends Type {
 
     // Otherwise, we inferred an instantiation. Extract it and instantiate
     // this template function.
-    return this.instantiate(context, typeArgs.map((arg) => arg.binding!));
+    return this.instantiate(context, typeArgs.map((arg) => arg.binding!), source);
   }
 
   public substitute(typeTable: TypeTable): FunctionType {
@@ -444,7 +445,7 @@ class FunctionType extends Type {
       this.argumentTypes.map((argumentType) => argumentType.substitute(typeTable)),
       this.returnType.substitute(typeTable),
       this.instantiator,
-    )
+    ).at(this.location);
   }
 
   /**
@@ -634,7 +635,7 @@ class PointerType extends Type {
   }
 
   public substitute(typeTable: TypeTable): Type {
-    return new PointerType(this.type.substitute(typeTable));
+    return new PointerType(this.type.substitute(typeTable)).at(this.location);
   }
 }
 
@@ -681,7 +682,7 @@ class ArrayType extends Type {
   }
 
   public substitute(typeTable: TypeTable): Type {
-    return new ArrayType(this.type.substitute(typeTable), this.length);
+    return new ArrayType(this.type.substitute(typeTable), this.length).at(this.location);
   }
 
   public toString(){
@@ -792,7 +793,7 @@ class StructType extends Type {
         identifier: member.identifier,
         type: member.type.substitute(typeTable),
       };
-    }));
+    })).at(this.location);
   }
 }
 

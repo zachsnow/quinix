@@ -12,6 +12,8 @@ class TypeChecker extends Messages {
 
   private loopCount: number = 0;
 
+  private sources: Location[] = [];
+
   public constructor(typeTable?: TypeTable, symbolTable?: StorageTable, namespace: string = ''){
     super();
 
@@ -27,11 +29,16 @@ class TypeChecker extends Messages {
       namespace ?? this.namespace,
     );
 
-    // Always copy the messages.
+    // Always use the same messages.
     context.messages = this.messages;
 
     // We only enter / exit loops via `loop()`.
     context.loopCount = this.loopCount;
+
+    // We only enter new source contexts via `fromSource`.
+    // This is for making it easier to understand instantiations.
+    context.sources = [...this.sources];
+
     return context;
   }
 
@@ -43,6 +50,28 @@ class TypeChecker extends Messages {
     const context = this.extend(undefined, undefined, undefined);
     context.loopCount++;
     return context;
+  }
+
+  public fromSource(location?: Location){
+    const context = this.extend(undefined, undefined, undefined);
+    if(location){
+      context.sources.push(location);
+    }
+    return context;
+  }
+
+  public error(message: string, location?: Location){
+    this.sources.forEach((source) => {
+      super.error('instantiation;', source);
+    });
+    super.error(message, location);
+  }
+
+  public warning(message: string, location?: Location){
+    this.sources.forEach((source) => {
+      super.warning('instantiation;', source);
+    });
+    super.warning(message, location);
   }
 
   public get inLoop(): boolean {

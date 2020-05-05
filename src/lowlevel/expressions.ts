@@ -167,7 +167,7 @@ class IdentifierExpression extends Expression {
       // We mangle the identifier in the same way as when we compile
       // each template instantiation so that when we compile the reference
       // to this function we will find it.
-      const instantiatedType = type.instantiate(context, this.typeArgs);
+      const instantiatedType = type.instantiate(context, this.typeArgs, this.location);
       this.qualifiedIdentifier = `${this.qualifiedIdentifier}<${instantiatedType.toIdentity()}>`;
       return instantiatedType;
     }
@@ -1516,7 +1516,8 @@ class DotExpression extends SuffixExpression {
         this.offset = cType.offset(this.identifier, context)
         return member.type;
       }
-      this.error(context, `invalid identifier ${this.identifier}`);
+      this.error(context, `struct type ${type} has no member ${this.identifier}`);
+      return Type.Error;
     }
 
     this.error(context, `expected struct type, actual ${type}`);

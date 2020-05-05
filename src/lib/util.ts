@@ -221,12 +221,15 @@ interface IFileRange {
 
 
 class HasLocation {
-  private location?: Location;
+  protected location?: Location;
 
-  public at(location: Location): this;
+  public at(location?: Location): this;
   public at(range: IFileRange, text: string, options?: IParseOptions): this;
-  public at(locationOrRange: Location | IFileRange, text?: string, options?: IParseOptions): this {
-    if(locationOrRange instanceof Location){
+  public at(locationOrRange?: Location | IFileRange, text?: string, options?: IParseOptions): this {
+    if(locationOrRange === undefined){
+      this.location = undefined;
+    }
+    else if(locationOrRange instanceof Location){
       this.location = this.location;
     }
     else {
