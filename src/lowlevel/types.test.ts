@@ -120,14 +120,14 @@ describe('Types', () => {
     expect(nested.length === 7);
   });
 
-  fdescribe('templates', () => {
+  describe('templates', () => {
     test('simple instantiation', () => {
       const instantiations: FunctionType[] = [];
       var f = new FunctionType(
         ['A', 'B'],
         [new IdentifierType('A'), new PointerType(new IdentifierType('B'))],
         new IdentifierType('B'),
-        (context, type) => { instantiations.push(type); },
+        [(context, type) => { instantiations.push(type); }],
       );
       expect(f.toString()).toBe('<A, B>(A, * B) => B');
 
@@ -145,7 +145,7 @@ describe('Types', () => {
         ['A', 'A'],
         [new IdentifierType('A')],
         new IdentifierType('A'),
-        (context, type) => { instantiations.push(type); },
+        [(context, type) => { instantiations.push(type); }],
       );
       const context = new TypeChecker();
       f.kindcheck(context, new KindChecker());
@@ -158,7 +158,7 @@ describe('Types', () => {
         ['A'],
         [new IdentifierType('A')],
         Type.Byte,
-        (context, type) => { instantiations.push(type); },
+        [(context, type) => { instantiations.push(type); }],
       );
       const context = new TypeChecker();
       f.kindcheck(context, new KindChecker());

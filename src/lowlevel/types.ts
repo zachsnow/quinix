@@ -88,7 +88,7 @@ abstract class Type extends mixin(HasTags, HasLocation) {
    */
   public get concreteType(): Type {
     if(!this._concreteType){
-      throw new InternalError(this.withLocation(`${this} has not been kindchecked`));
+      throw new InternalError(this.withLocation(`${this} has not been kindchecked, concrete type unavailable`));
     }
     return this._concreteType;
   }
@@ -195,6 +195,10 @@ class BuiltinType extends Type {
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    if(type instanceof VariableType){
+      return type.isUnifiableWith(this, context);
+    }
+
     // Error is unifiable with any time; we will have already reported
     // the error to the user, so try not to multiply the errors unnecessarily.
     // This could hide some subsequent errors, but once the user fixes the
@@ -244,6 +248,8 @@ class BuiltinType extends Type {
     return new BuiltinType(this.builtin).at(this.location);
   }
 }
+
+type Instantiator = (context: TypeChecker, type: FunctionType) => void;
 
 @type
 class VariableType extends Type {
@@ -302,18 +308,23 @@ class FunctionType extends Type {
     /**
      * Function return type.
      */
-    private returnType: Type,
+    public readonly returnType: Type,
 
     /**
      * If this is a template function, the `instantiator` is called
      * whenever the template is instantiated.
      */
-    private instantiator?: (context: TypeChecker, type: FunctionType) => void
+    private readonly instantiators: Instantiator[] = [],
   ){
     super();
 
-    if(typeVariables.length && !instantiator){
-      throw new InternalError(`expected instantiator for variables ${typeVariables.join(', ')}`);
+    if(typeVariables.length){
+      if(!instantiators.length){
+        throw new InternalError(`expected instantiators for variables ${typeVariables.join(', ')}`);
+      }
+    }
+    if(instantiators.length && !typeVariables.length){
+      throw new InternalError(`unexpected instantiators`);
     }
   }
 
@@ -341,6 +352,10 @@ class FunctionType extends Type {
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    if(type instanceof VariableType){
+      return type.isUnifiableWith(this, context);
+    }
+
     const concreteType = type.resolve(context);
 
     if(concreteType instanceof FunctionType){
@@ -369,6 +384,18 @@ class FunctionType extends Type {
     return false;
   }
 
+  public extendInstantiators(instantiators: Instantiator[]): FunctionType {
+    if(!this.typeVariables.length){
+      throw new InternalError(`unexpected instantiator`);
+    }
+    return new FunctionType(
+      this.typeVariables,
+      this.argumentTypes,
+      this.returnType,
+      [...this.instantiators, ...instantiators],
+    ).at(this.location).tag(this.tags);
+  }
+
   /**
    * Instantiate this template function type with the given type arguments.
    *
@@ -378,7 +405,7 @@ class FunctionType extends Type {
   public instantiate(context: TypeChecker, typeArgs: Type[], source?: Location): FunctionType {
     // Can't instantiate a function that hasn't been kindchecked.
     if(!this.kindchecked){
-      throw new InternalError(`${this} has not been kindchecked`);
+      throw new InternalError(`${this} has not been kindchecked, unable to instantiate`);
     }
 
     // Check that we passed the right number of arguments.
@@ -400,11 +427,12 @@ class FunctionType extends Type {
     // Kindcheck.
     iType.kindcheck(context, new KindChecker());
 
-    // Call the instantiator so we can typecheck.
-    if(this.instantiator){
-      const instantiationContext = context.fromSource(source || this.location);
-      this.instantiator(instantiationContext, iType);
-    }
+    // Call the instantiators so we can typecheck.
+    const message = `\n\tinstantiated ${this.toIdentity()}: ${iType.toIdentity()}`;
+    const instantiationContext = context.fromSource(message, source || this.location);
+    this.instantiators.forEach((instantiator) => {
+      instantiator(instantiationContext, iType);
+    });
 
     return iType;
   }
@@ -436,14 +464,34 @@ class FunctionType extends Type {
 
     // If the types can't unify, there's no inferred instantation.
     if(!expected.isUnifiableWith(actual, context)){
+      console.error('not unifiable!')
       return this;
     }
 
     // If we can't infer *all* type variables, there's no inferred instantiation.
-    //
-    // TODO: build a smaller substitution so we can see what we inferred.
+    // If we managed to bind any of the type variables, apply the inferred
+    // substitution to help understand what went wrong.
     if(!typeArgs.every((arg) => !!arg.binding)){
-      return this;
+      const minimalTypeTable = new TypeTable();
+      const unboundTypeVariables: string[] = [];
+      typeArgs.forEach((arg, i) => {
+        const tv = this.typeVariables[i];
+        if(arg.binding){
+          minimalTypeTable.set(tv, arg.binding)
+        }
+        else {
+          unboundTypeVariables.push(tv)
+        }
+      });
+
+      return new FunctionType(
+        unboundTypeVariables,
+        this.argumentTypes.map((argumentType) => argumentType.substitute(minimalTypeTable)),
+        this.returnType.substitute(minimalTypeTable),
+        [(context: TypeChecker, type: FunctionType) => {
+          throw new InternalError(`instantiating invalid inferred type`);
+        }],
+      ).at(this.location);
     }
 
     // Otherwise, we inferred an instantiation. Extract it and instantiate
@@ -456,7 +504,7 @@ class FunctionType extends Type {
       this.typeVariables,
       this.argumentTypes.map((argumentType) => argumentType.substitute(typeTable)),
       this.returnType.substitute(typeTable),
-      this.instantiator,
+      this.instantiators,
     ).at(this.location);
   }
 
@@ -536,14 +584,18 @@ class IdentifierType extends Type {
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    if(type instanceof VariableType){
+      return type.isUnifiableWith(this, context);
+    }
+
     if(this.qualifiedIdentifier === undefined){
-      throw new InternalError(this.withLocation(`${this} has not been kindchecked`));
+      throw new InternalError(this.withLocation(`${this} has not been kindchecked, unable to unify`));
     }
 
     // Nominal equality to support recursive types.
     if(type instanceof IdentifierType){
       if(type.qualifiedIdentifier === undefined){
-        throw new InternalError(type.withLocation(`${type} has not been kindchecked`));
+        throw new InternalError(type.withLocation(`${type} has not been kindchecked, unable to unify`));
       }
 
       if(this.qualifiedIdentifier === type.qualifiedIdentifier){
@@ -626,6 +678,10 @@ class PointerType extends Type {
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    if(type instanceof VariableType){
+      return type.isUnifiableWith(this, context);
+    }
+
     // Pointers are unifiable when the types that they point to are unifiable.
     const concreteType = type.resolve(context);
     if(concreteType instanceof PointerType){
@@ -663,6 +719,10 @@ class ArrayType extends Type {
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    if(type instanceof VariableType){
+      return type.isUnifiableWith(this, context);
+    }
+
     // Pointers are unifiable when the types that they point to are unifiable.
     const concreteType = type.resolve(context);
     if(concreteType instanceof ArrayType){
@@ -740,6 +800,10 @@ class StructType extends Type {
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    if(type instanceof VariableType){
+      return type.isUnifiableWith(this, context);
+    }
+
     const concreteType = type.resolve(context);
 
     if(concreteType instanceof StructType){

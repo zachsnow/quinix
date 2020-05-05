@@ -17,7 +17,7 @@ describe('QLLC parsing', () => {
     };
   }
 
-  describe('Parse errors', () => {
+  describe('Syntax errors', () => {
     test('no return type', () => {
       expect(parseError(`
         function main(){
@@ -92,7 +92,15 @@ describe('QLLC typechecking', () => {
 
   function errors(programText: string): string[] {
     const program: LowLevelProgram = parse(programText);
-    return program.typecheck().errors.map((error) => error.text);
+    try {
+      return program.typecheck().errors.map((error) => error.text);
+    }
+    catch(e){
+      if(e.name === 'SyntaxError'){
+        return [e.message];
+      }
+      throw e;
+    }
   }
 
   test('void does not need return', () => {
@@ -194,6 +202,18 @@ describe('QLLC typechecking', () => {
           return ps[0];
         }
       `)).toContain(`new array initializer expected byte[0x02], actual byte[0x03]`);
+    });
+
+    test('uninstantiated template type', () => {
+      return expect(errors(`
+        function t<T>(): void {
+          return;
+        }
+        function main(): byte {
+          var foo = t;
+          return 0;
+        }
+      `)).toContain(`t not instantiated`);
     });
   });
 

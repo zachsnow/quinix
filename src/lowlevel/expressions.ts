@@ -146,7 +146,6 @@ class IdentifierExpression extends Expression {
     }
 
     this.storage = lookup.value.storage;
-    this.qualifiedIdentifier = lookup.qualifiedIdentifier;
 
     const type = lookup.value.type;
 
@@ -168,9 +167,35 @@ class IdentifierExpression extends Expression {
       // each template instantiation so that when we compile the reference
       // to this function we will find it.
       const instantiatedType = type.instantiate(context, this.typeArgs, this.location);
-      this.qualifiedIdentifier = `${this.qualifiedIdentifier}<${instantiatedType.toIdentity()}>`;
+      this.qualifiedIdentifier = `${lookup.qualifiedIdentifier}<${instantiatedType.toIdentity()}>`;
       return instantiatedType;
     }
+
+    // Uninstantiated template type.
+    if(type instanceof FunctionType && type.typeVariables.length > 0){
+      // If we have an uninstantiated template, we must eventually instantiate
+      // it or we won't be able to compile it.
+      context.addCheck((context: TypeChecker) => {
+        if(this.qualifiedIdentifier === undefined){
+          this.error(context, `${this} not instantiated`);
+        }
+      });
+
+      // Once we instantiate this type, we need to record the mangled name
+      // so we can emit it during compilation.
+      const templateType = type.extendInstantiators([(context: TypeChecker, instantiatedType: FunctionType) => {
+        if(this.qualifiedIdentifier !== undefined){
+          throw new InternalError(this.withLocation(`${this} has already been instantiated`));
+        }
+        this.qualifiedIdentifier = `${lookup.qualifiedIdentifier}<${instantiatedType.toIdentity()}>`;
+      }]);
+      templateType.kindcheck(context, new KindChecker());
+
+      return templateType;
+    }
+
+    // Non-templated case.
+    this.qualifiedIdentifier = lookup.qualifiedIdentifier;
     return type;
   }
 
@@ -1393,11 +1418,16 @@ class CallExpression extends Expression {
       const argTypes = this.args.map((arg) => {
         return arg.typecheck(context);
       });
-      const inferredType = cType.infer(context, argTypes, contextual);
+      const inferredType = cType.infer(context, argTypes, contextual, this.location);
 
       // If we can't infer a proper function that's an error.
       if(inferredType.typeVariables.length){
-        this.error(context, `expected function type, actual ${type}, inferred ${inferredType}`);
+        if(inferredType.typeVariables.length !== cType.typeVariables.length){
+          this.error(context, `unable to infer function type, actual ${type}, inferred ${inferredType}`);
+        }
+        else {
+          this.error(context, `unable to infer function type, actual ${type}`);
+        }
         return Type.Error;
       }
       cType = inferredType;

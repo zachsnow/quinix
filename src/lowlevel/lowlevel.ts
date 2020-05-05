@@ -219,6 +219,7 @@ type Instantiation = {
  */
 class FunctionDeclaration extends Declaration {
   private instantiations: Instantiation[] = [];
+  private type: FunctionType;
 
   public constructor(
       identifier: string,
@@ -230,17 +231,22 @@ class FunctionDeclaration extends Declaration {
   ){
     super(identifier);
     this.tag(tags);
-  }
 
-  private get type(): FunctionType {
     const parameterTypes = this.parameters.map((param) => param.type);
     const functionType = new FunctionType(
       this.typeVariables,
       parameterTypes,
       this.returnType,
-      this.instantiator.bind(this),
+      this.typeVariables.length ? [this.instantiator.bind(this)] : undefined,
     ).at(this.location);
-    return functionType.tag(this.tags).tag(['.notnull']);
+
+    this.type = functionType.tag(this.tags).tag(['.notnull']);
+  }
+
+  public at(...args: any[]): this {
+    super.at(...args);
+    this.type.at(...args);
+    return this;
   }
 
   public kindcheck(context: TypeChecker): void {
@@ -362,7 +368,7 @@ class FunctionDeclaration extends Declaration {
 
       // Don't mangle non-template functions.
       const reference = this.typeVariables.length ?
-        new Reference(`${this.qualifiedIdentifier!}<${instantiation.identity}>`, true) :
+        new Reference(`${this.qualifiedIdentifier!}<${instantiation.identity}>`) :
         new Reference(this.qualifiedIdentifier!);
 
       directives.push(...compiler.compile(reference));
@@ -483,10 +489,17 @@ class LowLevelProgram {
    */
   public typecheck(): Messages {
     const context = new TypeChecker();
+
+    // Construct type and symbol tables and typecheck all declarations.
     this.globalNamespace.preKindcheck(context);
     this.globalNamespace.kindcheck(context);
     this.globalNamespace.preTypecheck(context);
     this.globalNamespace.typecheck(context);
+
+    // Some checks we can't perform until we are sure that we've
+    // checked the entire program.
+    context.check();
+
     this.typechecked = true;
     return context;
   }

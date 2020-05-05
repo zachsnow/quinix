@@ -2,6 +2,9 @@ import { Messages, Location, HasLocation } from '../lib/util';
 import { TypeTable, StorageTable } from './tables';
 
 
+type Source = { message: string, location?: Location};
+type Check = (context: TypeChecker) => void;
+
 /**
  * Has environment information for typechecking; also tracks errors.
  */
@@ -12,7 +15,8 @@ class TypeChecker extends Messages {
 
   private loopCount: number = 0;
 
-  private sources: Location[] = [];
+  private sources: Source[] = [];
+  private checks: Check[] = [];
 
   public constructor(typeTable?: TypeTable, symbolTable?: StorageTable, namespace: string = ''){
     super();
@@ -39,6 +43,10 @@ class TypeChecker extends Messages {
     // This is for making it easier to understand instantiations.
     context.sources = [...this.sources];
 
+    // Always use the same checks, because we never want to discard one.
+    // We only add checks via `addCheck`.
+    context.checks = this.checks;
+
     return context;
   }
 
@@ -52,30 +60,41 @@ class TypeChecker extends Messages {
     return context;
   }
 
-  public fromSource(location?: Location){
+  public fromSource(message: string, location?: Location){
     const context = this.extend(undefined, undefined, undefined);
-    if(location){
-      context.sources.push(location);
-    }
+    context.sources.push({
+      message,
+      location,
+    });
     return context;
   }
 
   public error(message: string, location?: Location){
     this.sources.forEach((source) => {
-      super.error('instantiation;', source);
+      super.error(source.message, source.location);
     });
     super.error(message, location);
   }
 
   public warning(message: string, location?: Location){
     this.sources.forEach((source) => {
-      super.warning('instantiation;', source);
+      super.warning(source.message, source.location);
     });
     super.warning(message, location);
   }
 
   public get inLoop(): boolean {
     return this.loopCount > 0;
+  }
+
+  public addCheck(check: Check): void {
+    this.checks.push(check);
+  }
+
+  public check(): void {
+    this.checks.forEach((check) => {
+      check(this);
+    });
   }
 }
 
