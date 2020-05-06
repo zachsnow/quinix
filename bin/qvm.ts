@@ -1,5 +1,6 @@
 #! /usr/bin/env ts-node
 import fs from 'fs';
+import path from 'path';
 
 import { logger } from '../src/lib/util';
 import { parseArguments } from '../src/lib/cli';
@@ -84,6 +85,9 @@ if(!filename){
   programData = new Memory();
 }
 else {
+  if(!filename.endsWith('.qbin')){
+    console.warn(`warning: non-standard extension ${path.extname(filename)}`);
+  }
   const buffer = fs.readFileSync(filename);
   programData = Memory.fromBuffer(buffer);
 }
