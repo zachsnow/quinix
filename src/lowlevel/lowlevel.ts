@@ -17,9 +17,10 @@ import { Type, TypedIdentifier, TypedStorage, FunctionType } from './types';
 import { Expression, StringLiteralExpression } from './expressions';
 import { BlockStatement } from './statements';
 import { TypeChecker, KindChecker } from './typechecker';
-import { mixin, HasTags, HasLocation } from '../lib/util';
+import { mixin, HasTags, HasLocation, Location } from '../lib/util';
 import { Compiler, FunctionCompiler, InterruptCompiler, GlobalCompiler } from './compiler';
 import { parse } from './parser';
+import { TypeTable } from './tables';
 
 const log = logger('lowlevel');
 
@@ -98,7 +99,9 @@ class TypeDeclaration extends Declaration {
     if(!this.qualifiedIdentifier){
       throw new InternalError(`${this} has not been pre-kindchecked`);
     }
-    this.type.kindcheck(context, new KindChecker().visit(this.qualifiedIdentifier));
+
+    // Check this type definition.
+    this.type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
   }
 
   public toString(){
@@ -220,6 +223,7 @@ type Instantiation = {
 class FunctionDeclaration extends Declaration {
   private instantiations: Instantiation[] = [];
   private type: FunctionType;
+  private context?: TypeChecker;
 
   public constructor(
       identifier: string,
@@ -230,17 +234,21 @@ class FunctionDeclaration extends Declaration {
       private block?: BlockStatement
   ){
     super(identifier);
-    this.tag(tags);
-
     const parameterTypes = this.parameters.map((param) => param.type);
-    const functionType = new FunctionType(
+    this.type = new FunctionType(
       this.typeVariables,
       parameterTypes,
       this.returnType,
       this.typeVariables.length ? [this.instantiator.bind(this)] : undefined,
-    ).at(this.location);
+    );
 
-    this.type = functionType.tag(this.tags).tag(['.notnull']);
+    this.tag(tags).tag(['.notnull']);
+  }
+
+  public tag(tags?: string[]){
+    super.tag(tags);
+    this.type.tag(tags);
+    return this;
   }
 
   public at(...args: any[]): this {
@@ -254,6 +262,7 @@ class FunctionDeclaration extends Declaration {
   }
 
   public preTypecheck(context: TypeChecker): void {
+    this.context = context;
     this.qualifiedIdentifier = context.prefix(this.identifier);
     context.symbolTable.set(this.qualifiedIdentifier, new TypedStorage(this.type, 'function'));
   }
@@ -271,11 +280,22 @@ class FunctionDeclaration extends Declaration {
     // Otherwise, we already have a fully instantiated type, and
     // can check it immediately.
     if(this.block){
-      this.instantiator(context, this.type);
+      this.instantiator(this.type, new TypeTable());
     }
   }
 
-  private instantiator(context: TypeChecker, type: FunctionType): void {
+  private instantiator(type: FunctionType, bindings: TypeTable, source?: Location): void {
+    // We check the instantiation in the context in which the function was *defined*,
+    // not the one in which it was instantiated.
+    if(!this.context){
+      throw new InternalError(`no context`);
+    }
+    let context = this.context;
+    if(source){
+      const message = `\n\tinstantiated ${this.type}: ${type}`;
+      context = context.fromSource(message, source);
+    }
+
     // We never instantiate pre-declarations.
     if(!this.block){
       throw new InternalError(`instantiating pre-declaration ${this}`);
@@ -295,40 +315,43 @@ class FunctionDeclaration extends Declaration {
       type,
     });
 
+    // Substituted context.
+    const substitutedContext = context.substitute(bindings);
+
     // Kindcheck.
-    type.kindcheck(context, new KindChecker());
+    type.kindcheck(substitutedContext, new KindChecker());
 
     // Check argument and return types.
     const returnType = type.apply();
-
-    const nestedContext = context.extend(undefined, context.symbolTable.extend());
+    const nestedContext = substitutedContext.extend(undefined, context.symbolTable.extend());
     this.parameters.forEach((parameter, i) => {
       const argumentType = type.argumentTypes[i];
       nestedContext.symbolTable.set(parameter.identifier, new TypedStorage(argumentType, 'parameter'));
     });
     nestedContext.symbolTable.set('return', new TypedStorage(returnType, 'local'));
 
+    // Check function body.
     this.block.typecheck(nestedContext);
 
     // All paths through a function must return.
-    const isVoid = returnType.isConvertibleTo(Type.Void, context);
+    const isVoid = returnType.isConvertibleTo(Type.Void, substitutedContext);
     if(!isVoid && !this.block.returns()){
-      this.error(context, `non-void function missing return`);
+      this.error(substitutedContext, `non-void function missing return`);
     }
 
     // Check for interrupt handler correctness.
     if(this.interrupt){
       if(type.arity > 0){
-        this.error(context, `interrupt expected no arguments, actual ${type}`);
+        this.error(substitutedContext, `interrupt expected no arguments, actual ${type}`);
       }
       if(!isVoid){
-        this.error(context, `interrupt expected void return type, actual ${returnType}`);
+        this.error(substitutedContext, `interrupt expected void return type, actual ${returnType}`);
       }
     }
 
     // For now we can't return non-integral types, like old C.
-    if(!isVoid && !returnType.isIntegral(context)){
-      this.error(context, `expected integral return type, actual ${returnType}`);
+    if(!isVoid && !returnType.isIntegral(substitutedContext)){
+      this.error(substitutedContext, `expected integral return type, actual ${returnType}`);
     }
   }
 

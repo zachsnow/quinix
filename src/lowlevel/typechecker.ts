@@ -1,6 +1,6 @@
 import { Messages, Location, HasLocation } from '../lib/util';
 import { TypeTable, StorageTable } from './tables';
-
+import { Type } from './types';
 
 type Source = { message: string, location?: Location};
 type Check = (context: TypeChecker) => void;
@@ -17,6 +17,8 @@ class TypeChecker extends Messages {
 
   private sources: Source[] = [];
   private checks: Check[] = [];
+
+  private substitutionTypeTable: TypeTable = new TypeTable();
 
   public constructor(typeTable?: TypeTable, symbolTable?: StorageTable, namespace: string = ''){
     super();
@@ -46,6 +48,9 @@ class TypeChecker extends Messages {
     // Always use the same checks, because we never want to discard one.
     // We only add checks via `addCheck`.
     context.checks = this.checks;
+
+    // Copy the current substitution; we only change it via `substitute`.
+    context.substitutionTypeTable = this.substitutionTypeTable;
 
     return context;
   }
@@ -96,6 +101,19 @@ class TypeChecker extends Messages {
       check(this);
     });
   }
+
+  public substitute(substitution: TypeTable){
+    const context = this.extend(undefined, undefined, undefined);
+    context.substitutionTypeTable = substitution;
+    return context;
+  }
+
+  public substitution(identifier: string): Type | undefined {
+    if(!this.substitutionTypeTable || !this.substitutionTypeTable.has(identifier)){
+      return undefined;
+    }
+    return this.substitutionTypeTable.get(identifier);
+  }
 }
 
 class KindChecker {
@@ -126,29 +144,17 @@ class KindChecker {
   private directs: string[] = [];
 
   /**
+   * Instantiate a new kindchecker for checking the validity of
+   * a type definition. If no type is being defined, the kindchecker
+   * doesn't actually do anything.
    *
-   * @param qualifiedIdentifiers the identifiers to assume valid.
+   * @param qualifiedIdentifier the qualified identifier being *defined*;
+   * optional.
    */
-  public assume(qualifiedIdentifiers: string[]): void {
-    this.visiteds.push(...qualifiedIdentifiers);
-  }
-
-  /**
-   * Returns a new kindchecker that has directly visited the given
-   * fully qualified identifier.
-   *
-   * @param qualifiedIdentifier the fully qualified identifier to visit.
-   */
-  public visit(qualifiedIdentifier: string): KindChecker {
-    const kindchecker = new KindChecker();
-    kindchecker.visiteds = [...this.visiteds];
-    kindchecker.structs = [...this.structs];
-    kindchecker.pointers = [...this.pointers];
-    kindchecker.directs = [
-      ...this.directs,
-      qualifiedIdentifier,
-    ];
-    return kindchecker;
+  public constructor(qualifiedIdentifier?: string){
+    if(qualifiedIdentifier){
+      this.directs.push(qualifiedIdentifier);
+    }
   }
 
   /**
@@ -178,6 +184,24 @@ class KindChecker {
   }
 
   /**
+   * Returns a new kindchecker that has directly visited the given
+   * fully qualified identifier.
+   *
+   * @param qualifiedIdentifier the fully qualified identifier to visit.
+   */
+  public visit(qualifiedIdentifier: string): KindChecker {
+    const kindchecker = new KindChecker();
+    kindchecker.visiteds = [...this.visiteds];
+    kindchecker.structs = [...this.structs];
+    kindchecker.pointers = [...this.pointers];
+    kindchecker.directs = [
+      ...this.directs,
+      qualifiedIdentifier,
+    ];
+    return kindchecker;
+  }
+
+  /**
    * Returns `true` if the given fully qualified identifier
    * is recursively invalid in this kindchecker.
    *
@@ -193,8 +217,9 @@ class KindChecker {
   /**
    * Returns `true` if the given fully qualified identifier
    * is *recursively* valid in this kindchecker; note that this
-   * is not just the inverse of `isInvalid` -- it must have
-   * already appeared.
+   * is not just the inverse of `isInvalid` -- it must appear
+   * recursively (that is, it must be the type that this kindchecker
+   * is analyzing).
    *
    * @param qualifiedIdentifier the fully qualified identifier
    * to check for recursive validity.

@@ -1,4 +1,4 @@
-import { InternalError, duplicates, HasLocation, HasTags, mixin, IParseOptions, IFileRange, stringToCodePoints } from '../lib/util';
+import { InternalError, duplicates, HasLocation, Location, HasTags, mixin, IParseOptions, IFileRange, stringToCodePoints } from '../lib/util';
 import {
   ConstantDirective, ImmediateConstant, ReferenceConstant,
   InstructionDirective,
@@ -13,6 +13,7 @@ import { Compiler, StorageCompiler } from './compiler';
 import { Immediate } from '../lib/base-types';
 import { Instruction, Operation, } from '../vm/instructions';
 import { Register } from '../vm/instructions';
+import { TypeTable } from './tables';
 
 ///////////////////////////////////////////////////////////////////////
 // Expressions.
@@ -183,7 +184,7 @@ class IdentifierExpression extends Expression {
 
       // Once we instantiate this type, we need to record the mangled name
       // so we can emit it during compilation.
-      const templateType = type.extendInstantiators([(context: TypeChecker, instantiatedType: FunctionType) => {
+      const templateType = type.extendInstantiators([(instantiatedType: FunctionType) => {
         if(this.qualifiedIdentifier !== undefined){
           throw new InternalError(this.withLocation(`${this} has already been instantiated`));
         }
@@ -1423,10 +1424,10 @@ class CallExpression extends Expression {
       // If we can't infer a proper function that's an error.
       if(inferredType.typeVariables.length){
         if(inferredType.typeVariables.length !== cType.typeVariables.length){
-          this.error(context, `unable to infer function type, actual ${type}, inferred ${inferredType}`);
+          this.error(context, `unable to infer template type ${type}, argument types ${argTypes.join(', ')}; inferred ${inferredType}`);
         }
         else {
-          this.error(context, `unable to infer function type, actual ${type}`);
+          this.error(context, `unable to infer template type ${type}, argument types ${argTypes.join(', ')}`);
         }
         return Type.Error;
       }

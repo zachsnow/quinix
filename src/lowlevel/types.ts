@@ -256,11 +256,11 @@ class BuiltinType extends Type {
   }
 
   public substitute(typeTable: TypeTable) {
-    return this;
+    return new BuiltinType(this.builtin).at(this.location);
   }
 }
 
-type Instantiator = (context: TypeChecker, type: FunctionType) => void;
+type Instantiator = (type: FunctionType, bindings: TypeTable, source?: Location) => void;
 
 @type
 class VariableType extends Type {
@@ -361,17 +361,18 @@ class FunctionType extends Type {
     // Otherwise we can kindcheck immediately.
     const nestedKindchecker = kindchecker.pointer();
     this.returnType.kindcheck(context, nestedKindchecker);
-    this.argumentTypes.forEach((type) => {
-      type.kindcheck(context, nestedKindchecker);
-      if(type.isConvertibleTo(Type.Void, context)){
+    this.argumentTypes.forEach((argumentType) => {
+      argumentType.kindcheck(context, nestedKindchecker);
+      if(argumentType.isConvertibleTo(Type.Void, context)){
         this.error(context, `invalid void argument`);
       }
     });
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    // Bind type variables.
     if(type instanceof VariableType){
-      return type.isUnifiableWith(this, context);
+      type = type.unify(this);
     }
 
     const concreteType = type.resolve(context);
@@ -446,10 +447,8 @@ class FunctionType extends Type {
     iType.kindcheck(context, new KindChecker());
 
     // Call the instantiators so we can typecheck.
-    const message = `\n\tinstantiated ${this.toIdentity()}: ${iType.toIdentity()}`;
-    const instantiationContext = context.fromSource(message, source || this.location);
     this.instantiators.forEach((instantiator) => {
-      instantiator(instantiationContext, iType);
+      instantiator(iType, typeTable, source || this.location);
     });
 
     return iType;
@@ -482,7 +481,6 @@ class FunctionType extends Type {
 
     // If the types can't unify, there's no inferred instantation.
     if(!expected.isUnifiableWith(actual, context)){
-      console.error('not unifiable!')
       return this;
     }
 
@@ -506,7 +504,7 @@ class FunctionType extends Type {
         unboundTypeVariables,
         this.argumentTypes.map((argumentType) => argumentType.substitute(minimalTypeTable)),
         this.returnType.substitute(minimalTypeTable),
-        [(context: TypeChecker, type: FunctionType) => {
+        [(functionType: Type, bindings: TypeTable, source?: Location) => {
           throw new InternalError(`instantiating invalid inferred type`);
         }],
       ).at(this.location);
@@ -523,7 +521,7 @@ class FunctionType extends Type {
       this.argumentTypes.map((argumentType) => argumentType.substitute(typeTable)),
       this.returnType.substitute(typeTable),
       this.instantiators,
-    ).at(this.location);
+    ).at(this.location).tag(this.tags);
   }
 
   /**
@@ -622,7 +620,6 @@ class IdentifierType extends Type {
     }
 
     if(this.qualifiedIdentifier === undefined){
-      console.error(context);
       throw new InternalError(this.withLocation(`${this} has not been kindchecked, unable to unify`));
     }
 
