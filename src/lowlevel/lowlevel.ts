@@ -678,15 +678,6 @@ class LowLevelProgram {
 
     const directives: Directive[] = [];
 
-    // Set up special registers.
-    if(entrypoint){
-      directives.push(...[
-        // TODO: later we should allow the kernel to run a program with any amount of stack.
-        new ConstantDirective(Compiler.SP, new ImmediateConstant(VM.DEFAULT_MEMORY_SIZE - 1)).comment('configure sp'),
-        new ConstantDirective(Compiler.ONE, new ImmediateConstant(0x1)).comment('configure one'),
-      ]);
-    }
-
     const compiler = new Compiler(module);
 
     directives.push(new LabelDirective(compiler.generateReference('data')));
@@ -716,6 +707,8 @@ class LowLevelProgram {
   private entrypoint(compiler: Compiler): Directive[] {
     const r = compiler.allocateRegister();
     compiler.emit([
+      new ConstantDirective(Compiler.SP, new ImmediateConstant(VM.DEFAULT_MEMORY_SIZE - 1)).comment('configure sp'),
+      new ConstantDirective(Compiler.ONE, new ImmediateConstant(0x1)).comment('configure one'),
       new ConstantDirective(r, new ReferenceConstant(new Reference(`${this.globalNamespace.entrypoint}`))),
     ]);
     const ret = compiler.emitCall([], r);
