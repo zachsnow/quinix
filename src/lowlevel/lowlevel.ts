@@ -680,18 +680,16 @@ class LowLevelProgram {
 
     const compiler = new Compiler(module);
 
-    directives.push(new LabelDirective(compiler.generateReference('data')));
-
-    globalDeclarations.forEach((declaration) => {
-      directives.push(...declaration.compile());
-    });
-
     directives.push(new LabelDirective(compiler.generateReference('program')));
     if(entrypoint){
       directives.push(...this.entrypoint(compiler));
     }
-
     functionDeclarations.forEach((declaration) => {
+      directives.push(...declaration.compile());
+    });
+
+    directives.push(new LabelDirective(compiler.generateReference('data')));
+    globalDeclarations.forEach((declaration) => {
       directives.push(...declaration.compile());
     });
 
