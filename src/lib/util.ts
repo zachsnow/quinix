@@ -44,9 +44,9 @@ class SymbolTable<T> {
    * @param qualifiedIdentifier the fully qualified identifier to set.
    * @param value the value to set.
    */
-  public set(qualifiedIdentifier: string, value: T){
+  public set(qualifiedIdentifier: string, value: T): void {
     if(this.symbols[qualifiedIdentifier] !== undefined){
-      throw new Error(`identifier redefinition ${qualifiedIdentifier} ${this.symbols[qualifiedIdentifier]}`);
+      throw new Error(`identifier redefinition ${qualifiedIdentifier}: ${this.symbols[qualifiedIdentifier]}`);
     }
     this.symbols[qualifiedIdentifier] = value;
   }
