@@ -1694,7 +1694,12 @@ class IndexExpression extends SuffixExpression {
       this.error(context, `index expected numeric type, actual ${type}`);
     }
 
-    this.stride = elementType.concreteType.size;
+    // We may have an invalid type for which we cannot compute a size;
+    // in this case we'll have already recorded an error.
+    try {
+      this.stride = elementType.concreteType.size;
+    }
+    catch(e){}
     return elementType;
   }
 
