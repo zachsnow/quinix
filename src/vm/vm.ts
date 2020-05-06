@@ -690,7 +690,7 @@ class VM {
 
       // Invalid instruction.
       if(decoded.immediate !== undefined){
-        this.fault(`invalid instruction: ${decoded}`);
+        this.fault(`${Address.toString(virtualIp)}: invalid instruction: ${decoded}`);
         return 'continue';
       }
 
