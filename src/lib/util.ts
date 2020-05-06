@@ -291,6 +291,10 @@ class Messages {
     return this.messages.filter((message) => message.type === 'error');
   }
 
+  public get warnings(): Message[] {
+    return this.messages.filter((message) => message.type === 'warning');
+  }
+
   public toString(){
     return this.messages.join('\n');
   }
