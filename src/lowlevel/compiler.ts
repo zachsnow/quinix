@@ -102,6 +102,8 @@ class Compiler {
   public static readonly BOUNDS_ERROR = 0xe0000001;
   public static readonly CAPACITY_ERROR = 0xe0000002;
 
+  public instantiationIdentity = '';
+
   /**
    * Holds the stack pointer.
    */
@@ -166,7 +168,6 @@ class Compiler {
   public get breakReference(): Reference | undefined {
     return this.breakReferences[this.breakReferences.length - 1];
   }
-
 
   /**
    * @param prefix the name of the context being compiled -- e.g. a function's name.
@@ -793,6 +794,8 @@ class GlobalCompiler extends StorageCompiler {
   private temporaries: { [identifier: string ]: number } = {};
   private temporaryReference: Reference;
 
+  public readonly instantiationIdentity = '';
+
   public constructor(identifier: string){
     super(identifier);
 
@@ -856,7 +859,9 @@ class FunctionCompiler extends StorageCompiler {
   private readonly parameterStorage: number = 0;
   private parameters: { [ identifier: string]: number } = {};
 
-  public constructor(identifier: string, parameters: Parameter[]){
+  public readonly instantiationIdentity: string;
+
+  public constructor(identifier: string, parameters: Parameter[], instantiationIdentity: string){
     super(identifier);
 
     // Find location of parameters.
@@ -866,6 +871,9 @@ class FunctionCompiler extends StorageCompiler {
       this.parameters[parameter.identifier] = this.parameterStorage - parameterOffset - 1;
       parameterOffset += parameter.size;
     });
+
+    // We compile function references per-instantiation identity.
+    this.instantiationIdentity = instantiationIdentity;
   }
 
   /**

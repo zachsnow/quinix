@@ -384,14 +384,14 @@ class FunctionDeclaration extends Declaration {
         };
       });
       const compilerClass = this.interrupt ? InterruptCompiler : FunctionCompiler;
-      const compiler = new compilerClass(prefix, parameters);
+      const compiler = new compilerClass(prefix, parameters, instantiation.identity);
 
       // Compile the body.
       this.block!.compile(compiler);
 
       // Don't mangle non-template functions.
       const reference = this.typeVariables.length ?
-        new Reference(`${this.qualifiedIdentifier!}<${instantiation.identity}>`) :
+        new Reference(instantiation.qualifiedIdentifier) :
         new Reference(this.qualifiedIdentifier!);
 
       directives.push(...compiler.compile(reference));

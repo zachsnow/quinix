@@ -132,7 +132,7 @@ interface Expression extends HasTags, HasLocation {}
 
 @expression
 class IdentifierExpression extends Expression {
-  private qualifiedIdentifier?: string;
+  private qualifiedIdentifiers: {[instantiationIdentity: string]: string } = {};
   private storage?: Storage;
 
   public constructor(private identifier: string, private typeArgs: Type[]){
@@ -147,7 +147,7 @@ class IdentifierExpression extends Expression {
     }
 
     this.storage = lookup.value.storage;
-
+    const needsReference = this.storage === 'function' || this.storage === 'global';
     const type = lookup.value.type;
 
     // For now we eagerly instantiate templates so that we don't
@@ -168,7 +168,12 @@ class IdentifierExpression extends Expression {
       // each template instantiation so that when we compile the reference
       // to this function we will find it.
       const instantiatedType = type.instantiate(context, this.typeArgs, this.location);
-      this.qualifiedIdentifier = `${lookup.qualifiedIdentifier}<${instantiatedType.toIdentity()}>`;
+      const qualifiedIdentifier = `${lookup.qualifiedIdentifier}<${instantiatedType.toIdentity()}>`;
+      this.qualifiedIdentifiers[context.instantiationIdentity] = qualifiedIdentifier;
+      if(needsReference){
+        context.reference(qualifiedIdentifier);
+      }
+
       return instantiatedType;
     }
 
@@ -176,38 +181,47 @@ class IdentifierExpression extends Expression {
     if(type instanceof FunctionType && type.typeVariables.length > 0){
       // If we have an uninstantiated template, we must eventually instantiate
       // it or we won't be able to compile it.
-      context.addCheck((context: TypeChecker) => {
-        if(this.qualifiedIdentifier === undefined){
+      context.addCheck(() => {
+        if(this.qualifiedIdentifiers[context.instantiationIdentity] === undefined){
           this.error(context, `${this} not instantiated`);
         }
       });
 
       // Once we instantiate this type, we need to record the mangled name
       // so we can emit it during compilation.
-      const templateType = type.extendInstantiators([(instantiatedType: FunctionType) => {
-        if(this.qualifiedIdentifier !== undefined){
-          throw new InternalError(this.withLocation(`${this} has already been instantiated`));
+      const templateType = type.extendInstantiators((instantiatedType: FunctionType) => {
+        const existingQualifiedIdentifier = this.qualifiedIdentifiers[context.instantiationIdentity];
+        if(existingQualifiedIdentifier !== undefined){
+          throw new InternalError(this.withLocation(`${this} has already been instantiated: ${existingQualifiedIdentifier}`));
         }
-        this.qualifiedIdentifier = `${lookup.qualifiedIdentifier}<${instantiatedType.toIdentity()}>`;
-      }]);
+        const qualifiedIdentifier = `${lookup.qualifiedIdentifier}<${instantiatedType.toIdentity()}>`;
+        this.qualifiedIdentifiers[context.instantiationIdentity] = qualifiedIdentifier;
+        if(needsReference){
+          context.reference(qualifiedIdentifier);
+        }
+      });
       templateType.kindcheck(context, new KindChecker());
 
       return templateType;
     }
 
     // Non-templated case.
-    this.qualifiedIdentifier = lookup.qualifiedIdentifier;
+    this.qualifiedIdentifiers[context.instantiationIdentity] = lookup.qualifiedIdentifier;
+    if(needsReference){
+      context.reference(lookup.qualifiedIdentifier);
+    }
     return type;
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
     const r = compiler.allocateRegister();
-    if(this.storage === undefined || this.qualifiedIdentifier === undefined){
+    const qualifiedIdentifier = this.qualifiedIdentifiers[compiler.instantiationIdentity];
+    if(this.storage === undefined || qualifiedIdentifier === undefined){
       throw new InternalError(`${this} has not been typechecked`);
     }
 
     // We only dereference when we are evaluating an integral.
-    compiler.emitIdentifier(this.qualifiedIdentifier, this.storage, r, this.needsDereference(lvalue, this.storage));
+    compiler.emitIdentifier(qualifiedIdentifier, this.storage, r, this.needsDereference(lvalue, this.storage));
     return r;
   }
 
