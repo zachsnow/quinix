@@ -130,8 +130,10 @@ namespace std {
     }
 
     function ntoa(number: byte, buffer: byte[], base: byte, allowNegative: bool): bool {
+      len buffer = capacity buffer;
+
       // We always need at least 1 byte.
-      if(len buffer < 1){
+      if(capacity buffer < 1){
         return false;
       }
 
