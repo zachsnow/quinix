@@ -20,34 +20,12 @@ function type(constructor: Function){
 abstract class Type extends mixin(HasTags, HasLocation) {
   /**
    * Check that the type is valid, recording errors on the given `context`.
-   * `kindchecker` is used to verify recursive types are valid.
+   * `kindchecker` is used to verify that type *definitions*.
    *
    * @param context the context in which to kindcheck.
    * @param kindchecker the kind-checking context in which to kindcheck.
    */
   public abstract kindcheck(context: TypeChecker, kindchecker: KindChecker): void;
-
-  /**
-   * Checks type equality. Type names *are not* resolved. This means that
-   * e.g. `byte` is not equal to `int` when `type int = byte`.
-   *
-   * @param type the type to check for equality with this type.
-   */
-  public isEqualTo(type: Type){
-    const emptyContext = new TypeChecker();
-    return this.isUnifiableWith(type, emptyContext);
-  }
-
-  /**
-   * Checks type convertibility. Type names *are* resolved. This means
-   * that e.g. `byte` is convertible to `int` when `type int = byte`.
-   *
-   * @param type the type to check for convertibility with this type.
-   * @param context the context in which to check convertibility.
-  */
-  public isConvertibleTo(type: Type, context: TypeChecker): boolean {
-    return this.isUnifiableWith(type, context);
-  }
 
   /**
    * Core type equality implementation. Base classes should implement this
@@ -81,7 +59,28 @@ abstract class Type extends mixin(HasTags, HasLocation) {
    */
   public abstract toIdentity(): string;
 
-  private _concreteType?: Type;
+  /**
+   * Checks type equality. Type names *are not* resolved. This means that
+   * e.g. `byte` is not equal to `int` when `type int = byte`.
+   *
+   * @param type the type to check for equality with this type.
+   */
+  public isEqualTo(type: Type, context: TypeChecker){
+    // We keep only the substitution but throw away name bindings.
+    const emptyContext = context.extend(new TypeTable(), undefined);
+    return this.isUnifiableWith(type, emptyContext);
+  }
+
+  /**
+   * Checks type convertibility. Type names *are* resolved. This means
+   * that e.g. `byte` is convertible to `int` when `type int = byte`.
+   *
+   * @param type the type to check for convertibility with this type.
+   * @param context the context in which to check convertibility.
+  */
+  public isConvertibleTo(type: Type, context: TypeChecker): boolean {
+    return this.isUnifiableWith(type, context);
+  }
 
   /**
    * Returns the concrete type of this type.
@@ -93,17 +92,28 @@ abstract class Type extends mixin(HasTags, HasLocation) {
     return this._concreteType;
   }
 
+  private _concreteType?: Type;
+
   public get kindchecked(): boolean {
     return !!this._concreteType;
   }
 
+  public resolveGeneric(context: TypeChecker): Type {
+    return this;
+  }
+
+  public resolveNominal(context: TypeChecker): Type {
+    return this;
+  }
+
   /**
-   * Resolves the type to its concrete type.
+   * Resolves the type to its concrete type, apply both generic
+   * substitutions and name bindings.
    *
    * @param context the context in which to resolve type names.
    */
   public resolve(context: TypeChecker): Type {
-    return this;
+    return this.resolveGeneric(context).resolveNominal(context);
   }
 
   /**
@@ -195,8 +205,9 @@ class BuiltinType extends Type {
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    // Bind type variables.
     if(type instanceof VariableType){
-      return type.isUnifiableWith(this, context);
+      type = type.unify(this);
     }
 
     // Error is unifiable with any time; we will have already reported
@@ -245,7 +256,7 @@ class BuiltinType extends Type {
   }
 
   public substitute(typeTable: TypeTable) {
-    return new BuiltinType(this.builtin).at(this.location);
+    return this;
   }
 }
 
@@ -270,6 +281,13 @@ class VariableType extends Type {
     }
     this.binding = type;
     return true;
+  }
+
+  public unify(type: Type){
+    if(!this.binding){
+      this.binding = type;
+    }
+    return this.binding;
   }
 
   public get size(): number {
@@ -410,7 +428,7 @@ class FunctionType extends Type {
 
     // Check that we passed the right number of arguments.
     if(this.typeVariables.length !== typeArgs.length){
-      this.error(context, `expected ${this.typeVariables.length} type arguments, actual ${typeArgs.length}`);
+      this.error(context, `expected ${this.typeVariables.length} type arguments, actual ${typeArgs.join(', ')}`);
     }
 
     // Build a substitution mapping type variables to type arguments.
@@ -552,6 +570,12 @@ class IdentifierType extends Type {
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker){
+    // Check for a template variable.
+    const substitutedType = context.substitution(this.identifier);
+    if(substitutedType){
+      return;
+    }
+
     // Get the fully qualified identifier.
     const lookup = context.typeTable.lookup(context.namespace, this.identifier);
     if(lookup === undefined){
@@ -568,36 +592,47 @@ class IdentifierType extends Type {
     this.qualifiedIdentifier = lookup.qualifiedIdentifier;
 
     // Invalid recursive reference.
-    if(kindchecker.isInvalid(lookup.qualifiedIdentifier)){
+    if(kindchecker.isInvalid(this.qualifiedIdentifier)){
       this.error(context, `recursive type ${this}`);
       return;
     }
 
-    // Check if we have seen this and it is a valid recursive type;
+    // Check if we have seen this and it is a *valid* recursive type;
     // if so we are done.
-    if(kindchecker.isRecursive(lookup.qualifiedIdentifier)){
+    if(kindchecker.isRecursive(this.qualifiedIdentifier)){
       return;
     }
 
     // Otherwise, kindcheck the body of the type.
-    lookup.value.kindcheck(context, kindchecker.visit(lookup.qualifiedIdentifier));
+    lookup.value.kindcheck(context, kindchecker.visit(this.qualifiedIdentifier));
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    // Always apply template substitutions before checking
+    // nominal equality.
+    type = type.resolveGeneric(context);
+    let thisType = this.resolveGeneric(context);
+    if(thisType !== this){
+      return thisType.isUnifiableWith(type, context);
+    }
+
+    // Bind type variables.
     if(type instanceof VariableType){
-      return type.isUnifiableWith(this, context);
+      type = type.unify(this);
     }
 
     if(this.qualifiedIdentifier === undefined){
+      console.error(context);
       throw new InternalError(this.withLocation(`${this} has not been kindchecked, unable to unify`));
     }
 
-    // Nominal equality to support recursive types.
+    // Nominal equality.
     if(type instanceof IdentifierType){
       if(type.qualifiedIdentifier === undefined){
         throw new InternalError(type.withLocation(`${type} has not been kindchecked, unable to unify`));
       }
 
+      // Exact nominal equality.
       if(this.qualifiedIdentifier === type.qualifiedIdentifier){
         return true;
       }
@@ -609,18 +644,27 @@ class IdentifierType extends Type {
       }
     }
 
-    const thisType = this.resolve(context);
-
-    // This type has no underlying mapped type in the current context.
-    if(thisType === this){
-      return false;
+    // Resolve name bindings like `type x = y;`.
+    thisType = this.resolveNominal(context);
+    if(thisType !== this){
+      return thisType.isUnifiableWith(type, context);
     }
 
-    // Otherwise this type resolved to another type.
-    return thisType.isUnifiableWith(type, context);
+    // This type has no underlying mapped type in the current context;
+    // it's an unknown identifier and we've already raised an error when
+    // we kindchecked it.
+    return false;
   }
 
-  public resolve(context: TypeChecker): Type {
+  public resolveGeneric(context: TypeChecker): Type {
+    const type = context.substitution(this.identifier);
+    if(type !== undefined){
+      return type;
+    }
+    return this;
+  }
+
+  public resolveNominal(context: TypeChecker): Type {
     // Identifiers resolve to their named type, if there is one.
     // Otherwise they resolve to themselves.
     const lookup = context.typeTable.lookup(context.namespace, this.identifier);
@@ -678,8 +722,9 @@ class PointerType extends Type {
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    // Bind type variables.
     if(type instanceof VariableType){
-      return type.isUnifiableWith(this, context);
+      type = type.unify(this);
     }
 
     // Pointers are unifiable when the types that they point to are unifiable.
@@ -719,8 +764,9 @@ class ArrayType extends Type {
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    // Bind type variables.
     if(type instanceof VariableType){
-      return type.isUnifiableWith(this, context);
+      type = type.unify(this);
     }
 
     // Pointers are unifiable when the types that they point to are unifiable.
@@ -800,8 +846,9 @@ class StructType extends Type {
   }
 
   public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+    // Bind type variables.
     if(type instanceof VariableType){
-      return type.isUnifiableWith(this, context);
+      type = type.unify(this);
     }
 
     const concreteType = type.resolve(context);
