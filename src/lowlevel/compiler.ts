@@ -761,14 +761,14 @@ class Compiler {
    * @param lr the register holding the new length, in elements.
    */
   public emitCapacityCheck(ar: Register, lr: Register): void {
-    const endRef = this.generateReference('len_check_end');
+    const endRef = this.generateReference('capacity_check_end');
 
     const cr = this.allocateRegister();
     const er = this.allocateRegister();
 
     this.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.LOAD, cr, ar)),
-      new InstructionDirective(Instruction.createOperation(Operation.GT, cr, lr, cr)),
+      new InstructionDirective(Instruction.createOperation(Operation.LOAD, cr, ar)).comment('load capacity'),
+      new InstructionDirective(Instruction.createOperation(Operation.GT, cr, lr, cr)).comment('compare capacity with new len'),
       new ConstantDirective(er, new ReferenceConstant(endRef)),
       new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, er)),
       new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.CAPACITY_ERROR)).comment('capacity error'),
