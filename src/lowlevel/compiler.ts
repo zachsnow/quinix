@@ -774,6 +774,9 @@ class Compiler {
       new InstructionDirective(Instruction.createOperation(Operation.HALT)),
       new LabelDirective(endRef),
     ]);
+
+    this.deallocateRegister(cr);
+    this.deallocateRegister(er);
   }
 }
 
