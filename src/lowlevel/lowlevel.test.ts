@@ -534,6 +534,27 @@ describe('QLLC end-to-end', () => {
     `);
   });
 
+  test('call - mixed args', () => {
+    return expectRunToBe(103, `
+      type Point = struct {
+        x: byte;
+        y: byte;
+      };
+
+      function main(): byte {
+        var p: Point;
+        p.x = 103;
+        p.y = 104;
+        var i = 10;
+        return fn(&i, p);
+      }
+
+      function fn(a: * byte, p: Point): byte {
+        return p.x;
+      }
+    `);
+  });
+
   test('call - non-integral arg', () => {
     return expectRunToBe(101, `
       type Point = struct {
