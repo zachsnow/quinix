@@ -215,6 +215,17 @@ describe('QLLC typechecking', () => {
         }
       `)).toContain(`t not instantiated`);
     });
+
+    test('too deep', () => {
+      expect(errors(`
+      function t<T>(a: T): T {
+        return *t(&a);
+      }
+      function main(): byte {
+        return t(0);
+      }
+      `).join('\n')).toContain('too many instantiations');
+    });
   });
 
   describe('Type inference', () => {
