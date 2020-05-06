@@ -830,7 +830,7 @@ class NewArrayExpression extends Expression {
     }
 
     // Ellipsis means we are using the value represented by `er` multiple times.
-    if(this.ellipsis){
+    if(this.ellipsis || isZero){
       if(this.elementType.concreteType.isIntegral() || isZero){
         // memset(dr, er, sr, 1);
         compiler.emitDynamicStore(adr, er, sr, 'new[]: zero initialize');
@@ -1386,7 +1386,7 @@ class UnaryExpression extends Expression {
         // itself, so subtract 1.
         const ar = compiler.allocateRegister();
         compiler.emit([
-          new InstructionDirective(Instruction.createOperation(Operation.SUB, ar, lr, Compiler.ONE)),
+          new InstructionDirective(Instruction.createOperation(Operation.SUB, ar, lr, Compiler.ONE)).comment('get capacity address'),
         ]);
         compiler.emitCapacityCheck(ar, vr);
         compiler.deallocateRegister(ar);
