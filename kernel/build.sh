@@ -7,12 +7,6 @@ if [ "${1-}" == "--compiled" ]; then
   QASM_PATH="../build/bin/qasm.js"
 fi
 
-echo "Compiling test kernel..."
-${QLLC_PATH} test-kernel.qll support.qll
-
-echo "Assembling test kernel..."
-${QASM_PATH} -o test-kernel.qbin out.qasm support.qasm
-
 echo "Compiling kernel..."
 ${QLLC_PATH} kernel.qll support.qll scheduler.qll peripherals.qll
 

@@ -1,51 +1,50 @@
+type point_list = struct {
+  x: byte;
+  y: byte;
+  next: * point_list;
+};
+
 type point = struct {
   x: byte;
   y: byte;
-  next: * point;
 };
 
-function print_point(p: *point): void {
+function printn(n: byte): void {
+  var buffer: byte[16];
+  std::string::itoa(n, buffer, 10);
+  std::console::print(buffer);
+}
+
+function print_point<T>(p: T): void {
   var buffer: byte[16];
   std::console::print('(');
-  std::string::itoa(p->x, buffer, 10);
-  std::console::print(buffer);
+  printn(p.x);
   std::console::print(', ');
-  std::string::itoa(p->y, buffer, 10);
-  std::console::print(buffer);
+  printn(p.y);
   std::console::print(')\n');
 }
 
-function destroy_point(p: *point): void {
-  delete p;
-}
-
 function main(): byte {
-  var points: * point = new point = point {
-    x = 10,
-    y = 20,
-    next = new point = point {
-      x = 30,
-      y = 40,
-      next = null,
+  // Vectors.
+  std::console::print('Vector:\n');
+  var v: point[] = new point[] = [
+    point {
+      x = 110,
+      y = 120,
     },
-  };
+    point {
+      x = 130,
+      y = 140,
+    }
+  ];
 
-  var p3 = new point = point {
-    x = 50,
-    y = 60,
-    next = null,
-  };
+  std::vector::foreach(v, print_point<point>);
+  std::vector::add(&v, point {
+    x = 150,
+    y = 160,
+  });
 
-  std::ilist::foreach(points, print_point);
-
-  std::ilist::add(&points, p3);
-
-  std::console::print('added:\n');
-  std::ilist::foreach(points, print_point);
-
-  var length = std::ilist::length(points);
-
-  std::ilist::foreach(points, destroy_point);
-
-  return length;
+  std::console::print('Added:\n');
+  std::vector::foreach(v, print_point<point>);
+  return capacity v;
 }
