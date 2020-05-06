@@ -11,6 +11,114 @@ namespace std {
     }
   }
 
+  namespace ilist {
+    function add<T>(ilist: *T, el: T): bool {
+      if(!ilist){
+        return false;
+      }
+
+      var head = *ilist;
+      if(!head){
+        *ilist = el;
+        return true;
+      }
+
+      while(head->next){
+        head = head->next;
+      }
+      head->next = el;
+      return true;
+    }
+
+    function remove<T>(ilist: T, el: T): void {
+      if(!ilist){
+        return false;
+      }
+    }
+
+    function next<T>(ilist: T, el: T): T {
+      var p = ilist;
+      while(p){
+        if(p == el){
+          return p->next || ilist;
+        }
+        p = p->next;
+      }
+      return  null;
+    }
+
+    function foreach<T>(ilist: T, fn: (T) => void): void {
+      while(ilist){
+        fn(ilist);
+        ilist = ilist->next;
+      }
+    }
+
+    function length<T>(ilist: T): byte {
+      var i = 0;
+      while(ilist){
+        ilist = ilist->next;
+        i = i + 1;
+      }
+      return i;
+    }
+  }
+
+  namespace vector {
+    function _increase_capacity<T>(vec: * T[]): void {
+      var v = new T[2 * capacity *vec];
+      len v = len *vec;
+      for(var i = 0; i < len v; i = i + 1){
+        v[i] = (*vec)[i];
+      }
+      delete *vec;
+      *vec = v;
+    }
+
+    function create<T>(arr: T[]): T[] {
+      var v = new T[capacity arr];
+      len v = len arr;
+      for(var i = 0; i < len v; i = i + 1){
+        v[i] = arr[i];
+      }
+      return v;
+    }
+
+    function add<T>(vec: * T[], element: T): void {
+      printn(<unsafe byte> vec);
+
+      if(len *vec == capacity *vec){
+        _increase_capacity(vec);
+      }
+      var i = len *vec;
+      len *vec = i + 1;
+      (*vec)[i] = element;
+    }
+
+    function remove<T>(vec: T[], index: byte): void {
+      var n = len vec - 1;
+      for(var i = index; i < n; i = i + 1){
+        v[i] = v[i + 1];
+      }
+      len vec = n;
+    }
+
+    function find<T>(vec: T[], el: T): byte {
+      for(var i = 0; i < len vec; i = i + 1){
+        if(el == vec[i]){
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function foreach<T>(vec: T[], fn: (T) => void): void {
+      for(var i = 0; i < len vec; i = i + 1){
+        fn(vec[i]);
+      }
+    }
+  }
+
   namespace string {
     function reverse(buffer: byte[]): void {
       var length = len buffer;
