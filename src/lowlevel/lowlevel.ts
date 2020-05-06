@@ -16,13 +16,47 @@ import { Instruction, Operation } from '../vm/instructions';
 import { Type, TypedIdentifier, TypedStorage, FunctionType } from './types';
 import { Expression, StringLiteralExpression } from './expressions';
 import { BlockStatement } from './statements';
-import { TypeChecker, KindChecker } from './typechecker';
-import { mixin, HasTags, HasLocation, Location } from '../lib/util';
+import { TypeChecker, KindChecker, Source } from './typechecker';
+import { mixin, HasTags, HasLocation } from '../lib/util';
 import { Compiler, FunctionCompiler, InterruptCompiler, GlobalCompiler } from './compiler';
 import { parse } from './parser';
 import { TypeTable } from './tables';
 
 const log = logger('lowlevel');
+
+class Liveness {
+  public readonly live: { [ref: string]: boolean } = {};
+  public readonly links: { [ref: string]: string[] } = {};
+
+  public propagate(): void {
+    // Iterate to a fixed point.
+    const references = Object.keys(this.links);
+    let changes = true;
+    while(changes){
+      changes = false;
+      references.forEach((ref) => {
+        if(this.live[ref]){
+          this.links[ref].forEach((linkedRef) => {
+            if(!this.live[linkedRef]){
+              changes = true;
+            }
+            this.live[linkedRef] = true;
+          });
+        }
+      });
+    }
+  }
+
+  public toString(){
+    const references = Object.keys(this.links);
+    references.sort();
+    const tables = references.map((ref) => {
+      const table = this.links[ref].length ? `\n\t${this.links[ref].join('\n\t')}` : '';
+      return `${ref}: ${this.live[ref] || false}${table}`;
+    });
+    return tables.join('\n');
+  }
+}
 
 ///////////////////////////////////////////////////////////////////////
 // Declarations.
@@ -117,6 +151,7 @@ class TypeDeclaration extends Declaration {
 class GlobalDeclaration extends Declaration {
   private type: Type;
   private expression?: Expression;
+  private references: string[] = [];
 
   public constructor(identifier: string, type: Type, tags: string[], expression?: Expression){
     super(identifier);
@@ -140,10 +175,12 @@ class GlobalDeclaration extends Declaration {
     // that actually declares them is already typechecked and that the
     // pre-declaration is correct.
     if(this.expression){
-      const type = this.expression.typecheck(context, this.type);
+      const expressionContext = context.recordReferences();
+      const type = this.expression.typecheck(expressionContext, this.type);
       if(!this.type.isConvertibleTo(type, context)){
         this.error(context, `expected ${this.type}, actual ${type}`)
       }
+      this.references = expressionContext.references;
     }
   }
 
@@ -204,6 +241,18 @@ class GlobalDeclaration extends Declaration {
     }
     return this.withTags(`global ${this.identifier}: ${this.type};`);
   }
+
+  public initializeLiveness(liveness: Liveness): void {
+    if(!this.expression){
+      return;
+    }
+
+    // Globals are always initialized, so function calls in globals
+    // are always live.
+    this.references.forEach((ref) => {
+      liveness.live[ref] = true;
+    });
+  }
 }
 
 /**
@@ -211,7 +260,10 @@ class GlobalDeclaration extends Declaration {
  */
 type Instantiation = {
   identity: string;
+  qualifiedIdentifier: string;
   type: FunctionType;
+  references: string[];
+  live: boolean;
 };
 
 /**
@@ -262,9 +314,10 @@ class FunctionDeclaration extends Declaration {
   }
 
   public preTypecheck(context: TypeChecker): void {
-    this.context = context;
     this.qualifiedIdentifier = context.prefix(this.identifier);
     context.symbolTable.set(this.qualifiedIdentifier, new TypedStorage(this.type, 'function'));
+
+    this.context = context;
   }
 
   public typecheck(context: TypeChecker): void {
@@ -280,20 +333,32 @@ class FunctionDeclaration extends Declaration {
     // Otherwise, we already have a fully instantiated type, and
     // can check it immediately.
     if(this.block){
-      this.instantiator(this.type, new TypeTable());
+      this.instantiator(this.type);
     }
   }
 
-  private instantiator(type: FunctionType, bindings: TypeTable, source?: Location): void {
+  private instantiator(type: FunctionType, bindings?: TypeTable, source?: Source): void {
     // We check the instantiation in the context in which the function was *defined*,
     // not the one in which it was instantiated.
     if(!this.context){
       throw new InternalError(`no context`);
     }
-    let context = this.context;
+    if(!this.qualifiedIdentifier){
+      throw new InternalError(`not yet pre-typechecked`);
+    }
+
+    // Record references found in this function instantiation.
+    let context = this.context.recordReferences();
+
+    // Track instantiations.
     if(source){
-      const message = `\n\tinstantiated ${this.type}: ${type}`;
-      context = context.fromSource(message, source);
+      context = context.fromSource(source);
+    }
+
+    // Don't go too deep!
+    if(context.instantiationDepth > TypeChecker.MAX_INSTANTIATION_DEPTH){
+      this.error(context, `too many instantiations`);
+      return;
     }
 
     // We never instantiate pre-declarations.
@@ -301,22 +366,29 @@ class FunctionDeclaration extends Declaration {
       throw new InternalError(`instantiating pre-declaration ${this}`);
     }
 
-    // Save the instantiation; if we have already checked this instantiation,
-    // we're done.
-    const identity = type.toIdentity();
-    const instantiation = this.instantiations.find((instantiation) => {
+    // If we have already checked this instantiation, we're done.
+    const identity = bindings ? type.toIdentity() : '';
+    const qualifiedIdentifier = bindings ? `${this.qualifiedIdentifier}<${identity}>` : this.qualifiedIdentifier;
+    let instantiation = this.instantiations.find((instantiation) => {
       return identity === instantiation.identity;
     });
     if(instantiation){
       return;
     }
-    this.instantiations.push({
-      identity,
-      type,
-    });
 
-    // Substituted context.
-    const substitutedContext = context.substitute(bindings);
+    // Save the instantiation immediately so that recursive references to this
+    // instantiation are deemed valid and don't recurse.
+    instantiation = {
+      identity,
+      qualifiedIdentifier,
+      type,
+      references: [],
+      live: true, // We assume that the instantiation is live for now, in case we don't run the liveness analysis.
+    };
+    this.instantiations.push(instantiation);
+
+    // Substituted context binding generic variables, if any.
+    const substitutedContext = bindings ? context.substitute(bindings) : context;
 
     // Kindcheck.
     type.kindcheck(substitutedContext, new KindChecker());
@@ -353,6 +425,9 @@ class FunctionDeclaration extends Declaration {
     if(!isVoid && !returnType.isIntegral(substitutedContext)){
       this.error(substitutedContext, `expected integral return type, actual ${returnType}`);
     }
+
+    // Update this instantiation with recorded references.
+    instantiation.references = context.references;
   }
 
   public compile(): Directive[] {
@@ -369,6 +444,11 @@ class FunctionDeclaration extends Declaration {
     // types we will only have a single instantiation.
     const directives: Directive[] = [];
     this.instantiations.forEach((instantiation, i) => {
+      // Don't emit non-live functions.
+      if(!instantiation.live){
+        return;
+      }
+
       // Since we compile multiple instantiations for the same qualified
       // identifier, we make the prefix unique by appending the
       // instantiation index.
@@ -402,6 +482,29 @@ class FunctionDeclaration extends Declaration {
 
   private get interrupt(): boolean {
     return this.tagged('.interrupt');
+  }
+
+  public initializeLiveness(liveness: Liveness, entrypoint?: string): void {
+    if(!this.block){
+      return;
+    }
+    this.instantiations.forEach((instantiation) => {
+      instantiation.live = false;
+
+      if(entrypoint && instantiation.qualifiedIdentifier === entrypoint){
+        liveness.live[instantiation.qualifiedIdentifier] = true;
+      }
+      if(instantiation.type.tagged('.export')){
+        liveness.live[instantiation.qualifiedIdentifier] = true;
+      }
+      liveness.links[instantiation.qualifiedIdentifier] = instantiation.references;
+    });
+  }
+
+  public updateLiveness(liveness: Liveness): void {
+    this.instantiations.forEach((instantiation) => {
+      instantiation.live = liveness.live[instantiation.qualifiedIdentifier];
+    });
   }
 
   public toString(){
@@ -520,11 +623,36 @@ class LowLevelProgram {
     this.globalNamespace.typecheck(context);
 
     // Some checks we can't perform until we are sure that we've
-    // checked the entire program.
-    context.check();
+    // checked the entire program.  If we already have a bunch of errors,
+    // leave these off because they may well have been caused by
+    // the previous errors.
+    if(!context.errors.length){
+      context.check();
+    }
 
     this.typechecked = true;
     return context;
+  }
+
+  private livenessAnalysis(globalDeclarations: GlobalDeclaration[], functionDeclarations: FunctionDeclaration[], entrypoint: boolean): void {
+    const liveness = new Liveness();
+
+    const entrypointIdentifier = entrypoint ?
+      this.globalNamespace.entrypoint :
+      undefined;
+
+    globalDeclarations.forEach((dec) => dec.initializeLiveness(liveness));
+    functionDeclarations.forEach((dec) => {
+      dec.initializeLiveness(liveness, entrypointIdentifier);
+    });
+
+    liveness.propagate();
+
+    functionDeclarations.forEach((dec) => {
+      dec.updateLiveness(liveness);
+    });
+
+    log(`liveness analysis:\n${liveness}`);
   }
 
   /**
@@ -538,12 +666,15 @@ class LowLevelProgram {
    */
   public compile(module: string = 'out', entrypoint: boolean = true): AssemblyProgram {
     if(!this.typechecked){
-      throw new Error(`program has not been typechecked`);
+      throw new InternalError(`program has not been typechecked`);
     }
 
     const declarations = this.declarations;
     const globalDeclarations: GlobalDeclaration[] = declarations.filter((d): d is GlobalDeclaration => d instanceof GlobalDeclaration);
     const functionDeclarations: FunctionDeclaration[] = declarations.filter((d): d is FunctionDeclaration => d instanceof FunctionDeclaration);
+
+    // Collect liveness information.
+    this.livenessAnalysis(globalDeclarations, functionDeclarations, entrypoint);
 
     const directives: Directive[] = [];
 

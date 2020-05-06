@@ -1,23 +1,62 @@
-import { Messages, Location, HasLocation } from '../lib/util';
+import { Messages, Location, HasLocation, InternalError } from '../lib/util';
 import { TypeTable, StorageTable } from './tables';
 import { Type } from './types';
 
-type Source = { message: string, location?: Location};
+type SourceInstantiation = {
+  identity: string;
+  message: string;
+  location?: Location;
+}
+
+class Source {
+  public constructor(
+    public instantiations: SourceInstantiation[] = []
+  ){}
+
+  public extend(identity: string, message: string, location?: Location){
+    return new Source([...this.instantiations, {
+      identity,
+      message,
+      location,
+    }]);
+  }
+
+  public get depth(): number {
+    return this.instantiations.length;
+  }
+
+  public get identity(): string {
+    if(!this.depth){
+      return '';
+    }
+    return this.instantiations[this.depth - 1].identity;
+  }
+
+  public toString(){
+    return this.instantiations.map((instantiation) => {
+      return instantiation.location ?
+        `at: ${instantiation.location.toString()} ${instantiation.message}` :
+        instantiation.message;
+    }).join('\n  ');
+  }
+}
+
 type Check = (context: TypeChecker) => void;
 
 /**
  * Has environment information for typechecking; also tracks errors.
  */
 class TypeChecker extends Messages {
+  public static MAX_INSTANTIATION_DEPTH = 10;
+
   public readonly namespace: string;
   public readonly typeTable: TypeTable;
   public readonly symbolTable: StorageTable;
 
   private loopCount: number = 0;
-
-  private sources: Source[] = [];
+  private instantiationSource: Source = new Source();
   private checks: Check[] = [];
-
+  private recordedReferences: string[] = [];
   private substitutionTypeTable: TypeTable = new TypeTable();
 
   public constructor(typeTable?: TypeTable, symbolTable?: StorageTable, namespace: string = ''){
@@ -43,7 +82,7 @@ class TypeChecker extends Messages {
 
     // We only enter new source contexts via `fromSource`.
     // This is for making it easier to understand instantiations.
-    context.sources = [...this.sources];
+    context.instantiationSource = this.instantiationSource;
 
     // Always use the same checks, because we never want to discard one.
     // We only add checks via `addCheck`.
@@ -51,6 +90,8 @@ class TypeChecker extends Messages {
 
     // Copy the current substitution; we only change it via `substitute`.
     context.substitutionTypeTable = this.substitutionTypeTable;
+
+    context.recordedReferences = this.recordedReferences;
 
     return context;
   }
@@ -65,27 +106,46 @@ class TypeChecker extends Messages {
     return context;
   }
 
-  public fromSource(message: string, location?: Location){
+  public fromSource(source: Source): TypeChecker {
     const context = this.extend(undefined, undefined, undefined);
-    context.sources.push({
-      message,
-      location,
-    });
+    context.instantiationSource = source;
     return context;
   }
 
+  public get instantiationIdentity(): string {
+    return this.instantiationSource.identity;
+  }
+
+  public get instantiationDepth(): number {
+    return this.instantiationSource.depth;
+  }
+
+  public get source(): Source {
+    return this.instantiationSource;
+  }
+
+  public recordReferences(): TypeChecker {
+    const context = this.extend(undefined, undefined, undefined);
+    context.recordedReferences = [];
+    return context;
+  }
+
+  public reference(ref: string){
+    this.recordedReferences.push(ref);
+  }
+
+  public get references(): string[] {
+    return this.recordedReferences;
+  }
+
   public error(message: string, location?: Location){
-    this.sources.forEach((source) => {
-      super.error(source.message, source.location);
-    });
-    super.error(message, location);
+    const prefix = this.source.toString();
+    super.error(prefix ? `\n  ${prefix}\n  ${message}` : message, location);
   }
 
   public warning(message: string, location?: Location){
-    this.sources.forEach((source) => {
-      super.warning(source.message, source.location);
-    });
-    super.warning(message, location);
+    const prefix = this.source.toString();
+    super.warning(prefix ? `\n  ${prefix}\n  ${message}` : message, location);
   }
 
   public get inLoop(): boolean {
@@ -229,4 +289,4 @@ class KindChecker {
   }
 }
 
-export { TypeChecker, KindChecker };
+export { TypeChecker, KindChecker, Source };

@@ -1,6 +1,6 @@
 import { Immediate } from '../lib/base-types';
 import { indent, HasTags, Location, HasLocation, InternalError, mixin, SymbolTable, unique, duplicates } from '../lib/util';
-import { TypeChecker, KindChecker } from './typechecker';
+import { TypeChecker, KindChecker, Source } from './typechecker';
 import { TypeTable } from './tables';
 
 ///////////////////////////////////////////////////////////////////////
@@ -260,7 +260,7 @@ class BuiltinType extends Type {
   }
 }
 
-type Instantiator = (type: FunctionType, bindings: TypeTable, source?: Location) => void;
+type Instantiator = (type: FunctionType, bindings: TypeTable, source: Source) => void;
 
 @type
 class VariableType extends Type {
@@ -403,7 +403,7 @@ class FunctionType extends Type {
     return false;
   }
 
-  public extendInstantiators(instantiators: Instantiator[]): FunctionType {
+  public extendInstantiators(instantiator: Instantiator): FunctionType {
     if(!this.typeVariables.length){
       throw new InternalError(`unexpected instantiator`);
     }
@@ -411,7 +411,7 @@ class FunctionType extends Type {
       this.typeVariables,
       this.argumentTypes,
       this.returnType,
-      [...this.instantiators, ...instantiators],
+      [...this.instantiators, instantiator],
     ).at(this.location).tag(this.tags);
   }
 
@@ -421,7 +421,7 @@ class FunctionType extends Type {
    * @param context the context in which this template is being instantiated.
    * @param typeArgs the type arguments with which to instantiate this template.
    */
-  public instantiate(context: TypeChecker, typeArgs: Type[], source?: Location): FunctionType {
+  public instantiate(context: TypeChecker, typeArgs: Type[], location?: Location): FunctionType {
     // Can't instantiate a function that hasn't been kindchecked.
     if(!this.kindchecked){
       throw new InternalError(`${this} has not been kindchecked, unable to instantiate`);
@@ -446,9 +446,18 @@ class FunctionType extends Type {
     // Kindcheck.
     iType.kindcheck(context, new KindChecker());
 
+    // Extend the source with this instantiation, so that we can
+    // both render nice errors that trace the instantiation, and
+    // ensure that we don't recurse infinitely.
+    const source = context.source.extend(
+      iType.toIdentity(),
+      `instantiating ${this.toIdentity()} to ${iType.toIdentity()}`,
+      location || this.location,
+    );
+
     // Call the instantiators so we can typecheck.
     this.instantiators.forEach((instantiator) => {
-      instantiator(iType, typeTable, source || this.location);
+      instantiator(iType, typeTable, source);
     });
 
     return iType;
@@ -504,8 +513,8 @@ class FunctionType extends Type {
         unboundTypeVariables,
         this.argumentTypes.map((argumentType) => argumentType.substitute(minimalTypeTable)),
         this.returnType.substitute(minimalTypeTable),
-        [(functionType: Type, bindings: TypeTable, source?: Location) => {
-          throw new InternalError(`instantiating invalid inferred type`);
+        [(functionType: Type) => {
+          throw new InternalError(`instantiating invalid inferred type ${functionType} for type ${this}`);
         }],
       ).at(this.location);
     }
@@ -805,7 +814,7 @@ class ArrayType extends Type {
   }
 
   public toIdentity(){
-    return `${this.type.toIdentity()}[${this.length === undefined ? '' : Immediate.toString(this.length, 1)}]}`;
+    return `${this.type.toIdentity()}[${this.length === undefined ? '' : Immediate.toString(this.length, 1)}]`;
   }
 }
 
