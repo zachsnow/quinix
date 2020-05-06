@@ -6,6 +6,7 @@ import { parseArguments } from '../src/lib/cli';
 import { VM, Breakpoint } from '../src/vm/vm';
 import { Memory, Address } from '../src/lib/base-types';
 import { Program } from '../src/vm/instructions';
+import { Compiler } from '../src/lowlevel/compiler';
 
 const log = logger('qvm');
 
@@ -101,6 +102,17 @@ const vm = new VM({
 
 vm.run(programData).then((r) => {
   log(`terminated: ${r}`);
+  switch(r){
+    case Compiler.NULL_ERROR:
+      console.error('error: NULL_ERROR');
+      break;
+    case Compiler.BOUNDS_ERROR:
+      console.error('error: BOUNDS_ERROR');
+      break;
+    case Compiler.CAPACITY_ERROR:
+      console.error('error: CAPACITY_ERROR');
+      break;
+  }
   return Promise.resolve(r);
 }, (e) => {
   log(`error: ${e}`);

@@ -96,14 +96,14 @@ function parseKind<T>(kind: string, programTexts: string[], parser: (text: strin
         compiler(obj);
       }
     }
-    catch(ex){
+    catch(e){
       anyErrors = true;
 
-      if(ex.location){
-        console.error(`error: "${text}"[${ex.location.start.column}:${ex.location.end.column}]: ${ex.message}`);
+      if(e.location){
+        console.error(`error: "${text}"[${e.location.start.column}:${e.location.end.column}]: ${e.message}`);
       }
       else {
-        console.error(ex);
+        console.error(e);
       }
     }
   });
