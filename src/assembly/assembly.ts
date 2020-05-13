@@ -1,7 +1,7 @@
 import { Instruction, Register, Operation, Program, Immediate } from '../vm/instructions';
 import { Address } from '../lib/base-types';
 import { VM } from '../vm/vm';
-import { Messages, SymbolTable, HasLocation, stringToCodePoints, parseFile } from '../lib/util';
+import { Messages, SymbolTable, Syntax, stringToCodePoints, parseFile } from '../lib/util';
 import { parse } from './parser';
 
 class Assembler extends Messages {
@@ -52,7 +52,7 @@ class Reference {
 /**
  * Base class for directives.
  */
-abstract class Directive extends HasLocation {
+abstract class Directive extends Syntax {
   private _comment: string = '';
 
   /**
@@ -116,7 +116,7 @@ abstract class Directive extends HasLocation {
 /**
  * Base class for data associated with a `data` directive.
  */
-abstract class Data extends HasLocation {
+abstract class Data extends Syntax {
   public abstract assemble(assembler: Assembler): Instruction[];
 
   public get size(){
@@ -267,7 +267,7 @@ class DataDirective extends Directive {
 /**
  * Base class for constants associated with a `constant` directive.
  */
-abstract class Constant extends HasLocation {
+abstract class Constant extends Syntax {
   public abstract assemble(assembler: Assembler): Instruction[];
 }
 
