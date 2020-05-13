@@ -1,46 +1,31 @@
 import { Immediate } from '../lib/base-types';
-import { indent, HasTags, Location, HasLocation, InternalError, mixin, SymbolTable, unique, duplicates } from '../lib/util';
+import { indent, InternalError, Syntax, Location, duplicates, writeOnce, IFileRange, IParseOptions } from '../lib/util';
 import { TypeChecker, KindChecker, Source } from './typechecker';
 import { TypeTable } from './tables';
 
 ///////////////////////////////////////////////////////////////////////
 // Types.
 ///////////////////////////////////////////////////////////////////////
-function type(constructor: Function){
-  const kindcheck = constructor.prototype.kindcheck;
-  constructor.prototype.kindcheck = function(context: TypeChecker, kindchecker: KindChecker){
-    kindcheck.call(this, context, kindchecker);
-    this._concreteType = this.resolve(context);
-  };
-}
-
 /**
  * The abstract base class for QLL types.
  */
-abstract class Type extends mixin(HasTags, HasLocation) {
+abstract class Type extends Syntax {
+  /**
+   * Elaborate a type in the given context, so that all
+   * identifiers are annotated with their fully qualified type.
+   *
+   * @param context the context in which to elaborate.
+   */
+  public abstract elaborate(context: TypeChecker): void;
+
   /**
    * Check that the type is valid, recording errors on the given `context`.
-   * `kindchecker` is used to verify that type *definitions*.
+   * `kindchecker` is used to verify that type *definitions* are valid.
    *
    * @param context the context in which to kindcheck.
    * @param kindchecker the kind-checking context in which to kindcheck.
    */
   public abstract kindcheck(context: TypeChecker, kindchecker: KindChecker): void;
-
-  /**
-   * Core type equality implementation. Base classes should implement this
-   * and perform type name resolution using `context`. Consumers of this
-   * module should always check equality/convertibility using `isEqualTo`
-   * or `isConvertibleTo`.
-   *
-   * NOTE: for now we are implementing *invariant* type equality checking.
-   *
-   * @param type the type to unify with.
-   * @param context the context in which to resolve type names.
-   *
-   * @internal
-   */
-  public abstract isUnifiableWith(type: Type, context: TypeChecker): boolean;
 
   /**
    * Substitute the given type-table, returning an instantiated type.
@@ -52,12 +37,20 @@ abstract class Type extends mixin(HasTags, HasLocation) {
   public abstract substitute(typeTable: TypeTable): Type;
 
   /**
-   * Return a string identifier that uniquely identifies this
-   * type. Equal types (ideally up to alpha-conversion, but that's not
-   * required) should have equal identifiers, non-equal types must
-   * have non-equal identifiers.
+   * Core type equality implementation. Base classes should implement this
+   * and perform type name resolution using `context`. Consumers of this
+   * module should always check equality/convertibility using `isEqualTo`
+   * or `isConvertibleTo`.
+   *
+   * NOTE: for now we are implementing *invariant* type equality checking.
+   *
+   * @param type the type to unify with.
+   * @param nominal whether to require exact nominal equality for identifier
+   * comparisons.
+   *
+   * @internal
    */
-  public abstract toIdentity(): string;
+  public abstract isUnifiableWith(type: Type, nominal: boolean): boolean;
 
   /**
    * Checks type equality. Type names *are not* resolved. This means that
@@ -65,10 +58,8 @@ abstract class Type extends mixin(HasTags, HasLocation) {
    *
    * @param type the type to check for equality with this type.
    */
-  public isEqualTo(type: Type, context: TypeChecker){
-    // We keep only the substitution but throw away name bindings.
-    const emptyContext = context.extend(new TypeTable(), undefined);
-    return this.isUnifiableWith(type, emptyContext);
+  public isEqualTo(type: Type){
+    return this.isUnifiableWith(type, true);
   }
 
   /**
@@ -76,44 +67,27 @@ abstract class Type extends mixin(HasTags, HasLocation) {
    * that e.g. `byte` is convertible to `int` when `type int = byte`.
    *
    * @param type the type to check for convertibility with this type.
-   * @param context the context in which to check convertibility.
   */
-  public isConvertibleTo(type: Type, context: TypeChecker): boolean {
-    return this.isUnifiableWith(type, context);
+  public isConvertibleTo(type: Type): boolean {
+    return this.isUnifiableWith(type, false);
   }
 
   /**
-   * Returns the concrete type of this type.
+   * Resolves identifier types to their underlying scalar type.
    */
-  public get concreteType(): Type {
-    if(!this._concreteType){
-      throw new InternalError(this.withLocation(`${this} has not been kindchecked, concrete type unavailable`));
-    }
-    return this._concreteType;
-  }
-
-  private _concreteType?: Type;
-
-  public get kindchecked(): boolean {
-    return !!this._concreteType;
-  }
-
-  public resolveGeneric(context: TypeChecker): Type {
-    return this;
-  }
-
-  public resolveNominal(context: TypeChecker): Type {
-    return this;
+  public resolve(): Type {
+    return this.evaluate();
   }
 
   /**
-   * Resolves the type to its concrete type, apply both generic
-   * substitutions and name bindings.
+   * Evaluates structured types to scalar types. For instance,
+   * evaluatates `(struct { t: byte }).t` to `byte`.
    *
-   * @param context the context in which to resolve type names.
+   * TODO: maybe we want to be able to evaluate to the outermost
+   * "unnecessary" name?
    */
-  public resolve(context: TypeChecker): Type {
-    return this.resolveGeneric(context).resolveNominal(context);
+  public evaluate(): Type {
+    return this;
   }
 
   /**
@@ -125,8 +99,8 @@ abstract class Type extends mixin(HasTags, HasLocation) {
    *
    * @param context the context in which to resolve type names.
    */
-  public isIntegral(context?: TypeChecker): boolean {
-    const cType = context ? this.resolve(context) : this;
+  public get integral(): boolean {
+    const cType = this.resolve();
     return (
       cType instanceof PointerType ||
       cType instanceof FunctionType ||
@@ -141,8 +115,8 @@ abstract class Type extends mixin(HasTags, HasLocation) {
    *
    * @param context the context in which to resolve type names.
    */
-  public isNumeric(context: TypeChecker): boolean {
-    return this.isConvertibleTo(Type.Byte, context);
+  public get numeric(): boolean {
+    return this.isConvertibleTo(Type.Byte);
   }
 
   /**
@@ -153,16 +127,20 @@ abstract class Type extends mixin(HasTags, HasLocation) {
     return 1;
   }
 }
-interface Type extends HasTags, HasLocation {}
 
 type Storage = 'global' | 'function' | 'parameter' | 'local';
 
 class TypedStorage {
-  public readonly type: Type;
-  public readonly storage: Storage;
-  public constructor(type: Type, storage: Storage){
+  public constructor(
+    public readonly type: Type,
+    public readonly storage: Storage,
+  ){
     this.type = type;
     this.storage = storage;
+  }
+
+  public toString(){
+    return `.${this.storage} ${this.type}`;
   }
 }
 
@@ -184,14 +162,13 @@ class TypedIdentifier {
   }
 }
 
-const Builtins = ['byte', 'void', 'bool', '<error>'] as const;
+const Builtins = ['byte', 'void', '<error>'] as const;
 type Builtin = (typeof Builtins)[number];
 
 
 /**
  * Represets the built-in base types supported by QLL.
  */
-@type
 class BuiltinType extends Type {
   private builtin: Builtin;
 
@@ -200,11 +177,13 @@ class BuiltinType extends Type {
     this.builtin = builtin;
   }
 
+  public elaborate(context: TypeChecker): void {}
+
   public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
     // Builtins are always valid.
   }
 
-  public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+  public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
     if(type instanceof VariableType){
       type = type.unify(this);
@@ -220,34 +199,26 @@ class BuiltinType extends Type {
     }
 
     // Otherwise, are only unifiable with equal builtins.
-    type = type.resolve(context);
-    if(type instanceof BuiltinType){
-      return this.builtin === type.builtin;
+    const scalarType = type.evaluate();
+    if(scalarType instanceof BuiltinType){
+      if(this.builtin === scalarType.builtin){
+        return true;
+      }
+    }
+
+    if(nominal){
+      return false;
+    }
+
+    const resolvedType = scalarType.resolve();
+    if(resolvedType instanceof BuiltinType){
+      return this.builtin === resolvedType.builtin;
     }
 
     return false;
   }
 
-  public isConvertibleTo(type: Type, context: TypeChecker): boolean {
-    // Really we should make `bool` an identifer, but then we need a "default"
-    // typechecking context. So we'll make it a builtin, but allow
-    // conversion between byte and bool.
-    const convertibleBuiltins = ['byte', 'bool'];
-    type = type.resolve(context);
-    if(type instanceof BuiltinType){
-      return this.builtin === type.builtin || (
-        convertibleBuiltins.indexOf(this.builtin) !== -1 &&
-        convertibleBuiltins.indexOf(type.builtin) !== -1
-      );
-    }
-    return false;
-  }
-
-  public toString(minimal: boolean = false){
-    return this.withTags(this.builtin);
-  }
-
-  public toIdentity(){
+  public toString(){
     return this.builtin;
   }
 
@@ -256,13 +227,12 @@ class BuiltinType extends Type {
   }
 
   public substitute(typeTable: TypeTable) {
-    return new BuiltinType(this.builtin).at(this.location);
+    return this;
   }
 }
 
-type Instantiator = (type: FunctionType, bindings: TypeTable, source: Source) => void;
+type Instantiator = (type: Type, bindings: TypeTable, source: Source) => void;
 
-@type
 class VariableType extends Type {
   private static id = 0;
   private id: number = VariableType.id++;
@@ -271,19 +241,29 @@ class VariableType extends Type {
     super();
   }
 
-  public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
-    throw new InternalError();
+  public elaborate(context: TypeChecker): void {
+    throw new InternalError(`unable to elaborate type variable`);
   }
 
-  public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {}
+
+  public isUnifiableWith(type: Type, nominal: boolean): boolean {
     if(this.binding){
-      return this.binding.isUnifiableWith(type, context);
+      return this.evaluate().isUnifiableWith(type, nominal);
     }
-    this.binding = type;
+
+    this.unify(type);
     return true;
   }
 
+  public evaluate(): Type {
+    return this.binding ? this.binding.evaluate() : this;
+  }
+
   public unify(type: Type){
+    if(this === type){
+      return this.binding || this;
+    }
     if(!this.binding){
       this.binding = type;
     }
@@ -291,11 +271,7 @@ class VariableType extends Type {
   }
 
   public get size(): number {
-    throw new InternalError();
-  }
-
-  public toIdentity(): string {
-    throw new InternalError();
+    throw new InternalError(`unable to get size of type variable`);
   }
 
   public toString(): string {
@@ -306,85 +282,373 @@ class VariableType extends Type {
   }
 
   public substitute(typeTable: TypeTable): Type {
-    throw new InternalError();
+    throw new InternalError(`unable to substitute type variable`);
   }
 }
 
-@type
-class FunctionType extends Type {
+class TemplateType extends Type {
   public constructor(
     /**
-     * The function's template type variables, if any.
+     * The template's type variables.
      */
-    public readonly typeVariables: string[],
+    public readonly typeVariables: readonly string[],
 
     /**
-     * Function argument types.
+     * The template's underlying type; identifiers can reference the
+     * type variables.
      */
-    public readonly argumentTypes: Type[],
+    private readonly type: Type,
 
     /**
-     * Function return type.
+     * The `instantiators` are called whenever the template is instantiated.
      */
-    public readonly returnType: Type,
-
-    /**
-     * If this is a template function, the `instantiator` is called
-     * whenever the template is instantiated.
-     */
-    private readonly instantiators: Instantiator[] = [],
+    private readonly instantiators: readonly Instantiator[] = [],
   ){
     super();
 
-    if(typeVariables.length){
-      if(!instantiators.length){
-        throw new InternalError(`expected instantiators for variables ${typeVariables.join(', ')}`);
-      }
+    if(!this.typeVariables.length){
+      throw new InternalError(`no type variables for templated ${this.type}`);
     }
-    if(instantiators.length && !typeVariables.length){
-      throw new InternalError(`unexpected instantiators`);
+  }
+
+  public substitute(typeTable: TypeTable): TemplateType {
+    // If we try to substitute a template type, we need to be
+    // careful of overlapping type variables. In particular: if you
+    // have a substitution { A: t1, B: t2 } and a template type
+    // <B>(B => A) then you should get <B>(B => t1), *not*
+    // t2 => t2.
+    throw new InternalError(`unable to substitute template type`);
+  }
+
+  public elaborate(context: TypeChecker): void {
+    const duplicateTypeVariables = duplicates(this.typeVariables);
+    if(duplicateTypeVariables.length){
+      this.error(context, `duplicate type variables ${duplicateTypeVariables.join(', ')}`);
     }
+
+    // We need to elaborate the body of the template type, but
+    // we want to make sure that bound type variables are left
+    // alone.
+    const nestedContext = context.extend(
+      context.typeTable.extend(),
+      undefined,
+    );
+    this.typeVariables.forEach((tv) => {
+      nestedContext.typeTable.set(tv, new IdentifierType(tv));
+    });
+    this.type.elaborate(nestedContext);
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
-    if(this.typeVariables.length){
-      // Validate type variables.
-      const duplicateTypeVariables = duplicates(this.typeVariables);
-      if(duplicateTypeVariables.length){
-        this.error(context, `duplicate type variables ${duplicateTypeVariables.join(', ')}`);
-      }
-
-      // Defer kindchecking the function type until instantiation time.
-      return;
-    }
-
-    // Otherwise we can kindcheck immediately.
-    const nestedKindchecker = kindchecker.pointer();
-    this.returnType.kindcheck(context, nestedKindchecker);
-    this.argumentTypes.forEach((argumentType) => {
-      argumentType.kindcheck(context, nestedKindchecker);
-      if(argumentType.isConvertibleTo(Type.Void, context)){
-        this.error(context, `invalid void argument`);
-      }
-    });
+    throw new InternalError(`unable to kindcheck template type`);
   }
 
-  public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+  public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
     if(type instanceof VariableType){
       type = type.unify(this);
     }
 
-    const concreteType = type.resolve(context);
+    const substitution = TypeTable.empty();
+    this.typeVariables.forEach((tv) => {
+      substitution.set(tv, new VariableType());
+    });
+    const instantiatedType = this.type.substitute(substitution);
+    return instantiatedType.isUnifiableWith(type, nominal);
+  }
 
-    if(concreteType instanceof FunctionType){
-      // Can't unify uninstantiated template functions.
-      if(this.typeVariables.length){
-        return false;
+  public extendInstantiators(instantiator: Instantiator): TemplateType {
+    return new TemplateType(
+      this.typeVariables,
+      this.type, // TODO: we should probably clone this?
+      [...this.instantiators, instantiator],
+    ).at(this.location).tag(this.tags);
+  }
+
+  /**
+   * Instantiate this template type with the given type arguments.
+   *
+   * @param context the context in which this template type is being instantiated.
+   * @param typeArgs the type arguments with which to instantiate this template type.
+   * @param location the location of the instantiation.
+   */
+  public instantiate(context: TypeChecker, typeArgs: readonly Type[], location?: Location): Type {
+    // Check that we passed the right number of arguments.
+    if(this.typeVariables.length !== typeArgs.length){
+      this.error(context, `expected ${this.typeVariables.length} type arguments, actual ${typeArgs.join(', ')}`);
+      return Type.Error;
+    }
+
+    // Build a substitution mapping type variables to type arguments.
+    const typeTable = TypeTable.empty();
+    this.typeVariables.forEach((tv, i) => {
+      typeTable.set(tv, typeArgs[i]);
+    });
+
+    // Substitute the type with the mapping, removing type variables.
+    // Now it will be unifiable etc.
+    const iType = this.type.substitute(typeTable);
+
+    // Extend the source with this instantiation, so that we can
+    // both render nice errors that trace the instantiation, and
+    // ensure that we don't recurse infinitely.
+    const source = context.source.extend(
+      iType.toString(),
+      `instantiating ${this} to ${iType}`,
+      location || this.location,
+    );
+
+    // Call the instantiators so we can typecheck the body of the function with
+    // the instantiation we just developed.
+    this.instantiators.forEach((instantiator) => {
+      instantiator(iType, typeTable, source);
+    });
+
+    return iType;
+  }
+
+  /**
+   * Infer an instantation for this template type based on the given type.
+   * Either returns this type instantiated with the necessary type arguments to
+   * match the given type, or `undefined` if no such instantiation was found.
+   *
+   * @param context the context in which this template type is being inferred.
+   * @param expectedType the type we'd like instantiating this template type to
+   * unify with.
+   * @param location the location of the instantiation.
+   */
+  public infer(context: TypeChecker, expectedType: Type, location?: Location): Type | undefined {
+    // Build a substitution mapping type variables to new variables
+    // that can bind during unification.
+    const typeTable = TypeTable.empty();
+    const typeArgs = this.typeVariables.map((tv) => {
+      const v = new VariableType();
+      typeTable.set(tv, v);
+      return v;
+    });
+
+    // Substitute and verify that the substitution produces a valid type.
+    const actualType = this.type.substitute(typeTable);
+    actualType.kindcheck(context, new KindChecker());
+
+    // If the types can't unify, there's no inferred instantation.
+    if(!expectedType.isUnifiableWith(actualType, false)){
+      return;
+    }
+
+    // If any of the type variables are unbound, we didn't find a specific
+    // instantiation.
+    if(typeArgs.some((arg) => arg.evaluate() instanceof VariableType)){
+      return;
+    }
+
+    // Otherwise, we inferred an instantiation. Extract it and instantiate
+    // this template type.
+    return this.instantiate(context, typeArgs.map((arg) => arg.evaluate()), location);
+  }
+
+  public toString(){
+    return `<${this.typeVariables.join(', ')}>${this.type}`;
+  }
+
+  public get scalar(): boolean {
+    return false;
+  }
+}
+
+class TemplateInstantiationType extends Type {
+  private instantiatedType!: Type;
+
+  public constructor(
+    public readonly type: Type,
+    public readonly typeArguments: readonly Type[],
+  ){
+    super();
+
+    if(!this.typeArguments.length){
+      throw new InternalError(`template instantiation with no type arguments`);
+    }
+  }
+
+  public substitute(typeTable: TypeTable): TemplateInstantiationType {
+    return new TemplateInstantiationType(
+      this.type.substitute(typeTable),
+      this.typeArguments.map((type) => {
+        return type.substitute(typeTable);
+      }),
+    ).at(this.location).tag(this.tags);
+  }
+
+  public elaborate(context: TypeChecker){
+    this.type.elaborate(context);
+    this.typeArguments.forEach((typeArgument) => {
+      typeArgument.elaborate(context);
+    });
+  }
+
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
+    const type = this.type.resolve();
+    if(!(type instanceof TemplateType)){
+      this.error(context, `expected template type, actual ${this.type}`);
+      this.instantiatedType = Type.Error;
+      return;
+    }
+
+    const nestedContext = context.fromSource(context.source.extend(
+      this.toString(),
+      `instantiating ${this}`,
+      this.location,
+    ));
+
+    this.instantiatedType = type.instantiate(nestedContext, this.typeArguments, this.location);
+  }
+
+  public isUnifiableWith(type: Type, nominal: boolean): boolean {
+    return this.instantiatedType.isUnifiableWith(type, nominal);
+  }
+
+  public evaluate(): Type {
+    return this.instantiatedType.evaluate();
+  }
+
+  public get scalar(): boolean {
+    return false;
+  }
+
+  public toString(){
+    return `(${this.type})<${this.typeArguments.join(', ')}>`;
+  }
+}
+writeOnce(TemplateInstantiationType, 'instantiatedType');
+
+type Suffix = {
+  identifier?: string;
+  size?: number;
+  range: IFileRange;
+  text: string;
+  options?: IParseOptions
+};
+
+class SuffixType {
+  public static build(type: Type, suffixes: Suffix[]){
+    return suffixes.reduce((type, suffix) => {
+      if(suffix.identifier !== undefined){
+        return new DotType(type, suffix.identifier).at(suffix.range, suffix.text, suffix.options);
       }
+      else {
+        return new ArrayType(type, suffix.size).at(suffix.range, suffix.text, suffix.options);
+      }
+    }, type);
+  }
+}
 
+class DotType extends Type {
+  private memberType!: Type;
+
+  public constructor(
+    public readonly type: Type,
+    public readonly identifier: string,
+  ){
+    super();
+  }
+
+  public substitute(typeTable: TypeTable): DotType {
+    return new DotType(
+      this.type.substitute(typeTable),
+      this.identifier,
+    ).at(this.location).tag(this.tags);
+  }
+
+  public elaborate(context: TypeChecker): void {
+    this.type.elaborate(context);
+  }
+
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
+    this.type.kindcheck(context, kindchecker);
+
+    const type = this.type.resolve();
+
+    if(!(type instanceof StructType)){
+      this.error(context, `expected struct type, actual ${this.type}`);
+      this.memberType = Type.Error;
+      return;
+    }
+
+    const memberType = type.member(this.identifier);
+    if(!memberType){
+      this.error(context, `unknown member ${this.identifier}`);
+      this.memberType = Type.Error;
+      return;
+    }
+
+    this.memberType = memberType.type;
+  }
+
+  public isUnifiableWith(type: Type, nominal: boolean): boolean {
+    return this.memberType.isUnifiableWith(type, nominal);
+  }
+
+  public evaluate(): Type {
+    return this.memberType.evaluate();
+  }
+
+  public toString() {
+    return `(${this.type}).${this.identifier}`;
+  }
+
+  public get scalar(): boolean {
+    return false;
+  }
+}
+writeOnce(DotType, 'memberType');
+
+class FunctionType extends Type {
+  public constructor(
+    /**
+     * Function argument types.
+     */
+    public readonly argumentTypes: readonly Type[],
+
+    /**
+     * Function return type.
+     */
+    public readonly returnType: Type,
+  ){
+    super();
+  }
+
+  public substitute(typeTable: TypeTable): FunctionType {
+    return new FunctionType(
+      this.argumentTypes.map((argumentType) => argumentType.substitute(typeTable)),
+      this.returnType.substitute(typeTable),
+    ).at(this.location).tag(this.tags);
+  }
+
+  public elaborate(context: TypeChecker): void {
+    this.argumentTypes.forEach((argumentType) => {
+      argumentType.elaborate(context);
+    });
+    this.returnType.elaborate(context);
+  }
+
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
+    const nestedKindchecker = kindchecker.pointer();
+    this.returnType.kindcheck(context, nestedKindchecker);
+    this.argumentTypes.forEach((argumentType) => {
+      argumentType.kindcheck(context, nestedKindchecker);
+    });
+  }
+
+  public isUnifiableWith(type: Type, nominal: boolean): boolean {
+    // Bind type variables.
+    if(type instanceof VariableType){
+      type = type.unify(this);
+    }
+
+    const concreteType = type.resolve();
+    if(concreteType instanceof FunctionType){
       // Return types must unify.
-      if(!this.returnType.isUnifiableWith(concreteType.returnType, context)){
+      if(!this.returnType.isUnifiableWith(concreteType.returnType, nominal)){
         return false;
       }
 
@@ -396,141 +660,11 @@ class FunctionType extends Type {
       // Argument types must unify.
       return this.argumentTypes.every((argType, i) => {
         // Reverse order for proper variance.
-        return concreteType.argumentTypes[i].isUnifiableWith(argType, context);
+        return concreteType.argumentTypes[i].isUnifiableWith(argType, nominal);
       });
     }
 
     return false;
-  }
-
-  public extendInstantiators(instantiator: Instantiator): FunctionType {
-    if(!this.typeVariables.length){
-      throw new InternalError(`unexpected instantiator`);
-    }
-    return new FunctionType(
-      this.typeVariables,
-      this.argumentTypes,
-      this.returnType,
-      [...this.instantiators, instantiator],
-    ).at(this.location).tag(this.tags);
-  }
-
-  /**
-   * Instantiate this template function type with the given type arguments.
-   *
-   * @param context the context in which this template is being instantiated.
-   * @param typeArgs the type arguments with which to instantiate this template.
-   */
-  public instantiate(context: TypeChecker, typeArgs: Type[], location?: Location): FunctionType {
-    // Can't instantiate a function that hasn't been kindchecked.
-    if(!this.kindchecked){
-      throw new InternalError(`${this} has not been kindchecked, unable to instantiate`);
-    }
-
-    // Check that we passed the right number of arguments.
-    if(this.typeVariables.length !== typeArgs.length){
-      this.error(context, `expected ${this.typeVariables.length} type arguments, actual ${typeArgs.join(', ')}`);
-    }
-
-    // Build a substitution mapping type variables to type arguments.
-    const typeTable = new TypeTable();
-    this.typeVariables.forEach((tv, i) => {
-      typeTable.set(tv, typeArgs[i] || Type.Error);
-    });
-
-    // Substitute the type with the mapping, removing type variables.
-    // Now it will be unifiable etc.
-    const type = new FunctionType([], this.argumentTypes, this.returnType).at(this.location);
-    const iType = type.substitute(typeTable).tag(this.tags);
-
-    // Kindcheck.
-    iType.kindcheck(context, new KindChecker());
-
-    // Extend the source with this instantiation, so that we can
-    // both render nice errors that trace the instantiation, and
-    // ensure that we don't recurse infinitely.
-    const source = context.source.extend(
-      iType.toIdentity(),
-      `instantiating ${this.toIdentity()} to ${iType.toIdentity()}`,
-      location || this.location,
-    );
-
-    // Call the instantiators so we can typecheck.
-    this.instantiators.forEach((instantiator) => {
-      instantiator(iType, typeTable, source);
-    });
-
-    return iType;
-  }
-
-  public infer(context: TypeChecker, argTypes: Type[], contextual?: Type, source?: Location): FunctionType {
-    // Construct the expected type of the function after instantiation;
-    // the return type is the contextual type if it is given. We don't always
-    // have one, in which case we infer one via unification.
-    const returnType = contextual || new VariableType();
-    const expected = new FunctionType([], argTypes, returnType).at(this.location);
-
-    // Build a substitution mapping type variables to new variables
-    // that can bind during unification.
-    const typeTable = new TypeTable();
-    const typeArgs: VariableType[] = [];
-    this.typeVariables.forEach((tv, i) => {
-      const type = new VariableType();
-      typeTable.set(tv, type);
-      typeArgs.push(type);
-    });
-
-    // Construct a new function with no type variables, substituting
-    // with the mapping.
-    const actual = new FunctionType(
-      [],
-      this.argumentTypes.map((argumentType) => argumentType.substitute(typeTable)),
-      this.returnType.substitute(typeTable),
-    ).at(this.location);
-
-    // If the types can't unify, there's no inferred instantation.
-    if(!expected.isUnifiableWith(actual, context)){
-      return this;
-    }
-
-    // If we can't infer *all* type variables, there's no inferred instantiation.
-    // If we managed to bind any of the type variables, apply the inferred
-    // substitution to help understand what went wrong.
-    if(!typeArgs.every((arg) => !!arg.binding)){
-      const minimalTypeTable = new TypeTable();
-      const unboundTypeVariables: string[] = [];
-      typeArgs.forEach((arg, i) => {
-        const tv = this.typeVariables[i];
-        if(arg.binding){
-          minimalTypeTable.set(tv, arg.binding)
-        }
-        else {
-          unboundTypeVariables.push(tv)
-        }
-      });
-
-      return new FunctionType(
-        unboundTypeVariables,
-        this.argumentTypes.map((argumentType) => argumentType.substitute(minimalTypeTable)),
-        this.returnType.substitute(minimalTypeTable),
-        [(functionType: Type) => {
-          throw new InternalError(`instantiating invalid inferred type ${functionType} for type ${this}`);
-        }],
-      ).at(this.location);
-    }
-
-    // Otherwise, we inferred an instantiation. Extract it and instantiate
-    // this template function.
-    return this.instantiate(context, typeArgs.map((arg) => arg.binding!), source);
-  }
-
-  public substitute(typeTable: TypeTable): FunctionType {
-    return new FunctionType(
-      this.typeVariables,
-      this.argumentTypes.map((argumentType) => argumentType.substitute(typeTable)),
-      this.returnType.substitute(typeTable),
-      this.instantiators,
-    ).at(this.location).tag(this.tags);
   }
 
   /**
@@ -547,26 +681,21 @@ class FunctionType extends Type {
     return this.returnType;
   }
 
-  public toIdentity(){
-    const args = this.argumentTypes.map((arg) => arg.toIdentity()).join(', ');
-    return `(${args}) => ${this.returnType.toIdentity()}`;
-  }
-
   public toString(){
     const args = this.argumentTypes.map((arg) => arg.toString()).join(', ');
-    const tvs = this.typeVariables.length ? `<${this.typeVariables.join(', ')}>` : '';
-    return this.withTags(`${tvs}(${args}) => ${this.returnType.toString()}`);
+    return `(${args}) => ${this.returnType}`;
   }
 }
 
-@type
 class IdentifierType extends Type {
-  public readonly ERROR_IDENTIFIER: string = '<error>';
+  public static readonly ErrorIdentifier: string = '<error>';
 
-  private identifier: string;
-  private qualifiedIdentifier?: string;
+  private qualifiedIdentifier!: string;
+  private type!: Type;
 
-  public constructor(identifier: string){
+  public constructor(
+    private readonly identifier: string,
+  ){
     super();
     this.identifier = identifier;
 
@@ -576,14 +705,7 @@ class IdentifierType extends Type {
     }
   }
 
-  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
-    // Check for a template variable.
-    const substitutedType = context.substitution(this.identifier);
-    if(substitutedType){
-      return;
-    }
-
-    // Get the fully qualified identifier.
+  public elaborate(context: TypeChecker): void {
     const lookup = context.typeTable.lookup(context.namespace, this.identifier);
     if(lookup === undefined){
       this.error(context, `unknown type identifier ${this.identifier}`);
@@ -591,96 +713,59 @@ class IdentifierType extends Type {
       // We don't have a real qualified identifier for this, but we expect
       // to have *something* during type checking. Instead of stopping compilation
       // entirely, we'll stumble along.
-      this.qualifiedIdentifier = this.ERROR_IDENTIFIER;
+      this.qualifiedIdentifier = IdentifierType.ErrorIdentifier;
+      this.type = Type.Error;
       return;
     }
 
     // Save for later comparisons.
     this.qualifiedIdentifier = lookup.qualifiedIdentifier;
+    this.type = lookup.value;
+  }
 
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
     // Invalid recursive reference.
     if(kindchecker.isInvalid(this.qualifiedIdentifier)){
       this.error(context, `recursive type ${this}`);
       return;
     }
 
-    // Check if we have seen this and it is a *valid* recursive type;
-    // if so we are done.
+    // Valid recursive reference; we're done.
     if(kindchecker.isRecursive(this.qualifiedIdentifier)){
       return;
     }
 
-    // Otherwise, kindcheck the body of the type.
-    lookup.value.kindcheck(context, kindchecker.visit(this.qualifiedIdentifier));
+    // Otherwise we must pass through this type so we can verify
+    // (mutually) recursive types.
+    this.type.kindcheck(context, kindchecker.visit(this.qualifiedIdentifier));
   }
 
-  public isUnifiableWith(type: Type, context: TypeChecker): boolean {
-    // Always apply template substitutions before checking
-    // nominal equality.
-    type = type.resolveGeneric(context);
-    let thisType = this.resolveGeneric(context);
-    if(thisType !== this){
-      return thisType.isUnifiableWith(type, context);
-    }
-
+  public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
     if(type instanceof VariableType){
       type = type.unify(this);
     }
 
-    if(this.qualifiedIdentifier === undefined){
-      throw new InternalError(this.withLocation(`${this} has not been kindchecked, unable to unify`));
+    // If we've already shown an error associated with this identifier,
+    // just shut up about it.
+    if(this.qualifiedIdentifier === IdentifierType.ErrorIdentifier){
+      return true;
     }
 
-    // Nominal equality.
-    if(type instanceof IdentifierType){
-      if(type.qualifiedIdentifier === undefined){
-        throw new InternalError(type.withLocation(`${type} has not been kindchecked, unable to unify`));
-      }
-
-      // Exact nominal equality.
-      if(this.qualifiedIdentifier === type.qualifiedIdentifier){
-        return true;
-      }
-
-      // If we've already shown an error associated with this identifier,
-      // just shut up about it.
-      if(this.qualifiedIdentifier === this.ERROR_IDENTIFIER){
+    // Nominal equality -- we avoid resolving either side unnecessarily.
+    const evaluatedType = type.evaluate();
+    if(evaluatedType instanceof IdentifierType){
+      if(this.qualifiedIdentifier === evaluatedType.qualifiedIdentifier){
         return true;
       }
     }
 
-    // Resolve name bindings like `type x = y;`.
-    thisType = this.resolveNominal(context);
-    if(thisType !== this){
-      return thisType.isUnifiableWith(type, context);
+    if(nominal){
+      return false;
     }
 
-    // This type has no underlying mapped type in the current context;
-    // it's an unknown identifier and we've already raised an error when
-    // we kindchecked it.
-    return false;
-  }
-
-  public resolveGeneric(context: TypeChecker): Type {
-    const type = context.substitution(this.identifier);
-    if(type !== undefined){
-      return type;
-    }
-    return this;
-  }
-
-  public resolveNominal(context: TypeChecker): Type {
-    // Identifiers resolve to their named type, if there is one.
-    // Otherwise they resolve to themselves.
-    const lookup = context.typeTable.lookup(context.namespace, this.identifier);
-    if(lookup !== undefined){
-      return lookup.value;
-    }
-
-    // For now this type will have failed to kind-check already, so
-    // skip adding another error and just return something.
-    return this;
+    // Otherwise check the type we're bound to.
+    return this.type.isUnifiableWith(evaluatedType.resolve(), nominal);
   }
 
   public substitute(typeTable: TypeTable): Type {
@@ -688,31 +773,42 @@ class IdentifierType extends Type {
     if(typeTable.has(this.identifier)){
       return typeTable.get(this.identifier);
     }
-    return this;
+
+    const t = new IdentifierType(
+      this.identifier,
+    ).at(this.location).tag(this.tags);
+
+    // We should only encounter elaborated identifiers.
+    t.qualifiedIdentifier = this.qualifiedIdentifier;
+    t.type = this.type;
+
+    return t;
+  }
+
+  public resolve(): Type {
+    // Resolve *all* identifier bindings to find underlying type.
+    return this.type.resolve();
   }
 
   public get size(): number {
-    throw new InternalError(this.withLocation(`unable to determine size of identifier type ${this.identifier}`));
-  }
-
-  public toIdentity(){
-    return this.identifier;
+    return this.type.size;
   }
 
   public toString(){
-    return this.withTags(this.identifier);
+    return this.identifier;
   }
 
   public static build(identifier: string): Type {
     const builtin = identifier as Builtin;
     if(Builtins.indexOf(builtin) !== -1){
-      return new BuiltinType(builtin)
+      return new BuiltinType(builtin);
     }
     return new IdentifierType(identifier);
   }
 }
+writeOnce(IdentifierType, 'qualifiedIdentifier');
+writeOnce(IdentifierType, 'type');
 
-@type
 class PointerType extends Type {
   private type: Type;
 
@@ -721,22 +817,26 @@ class PointerType extends Type {
     this.type = type;
   }
 
+  public elaborate(context: TypeChecker): void {
+    this.type.elaborate(context);
+  }
+
   public kindcheck(context: TypeChecker, kindchecker: KindChecker){
     // Passing through a pointer tells the kindchecker that all of the types
     // we've seen inside a structure are valid.
     this.type.kindcheck(context, kindchecker.pointer());
   }
 
-  public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+  public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
     if(type instanceof VariableType){
       type = type.unify(this);
     }
 
     // Pointers are unifiable when the types that they point to are unifiable.
-    const concreteType = type.resolve(context);
-    if(concreteType instanceof PointerType){
-      return this.type.isUnifiableWith(concreteType.type, context);
+    type = type.resolve();
+    if(type instanceof PointerType){
+      return this.type.isUnifiableWith(type.type, nominal);
     }
     return false;
   }
@@ -745,23 +845,27 @@ class PointerType extends Type {
     return this.type;
   }
 
-  public toIdentity() {
-    return `* ${this.type.toIdentity()}`;
-  }
-
   public toString(){
-    return this.withTags(`* ${this.type}`);
+    return `* ${this.type}`;
   }
 
   public substitute(typeTable: TypeTable): Type {
-    return new PointerType(this.type.substitute(typeTable)).at(this.location);
+    return new PointerType(
+      this.type.substitute(typeTable),
+    ).at(this.location).tag(this.tags);
   }
 }
 
-@type
 class ArrayType extends Type {
-  public constructor(private type: Type, public readonly length?: number){
+  public constructor(
+    private type: Type,
+    public readonly length?: number,
+  ){
     super();
+  }
+
+  public elaborate(context: TypeChecker): void {
+    this.type.elaborate(context);
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker){
@@ -769,18 +873,18 @@ class ArrayType extends Type {
     this.type.kindcheck(context, kindchecker.pointer());
   }
 
-  public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+  public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
     if(type instanceof VariableType){
       type = type.unify(this);
     }
 
     // Pointers are unifiable when the types that they point to are unifiable.
-    const concreteType = type.resolve(context);
-    if(concreteType instanceof ArrayType){
-      if(this.type.isUnifiableWith(concreteType.type, context)){
+    type = nominal ? type : type.resolve();
+    if(type instanceof ArrayType){
+      if(this.type.isUnifiableWith(type.type, nominal)){
         // We can convert from sized array to unsized array, but not the opposite.
-        return this.length === concreteType.length || (this.length === undefined);
+        return this.length === type.length || type.length === undefined;
       }
     }
 
@@ -789,12 +893,6 @@ class ArrayType extends Type {
 
   public index(): Type {
     return this.type;
-  }
-
-  public static build(type: Type, lengths: (number|undefined)[]): Type {
-    return lengths.reduce((type, length) => {
-      return new ArrayType(type, length);
-    }, type);
   }
 
   public get size(): number {
@@ -806,15 +904,14 @@ class ArrayType extends Type {
   }
 
   public substitute(typeTable: TypeTable): Type {
-    return new ArrayType(this.type.substitute(typeTable), this.length).at(this.location);
+    return new ArrayType(
+      this.type.substitute(typeTable),
+      this.length,
+    ).at(this.location).tag(this.tags);
   }
 
   public toString(){
-    return this.withTags(`${this.type}[${this.length === undefined ? '' : Immediate.toString(this.length, 1)}]`);
-  }
-
-  public toIdentity(){
-    return `${this.type.toIdentity()}[${this.length === undefined ? '' : Immediate.toString(this.length, 1)}]`;
+    return `${this.type}[${this.length === undefined ? '' : Immediate.toString(this.length, 1)}]`;
   }
 }
 
@@ -823,18 +920,20 @@ type Member = {
   type: Type;
 }
 
-@type
 class StructType extends Type {
-  public members: Member[];
-
-  public constructor(members: Member[]){
+  public constructor(public readonly members: readonly Member[]){
     super();
-    this.members = members;
   }
 
   public member(identifier: string): Member | undefined {
     return this.members.find((member) => {
       return member.identifier === identifier;
+    });
+  }
+
+  public elaborate(context: TypeChecker): void {
+    this.members.forEach((member) => {
+      member.type.elaborate(context);
     });
   }
 
@@ -845,32 +944,33 @@ class StructType extends Type {
     // A struct type is valid if its members are valid.
     this.members.forEach((member) => {
       member.type.kindcheck(context, nestedKindchecker);
-      if(member.type.isConvertibleTo(Type.Void, context)){
+      if(member.type.isConvertibleTo(Type.Void)){
         this.error(context, `invalid void struct member`);
       }
     });
   }
 
-  public isUnifiableWith(type: Type, context: TypeChecker): boolean {
+  public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
     if(type instanceof VariableType){
       type = type.unify(this);
     }
 
-    const concreteType = type.resolve(context);
+    // Struct types have structural equality. They should have the
+    // exact same number, order, and type of members.
+    type = type.resolve();
+    if(type instanceof StructType){
+      const structType = type;
 
-    if(concreteType instanceof StructType){
-      // Struct types have structural equality. They should have the
-      // exact same number, order, and type of members.
-      if(this.members.length !== concreteType.members.length){
+      if(this.members.length !== structType.members.length){
         return false;
       }
 
       const matches = this.members.map((member, i) => {
-        const otherMember = concreteType.members[i];
+        const otherMember = structType.members[i];
         return (
           member.identifier === otherMember.identifier &&
-          member.type.isUnifiableWith(otherMember.type, context)
+          member.type.isUnifiableWith(otherMember.type, nominal)
         );
       });
 
@@ -880,13 +980,13 @@ class StructType extends Type {
     return false;
   }
 
-  public offset(identifier: string, context: TypeChecker): number {
+  public offset(identifier: string): number {
     let offset = 0;
     const member = this.members.find((member) => {
       if(member.identifier === identifier){
         return true;
       }
-      offset += member.type.concreteType.size;
+      offset += member.type.size;
     });
 
     if(member === undefined){
@@ -898,7 +998,7 @@ class StructType extends Type {
   public get size(): number {
     let size = 0;
     this.members.forEach((member) => {
-      size += member.type.concreteType.size;
+      size += member.type.size;
     });
     return size;
   }
@@ -906,14 +1006,6 @@ class StructType extends Type {
   public toString(){
     const members = this.members.map((member) => {
       return `${member.identifier}: ${member.type};`;
-    }).join('\n');
-
-    return this.withTags('struct {' + indent('\n' + members) + '\n}');
-  }
-
-  public toIdentity(){
-    const members = this.members.map((member) => {
-      return `${member.identifier}: ${member.type.toIdentity()};`;
     }).join('\n');
 
     return 'struct {' + indent('\n' + members) + '\n}';
@@ -925,24 +1017,28 @@ class StructType extends Type {
         identifier: member.identifier,
         type: member.type.substitute(typeTable),
       };
-    })).at(this.location);
+    })).at(this.location).tag(this.tags);
   }
 }
 
 namespace Type {
   export const Void = new BuiltinType('void');
   export const Byte = new BuiltinType('byte');
-  export const Bool = new BuiltinType('bool');
+  export const Bool = new IdentifierType('bool');
+  export const String = new IdentifierType('string');
   export const Error = new BuiltinType('<error>');
 
-  Void.kindcheck(new TypeChecker(), new KindChecker());
-  Byte.kindcheck(new TypeChecker(), new KindChecker());
-  Error.kindcheck(new TypeChecker(), new KindChecker());
-  Bool.kindcheck(new TypeChecker(), new KindChecker());
+  Void.elaborate(new TypeChecker());
+  Byte.elaborate(new TypeChecker());
+  Error.elaborate(new TypeChecker());
+  Bool.elaborate(new TypeChecker());
+  String.elaborate(new TypeChecker());
 }
 
 export {
   Type, TypedIdentifier,
   Storage, TypedStorage,
-  BuiltinType, IdentifierType, PointerType, ArrayType, StructType, FunctionType,
+  BuiltinType, IdentifierType, TemplateType, PointerType, ArrayType, StructType, FunctionType,
+  VariableType,
+  TemplateInstantiationType, DotType, SuffixType,
 }
