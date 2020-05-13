@@ -216,6 +216,18 @@ describe('QLLC typechecking', () => {
       `)).toContain(`t not instantiated`);
     });
 
+    test('instantiated template type', () => {
+      return expect(errors(`
+        function t<T>(): void {
+          return;
+        }
+        function main(): byte {
+          var foo = t<byte>;
+          return 0;
+        }
+      `).length).toBe(0);
+    });
+
     test('too deep', () => {
       expect(errors(`
       function t<T>(a: T): T {
