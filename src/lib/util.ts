@@ -46,7 +46,7 @@ class SymbolTable<T> {
    */
   public set(qualifiedIdentifier: string, value: T): void {
     if(this.symbols[qualifiedIdentifier] !== undefined){
-      throw new Error(`identifier redefinition ${qualifiedIdentifier}: ${this.symbols[qualifiedIdentifier]}`);
+      throw new InternalError(`identifier redefinition ${qualifiedIdentifier}: ${this.symbols[qualifiedIdentifier]}`);
     }
     this.symbols[qualifiedIdentifier] = value;
   }
@@ -132,7 +132,7 @@ function indent(s: string, indent: number = 1): string {
   return s.replace(/\n/g, '\n' + indentation);
 }
 
-function duplicates<T>(array: T[]): T[] {
+function duplicates<T>(array: readonly T[]): T[] {
   const duplicates: T[] = [];
   array.forEach((s, index) => {
     if(array.indexOf(s) !== index){
@@ -168,7 +168,7 @@ class HasTags {
    *
    * @param tags the tags to tag this type with.
    */
-  public tag(tags: string[] = []): this {
+  public tag(tags: readonly string[] = []): this {
     this.tags.push(...tags);
     this.tags = unique(this.tags);
     return this;
