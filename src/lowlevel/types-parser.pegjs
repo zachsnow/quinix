@@ -11,8 +11,19 @@ PrimaryType
     / "(" _ t:Type _ ")" { return t; }
 
 PostfixType
-    = t:PrimaryType tail:(_ "[" _ IntLiteral? _ "]")* {
-        return ArrayType.build(t, tail.map((t: any) => t[3] || undefined)).at(location(), text(), options);
+    = t:PrimaryType _ "<" _ ts:TypeList _ ">" {
+        return new TemplateInstantiationType(t, ts).at(location(), text(), options);
+    }
+    / t:PrimaryType tail:(PostfixTypeSuffix*) {
+        return SuffixType.build(t, tail).at(location(), text(), options);
+    }
+
+PostfixTypeSuffix
+    = _ "." _ id:Identifier {
+        return { identifier: id, range: location(), text: text(), options };
+    }
+    / _ "[" _ i:IntLiteral? _ "]" {
+        return { size: i !== null ? i : undefined, range: location(), text: text(), options };
     }
 
 PrefixType
@@ -29,7 +40,10 @@ TypedIdentifier
     = id:Identifier _ ":" _ t:Type { return new TypedIdentifier(id, t); }
 
 FunctionType
-    = "(" _ ts:TypeList? _ ")" _ "=>" _ t:Type { return new FunctionType([], ts || [], t).at(location(), text(), options); }
+    = "(" _ ts:TypeList? _ ")" _ "=>" _ t:Type { return new FunctionType(ts || [], t).at(location(), text(), options); }
 
 TypeList
     = t:Type ts:(_ "," _ Type)* (_ ",")? { return [t, ...ts.map((t: any) => t[3])]; }
+
+TypeVariableList
+    = "<" _ ids:IdentifierList _ ">" { return ids; }

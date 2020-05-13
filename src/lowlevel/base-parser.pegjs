@@ -11,6 +11,9 @@ Identifier
   = !Tokens character:[a-zA-Z_] characters:[a-zA-Z_0-9]* { return character + characters.join(''); }
   / GlobalToken
 
+IdentifierList
+    = id:Identifier ids:(_ "," _ Identifier)* { return [id, ...ids.map((t: any) => t[3])];}
+
 IntLiteral
   = "0x" digits:[0-9a-fA-F]+ { return parseInt(digits.join(''), 16); }
   / "0b" digits:[01]+ { return parseInt(digits.join(''), 2); }

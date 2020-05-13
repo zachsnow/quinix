@@ -1,4 +1,8 @@
-import { LowLevelProgram, Declaration, TypeDeclaration, GlobalDeclaration, FunctionDeclaration, NamespaceDeclaration } from './lowlevel';
+import {
+  LowLevelProgram, Declaration, TypeDeclaration, TemplateTypeDeclaration,
+  GlobalDeclaration,
+  TemplateFunctionDeclaration, FunctionDeclaration, NamespaceDeclaration
+} from './lowlevel';
 import {
   VarStatement,
   AssignmentStatement,
@@ -19,7 +23,11 @@ import {
   CastExpression,
   NewExpression, NewArrayExpression,
   NullExpression,
-  SizeOfExpression,
+  SizeofExpression,
 } from './expressions';
 
-import { Type, TypedIdentifier, BuiltinType,  PointerType, StructType, FunctionType, IdentifierType, ArrayType } from './types';
+import {
+  Type, TypedIdentifier, BuiltinType,  PointerType, StructType,
+  FunctionType, IdentifierType, ArrayType, DotType,
+  TemplateType, TemplateInstantiationType, SuffixType
+} from './types';
