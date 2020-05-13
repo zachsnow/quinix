@@ -378,37 +378,5 @@ describe('Types', () => {
       expect(instantiationType.resolve().toString()).toBe('(byte, * t) => t');
       expect(instantiations.length).toBe(1);
     });
-
-    test('invalid definition: duplicate type variables', () => {
-      const context = new TypeChecker();
-      const instantiations: Type[] = [];
-      var f = new TemplateType(
-        ['A', 'A'],
-        new FunctionType(
-          [new IdentifierType('A')],
-          new IdentifierType('A'),
-        ),
-        [(type) => { type.kindcheck(context, new KindChecker()); instantiations.push(type); }],
-      );
-      f.elaborate(context);
-      f.kindcheck(context, new KindChecker());
-      expect(context.errors.map((e) => e.text)).toContain('duplicate type variables A');
-    });
-
-    test('invalid instantiation: void', () => {
-      const context = new TypeChecker();
-      const instantiations: Type[] = [];
-      var f = new TemplateType(
-        ['A'],
-        new FunctionType(
-          [new IdentifierType('A')],
-          Type.Byte,
-        ),
-        [(type) => { type.kindcheck(context, new KindChecker()); instantiations.push(type); }],
-      );
-      f.instantiate(context, [Type.Void]);
-      expect(context.errors.map((e) => e.text)).toContain('invalid void argument');
-      expect(instantiations.length).toBe(1);
-    });
   });
 });
