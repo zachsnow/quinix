@@ -1,4 +1,4 @@
-import { InternalError, logger, Syntax } from '../lib/util';
+import { InternalError, logger, Syntax, writeOnce } from '../lib/util';
 import {
   ConstantDirective, ReferenceConstant,
   InstructionDirective,
@@ -576,6 +576,8 @@ class WhileStatement extends Statement {
  * A return statement of the form `return;` or `return expression;`.
  */
 class ReturnStatement extends Statement {
+  private returnType!: Type;
+
   public constructor(
     private readonly expression?: Expression,
   ){
@@ -595,6 +597,8 @@ class ReturnStatement extends Statement {
     if(!returnType.isEqualTo(storage.type)){
       this.error(context, `expected ${storage.type}, actual ${returnType}`);
     }
+
+    this.returnType = storage.type;
   }
 
   public compile(compiler: Compiler): void {
@@ -607,6 +611,16 @@ class ReturnStatement extends Statement {
     // to the return register.
     const expression = this.expression || new IntLiteralExpression(0);
     const r = expression.compile(compiler);
+
+    if(!this.returnType.integral){
+      // We need to copy the value pointed to by `r` into the first function parameter called `$return`.
+      const dr = compiler.allocateRegister();
+      compiler.emitIdentifier('$return', 'parameter', dr, true);
+      compiler.emitStaticCopy(dr, r, this.returnType.size, 'copy return data');
+      compiler.emitMove(r, dr);
+      compiler.deallocateRegister(dr);
+    }
+
     compiler.emitReturn(r);
     compiler.deallocateRegister(r);
   }
@@ -622,6 +636,7 @@ class ReturnStatement extends Statement {
     return `return;`;
   }
 }
+writeOnce(ReturnStatement, 'returnType');
 
 class BreakStatement extends Statement {
   public substitute(typeTable: TypeTable){
