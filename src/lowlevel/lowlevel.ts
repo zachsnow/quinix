@@ -388,11 +388,6 @@ class FunctionDeclaration extends Declaration {
       }
     }
 
-    // For now we can't return non-integral types, like old C.
-    if(!isVoid && !this.returnType.integral){
-      this.error(context, `expected integral return type, actual ${this.returnType}`);
-    }
-
     // Update this instantiation with recorded references.
     this.references = nestedContext.references;
   }
@@ -414,6 +409,14 @@ class FunctionDeclaration extends Declaration {
         size: parameter.type.size,
       };
     });
+
+    // If we return a non-integral, we instead pass a pointer to the place to write the return value.
+    if(!this.returnType.integral && !this.returnType.isConvertibleTo(Type.Void)){
+      parameters.unshift({
+        identifier: '$return',
+        size: 1,
+      });
+    }
 
     const compilerClass = this.interrupt ? InterruptCompiler : FunctionCompiler;
     const compiler = new compilerClass(this.qualifiedIdentifier, parameters);
