@@ -373,28 +373,26 @@ function range(i: number, j: number): number[] {
   return l;
 }
 
-type Mixin = new () => any;
-
-function mixin(...mixinCtors: Mixin[]) {
-  const mixed = class Mixed {
-    constructor(){
-      mixinCtors.forEach((mixinCtors) => {
-        const m = new mixinCtors();
-
-        Object.getOwnPropertyNames(m).forEach(name => {
-          (this as any)[name] = m[name];
-        });
-      });
-    }
-  };
-
-  mixinCtors.forEach((mixinCtor) => {
-    Object.getOwnPropertyNames(mixinCtor.prototype).forEach(name => {
-      Object.defineProperty(mixed.prototype, name, Object.getOwnPropertyDescriptor(mixinCtor.prototype, name)!);
-    });
+type Constructor<T> = Function & { prototype: T }
+function writeOnce<K, F extends Constructor<K>>(cls: F, key: string, allowUndefined: boolean = false){
+  const backingKey = `.${key}`;
+  Object.defineProperty(cls.prototype, key, {
+    get: function(){
+      const value = this[backingKey];
+      if(!allowUndefined && value === undefined){
+        throw new InternalError(`write-once property ${key} of ${this.constructor.name} not set`);
+      }
+      return value;
+    },
+    set: function(value){
+      const previousValue = this[backingKey];
+      if(this[backingKey] !== undefined && value !== previousValue){
+        throw new InternalError(`write-once property ${key} of ${this} already set to ${previousValue}, cannot set to ${value}`);
+      }
+      this[backingKey] = value;
+    },
+    enumerable: true,
   });
-
-  return mixed;
 }
 
 export {
