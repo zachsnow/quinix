@@ -1,4 +1,4 @@
-import { Messages, Location, HasLocation, InternalError } from '../lib/util';
+import { Messages, Location } from '../lib/util';
 import { TypeTable, StorageTable } from './tables';
 import { Type } from './types';
 
@@ -8,6 +8,10 @@ type SourceInstantiation = {
   location?: Location;
 }
 
+/**
+ * Represents the source of a context; namely, a list of instantiations
+ * that lead to this point.
+ */
 class Source {
   public constructor(
     public instantiations: SourceInstantiation[] = []
@@ -57,12 +61,11 @@ class TypeChecker extends Messages {
   private instantiationSource: Source = new Source();
   private checks: Check[] = [];
   private recordedReferences: string[] = [];
-  private substitutionTypeTable: TypeTable = new TypeTable();
 
   public constructor(typeTable?: TypeTable, symbolTable?: StorageTable, namespace: string = ''){
     super();
 
-    this.typeTable = typeTable ?? new TypeTable();
+    this.typeTable = typeTable ?? TypeTable.default();
     this.symbolTable = symbolTable ?? new StorageTable();
     this.namespace = namespace;
   }
@@ -88,9 +91,7 @@ class TypeChecker extends Messages {
     // We only add checks via `addCheck`.
     context.checks = this.checks;
 
-    // Copy the current substitution; we only change it via `substitute`.
-    context.substitutionTypeTable = this.substitutionTypeTable;
-
+    // Use the same reference table; only update via `recordReferences`.
     context.recordedReferences = this.recordedReferences;
 
     return context;
@@ -110,10 +111,6 @@ class TypeChecker extends Messages {
     const context = this.extend(undefined, undefined, undefined);
     context.instantiationSource = source;
     return context;
-  }
-
-  public get instantiationIdentity(): string {
-    return this.instantiationSource.identity;
   }
 
   public get instantiationDepth(): number {
@@ -161,19 +158,6 @@ class TypeChecker extends Messages {
       check(this);
     });
   }
-
-  public substitute(substitution: TypeTable){
-    const context = this.extend(undefined, undefined, undefined);
-    context.substitutionTypeTable = substitution;
-    return context;
-  }
-
-  public substitution(identifier: string): Type | undefined {
-    if(!this.substitutionTypeTable || !this.substitutionTypeTable.has(identifier)){
-      return undefined;
-    }
-    return this.substitutionTypeTable.get(identifier);
-  }
 }
 
 class KindChecker {
@@ -217,17 +201,26 @@ class KindChecker {
     }
   }
 
+  private extend(visiteds?: string[], structs?: string[], pointers?: string[], directs?: string[]): KindChecker {
+    const kindchecker = new KindChecker();
+    kindchecker.visiteds = visiteds || [...this.visiteds];
+    kindchecker.structs = structs || [...this.structs];
+    kindchecker.pointers = pointers || [...this.pointers];
+    kindchecker.directs = directs || [...this.directs];
+    return kindchecker;
+  }
+
   /**
    * Returns a new kindchecker that marks relevant identifiers
    * as having passed through a struct.
    */
   public struct(): KindChecker {
-    const kindchecker = new KindChecker();
-    kindchecker.visiteds = [...this.visiteds, ...this.pointers];
-    kindchecker.structs = [...this.structs, ...this.directs];
-    kindchecker.pointers = [];
-    kindchecker.directs = [];
-    return kindchecker;
+    return this.extend(
+      [...this.visiteds, ...this.pointers],
+      [...this.structs, ...this.directs],
+      [],
+      [],
+    );
   }
 
   /**
@@ -235,12 +228,12 @@ class KindChecker {
    * as having passed through a pointer.
    */
   public pointer(): KindChecker {
-    const kindchecker = new KindChecker();
-    kindchecker.visiteds = [...this.visiteds, ...this.structs];
-    kindchecker.structs = [];
-    kindchecker.pointers = [...this.pointers, ...this.directs];
-    kindchecker.directs = [];
-    return kindchecker;
+    return this.extend(
+      [...this.visiteds, ...this.structs],
+      [],
+      [...this.pointers, ...this.directs],
+      [],
+    );
   }
 
   /**
@@ -250,15 +243,12 @@ class KindChecker {
    * @param qualifiedIdentifier the fully qualified identifier to visit.
    */
   public visit(qualifiedIdentifier: string): KindChecker {
-    const kindchecker = new KindChecker();
-    kindchecker.visiteds = [...this.visiteds];
-    kindchecker.structs = [...this.structs];
-    kindchecker.pointers = [...this.pointers];
-    kindchecker.directs = [
-      ...this.directs,
-      qualifiedIdentifier,
-    ];
-    return kindchecker;
+    return this.extend(
+      undefined,
+      undefined,
+      undefined,
+      [ ...this.directs, qualifiedIdentifier ],
+    );
   }
 
   /**
