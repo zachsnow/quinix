@@ -1494,7 +1494,7 @@ class UnaryExpression extends Expression {
 }
 
 class CallExpression extends Expression {
-  private argumentTypes!: readonly Type[];
+  private functionType!: FunctionType;
 
   public constructor(
     private readonly expression: Expression,
@@ -1537,7 +1537,7 @@ class CallExpression extends Expression {
         return Type.Error;
       }
 
-      this.argumentTypes = inferredType.argumentTypes;
+      this.functionType = inferredType;
       return inferredType.returnType;
     }
 
@@ -1559,7 +1559,7 @@ class CallExpression extends Expression {
       });
 
       // The resulting type is the function's return type.
-      this.argumentTypes = cType.argumentTypes;
+      this.functionType = cType;
       return cType.returnType;
     }
 
@@ -1576,7 +1576,7 @@ class CallExpression extends Expression {
 
     // Compile the arguments.
     const args = this.argumentExpressions.map((argumentExpression, i) => {
-      const argumentType = this.argumentTypes[i];
+      const argumentType = this.functionType.argumentTypes[i];
       const r = argumentExpression.compile(compiler, lvalue);
       return {
         register: r,
@@ -1584,6 +1584,26 @@ class CallExpression extends Expression {
         integral: argumentType.integral,
       };
     });
+
+    // If this function call returns a non-integral value (e.g. a struct)
+    // then we allocate storage for it in the current frame and pass the
+    // address of this storage as the first argument. Then when we
+    // compile return statements that return non-integral values, we write
+    // to this location.
+    if(!this.functionType.returnType.integral && !this.functionType.returnType.isConvertibleTo(Type.Void)){
+      if(!(compiler instanceof StorageCompiler)){
+        throw new InternalError(`expected storage when compiling non-integral return`);
+      }
+      const identifier = compiler.generateIdentifier('return');
+      compiler.allocateStorage(identifier, this.functionType.returnType.size);
+      const r = compiler.allocateRegister();
+      compiler.emitIdentifier(identifier, 'local', r, false);
+      args.unshift({
+        register: r,
+        size: 1,
+        integral: true,
+      });
+    }
 
     // Compile the call; this deallocates the argument and target registers.
     return compiler.emitCall(args, tr);
