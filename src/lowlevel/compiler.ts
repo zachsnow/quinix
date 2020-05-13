@@ -94,15 +94,13 @@ type Parameter = {
 type CallArgument = {
   register: Register;
   size: number;
-  isIntegral: boolean;
+  integral: boolean;
 }
 
 class Compiler {
   public static readonly NULL_ERROR = 0xe0000000;
   public static readonly BOUNDS_ERROR = 0xe0000001;
   public static readonly CAPACITY_ERROR = 0xe0000002;
-
-  public instantiationIdentity = '';
 
   /**
    * Holds the stack pointer.
@@ -293,12 +291,13 @@ class Compiler {
     // Push arguments and deallocate them.
     let argSize = 0;
     args.forEach((arg) => {
-      if(arg.isIntegral){
+      if(arg.integral){
         this.emitPush(arg.register, 'push argument');
       }
       else {
+        this.emitPushMany(arg.size, 'allocate argument storage');
         const r = this.allocateRegister();
-        this.emitPushMany(arg.size, r, 'allocate argument storage');
+        this.emitMove(r, Compiler.SP);
         this.emitStaticCopy(r, arg.register, arg.size, 'store argument');
         this.deallocateRegister(r);
       }
@@ -351,7 +350,7 @@ class Compiler {
       new ConstantDirective(tr, new ReferenceConstant(reference)).comment('allocator'),
     ]);
 
-    return this.emitCall([{ register: sr, size: 1, isIntegral: true }], tr, comment);
+    return this.emitCall([{ register: sr, size: 1, integral: true }], tr, comment);
   }
 
   /**
@@ -365,7 +364,7 @@ class Compiler {
     this.emit([
       new ConstantDirective(tr, new ReferenceConstant(reference)).comment('deallocator'),
     ]);
-    return this.emitCall([{ register: sr, size: 1, isIntegral: true }], tr, comment);
+    return this.emitCall([{ register: sr, size: 1, integral: true }], tr, comment);
   }
 
   protected emitPush(r: Register, comment: string = ''): void {
@@ -410,11 +409,7 @@ class Compiler {
     this.emitIncrement(Compiler.SP, n, comment);
   }
 
-  protected emitPushMany(n: number, r: Register, comment: string = ''): void {
-    this.emitMove(r, Compiler.SP, comment);
-    this.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.SUB, r, Compiler.SP, Compiler.ONE)),
-    ]);
+  protected emitPushMany(n: number, comment: string = ''): void {
     this.emit(this.pushMany(n));
   }
 
@@ -794,8 +789,6 @@ class GlobalCompiler extends StorageCompiler {
   private temporaries: { [identifier: string ]: number } = {};
   private temporaryReference: Reference;
 
-  public readonly instantiationIdentity = '';
-
   public constructor(identifier: string){
     super(identifier);
 
@@ -859,21 +852,24 @@ class FunctionCompiler extends StorageCompiler {
   private readonly parameterStorage: number = 0;
   private parameters: { [ identifier: string]: number } = {};
 
-  public readonly instantiationIdentity: string;
-
-  public constructor(identifier: string, parameters: Parameter[], instantiationIdentity: string){
+  public constructor(identifier: string, parameters: Parameter[]){
     super(identifier);
 
     // Find location of parameters.
+    //
+    // Example: Point, byte, Point:
+    // p.y
+    // p.x
+    // b
+    // p.y
+    // p.x
+    // ret
     this.parameterStorage = parameters.reduce((size, parameter) => parameter.size + size, 0);
     let parameterOffset = 0;
     parameters.forEach((parameter) => {
-      this.parameters[parameter.identifier] = this.parameterStorage - parameterOffset - 1;
       parameterOffset += parameter.size;
+      this.parameters[parameter.identifier] = this.parameterStorage - parameterOffset;
     });
-
-    // We compile function references per-instantiation identity.
-    this.instantiationIdentity = instantiationIdentity;
   }
 
   /**
