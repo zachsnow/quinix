@@ -44,7 +44,7 @@ function _merge_blocks(): void {
 }
 
 // Allocate the given number of bytes.
-function alloc(size: byte): * byte {
+.export function alloc(size: byte): * byte {
   if(!blocks){
     _init();
   }
@@ -84,7 +84,7 @@ function alloc(size: byte): * byte {
 }
 
 // Deallocate the given pointer.
-function dealloc(pointer: * byte): void {
+.export function dealloc(pointer: * byte): void {
   if(!pointer){
     return;
   }

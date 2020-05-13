@@ -17,7 +17,7 @@ describe('QLLC parsing', () => {
     };
   }
 
-  describe('Parse errors', () => {
+  describe('Syntax errors', () => {
     test('no return type', () => {
       expect(parseError(`
         function main(){
@@ -71,6 +71,12 @@ describe('QLLC parsing', () => {
         };
       `).declarations.length).toBe(5);
     });
+
+    test('template function', () => {
+      expect(parse(`
+        function foo<T>(t: T): void {}
+      `).declarations.length).toBe(1);
+    });
   });
 });
 
@@ -86,7 +92,15 @@ describe('QLLC typechecking', () => {
 
   function errors(programText: string): string[] {
     const program: LowLevelProgram = parse(programText);
-    return program.typecheck().errors.map((error) => error.text);
+    try {
+      return program.typecheck().errors.map((error) => error.text);
+    }
+    catch(e){
+      if(e.name === 'SyntaxError'){
+        return [e.message];
+      }
+      throw e;
+    }
   }
 
   test('void does not need return', () => {
@@ -188,6 +202,41 @@ describe('QLLC typechecking', () => {
           return ps[0];
         }
       `)).toContain(`new array initializer expected byte[0x02], actual byte[0x03]`);
+    });
+
+    test('uninstantiated template type', () => {
+      return expect(errors(`
+        function t<T>(): void {
+          return;
+        }
+        function main(): byte {
+          var foo = t;
+          return 0;
+        }
+      `)).toContain(`t not instantiated`);
+    });
+
+    test('instantiated template type', () => {
+      return expect(errors(`
+        function t<T>(): void {
+          return;
+        }
+        function main(): byte {
+          var foo = t<byte>;
+          return 0;
+        }
+      `).length).toBe(0);
+    });
+
+    test('too deep', () => {
+      expect(errors(`
+      function t<T>(a: T): T {
+        return *t(&a);
+      }
+      function main(): byte {
+        return t(0);
+      }
+      `).join('\n')).toContain('too many instantiations');
     });
   });
 
@@ -493,6 +542,27 @@ describe('QLLC end-to-end', () => {
 
       function fn(a: byte, b: byte, c: byte): byte {
         return c;
+      }
+    `);
+  });
+
+  test('call - mixed args', () => {
+    return expectRunToBe(103, `
+      type Point = struct {
+        x: byte;
+        y: byte;
+      };
+
+      function main(): byte {
+        var p: Point;
+        p.x = 103;
+        p.y = 104;
+        var i = 10;
+        return fn(&i, p);
+      }
+
+      function fn(a: * byte, p: Point): byte {
+        return p.x;
       }
     `);
   });

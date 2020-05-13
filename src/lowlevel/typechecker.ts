@@ -1,21 +1,71 @@
-import { Messages, Location, HasLocation } from '../lib/util';
+import { Messages, Location } from '../lib/util';
 import { TypeTable, StorageTable } from './tables';
+import { Type } from './types';
 
+type SourceInstantiation = {
+  identity: string;
+  message: string;
+  location?: Location;
+}
+
+/**
+ * Represents the source of a context; namely, a list of instantiations
+ * that lead to this point.
+ */
+class Source {
+  public constructor(
+    public instantiations: SourceInstantiation[] = []
+  ){}
+
+  public extend(identity: string, message: string, location?: Location){
+    return new Source([...this.instantiations, {
+      identity,
+      message,
+      location,
+    }]);
+  }
+
+  public get depth(): number {
+    return this.instantiations.length;
+  }
+
+  public get identity(): string {
+    if(!this.depth){
+      return '';
+    }
+    return this.instantiations[this.depth - 1].identity;
+  }
+
+  public toString(){
+    return this.instantiations.map((instantiation) => {
+      return instantiation.location ?
+        `at: ${instantiation.location.toString()} ${instantiation.message}` :
+        instantiation.message;
+    }).join('\n  ');
+  }
+}
+
+type Check = (context: TypeChecker) => void;
 
 /**
  * Has environment information for typechecking; also tracks errors.
  */
 class TypeChecker extends Messages {
+  public static MAX_INSTANTIATION_DEPTH = 10;
+
   public readonly namespace: string;
   public readonly typeTable: TypeTable;
   public readonly symbolTable: StorageTable;
 
   private loopCount: number = 0;
+  private instantiationSource: Source = new Source();
+  private checks: Check[] = [];
+  private recordedReferences: string[] = [];
 
   public constructor(typeTable?: TypeTable, symbolTable?: StorageTable, namespace: string = ''){
     super();
 
-    this.typeTable = typeTable ?? new TypeTable();
+    this.typeTable = typeTable ?? TypeTable.default();
     this.symbolTable = symbolTable ?? new StorageTable();
     this.namespace = namespace;
   }
@@ -27,11 +77,23 @@ class TypeChecker extends Messages {
       namespace ?? this.namespace,
     );
 
-    // Always copy the messages.
+    // Always use the same messages.
     context.messages = this.messages;
 
     // We only enter / exit loops via `loop()`.
     context.loopCount = this.loopCount;
+
+    // We only enter new source contexts via `fromSource`.
+    // This is for making it easier to understand instantiations.
+    context.instantiationSource = this.instantiationSource;
+
+    // Always use the same checks, because we never want to discard one.
+    // We only add checks via `addCheck`.
+    context.checks = this.checks;
+
+    // Use the same reference table; only update via `recordReferences`.
+    context.recordedReferences = this.recordedReferences;
+
     return context;
   }
 
@@ -45,8 +107,56 @@ class TypeChecker extends Messages {
     return context;
   }
 
+  public fromSource(source: Source): TypeChecker {
+    const context = this.extend(undefined, undefined, undefined);
+    context.instantiationSource = source;
+    return context;
+  }
+
+  public get instantiationDepth(): number {
+    return this.instantiationSource.depth;
+  }
+
+  public get source(): Source {
+    return this.instantiationSource;
+  }
+
+  public recordReferences(): TypeChecker {
+    const context = this.extend(undefined, undefined, undefined);
+    context.recordedReferences = [];
+    return context;
+  }
+
+  public reference(ref: string){
+    this.recordedReferences.push(ref);
+  }
+
+  public get references(): string[] {
+    return this.recordedReferences;
+  }
+
+  public error(message: string, location?: Location){
+    const prefix = this.source.toString();
+    super.error(prefix ? `\n  ${prefix}\n  ${message}` : message, location);
+  }
+
+  public warning(message: string, location?: Location){
+    const prefix = this.source.toString();
+    super.warning(prefix ? `\n  ${prefix}\n  ${message}` : message, location);
+  }
+
   public get inLoop(): boolean {
     return this.loopCount > 0;
+  }
+
+  public addCheck(check: Check): void {
+    this.checks.push(check);
+  }
+
+  public check(): void {
+    this.checks.forEach((check) => {
+      check(this);
+    });
   }
 }
 
@@ -78,20 +188,25 @@ class KindChecker {
   private directs: string[] = [];
 
   /**
-   * Returns a new kindchecker that has directly visited the given
-   * fully qualified identifier.
+   * Instantiate a new kindchecker for checking the validity of
+   * a type definition. If no type is being defined, the kindchecker
+   * doesn't actually do anything.
    *
-   * @param qualifiedIdentifier the fully qualified identifier to visit.
+   * @param qualifiedIdentifier the qualified identifier being *defined*;
+   * optional.
    */
-  public visit(qualifiedIdentifier: string): KindChecker {
+  public constructor(qualifiedIdentifier?: string){
+    if(qualifiedIdentifier){
+      this.directs.push(qualifiedIdentifier);
+    }
+  }
+
+  private extend(visiteds?: string[], structs?: string[], pointers?: string[], directs?: string[]): KindChecker {
     const kindchecker = new KindChecker();
-    kindchecker.visiteds = [...this.visiteds];
-    kindchecker.structs = [...this.structs];
-    kindchecker.pointers = [...this.pointers];
-    kindchecker.directs = [
-      ...this.directs,
-      qualifiedIdentifier,
-    ];
+    kindchecker.visiteds = visiteds || [...this.visiteds];
+    kindchecker.structs = structs || [...this.structs];
+    kindchecker.pointers = pointers || [...this.pointers];
+    kindchecker.directs = directs || [...this.directs];
     return kindchecker;
   }
 
@@ -100,12 +215,12 @@ class KindChecker {
    * as having passed through a struct.
    */
   public struct(): KindChecker {
-    const kindchecker = new KindChecker();
-    kindchecker.visiteds = [...this.visiteds, ...this.pointers];
-    kindchecker.structs = [...this.structs, ...this.directs];
-    kindchecker.pointers = [];
-    kindchecker.directs = [];
-    return kindchecker;
+    return this.extend(
+      [...this.visiteds, ...this.pointers],
+      [...this.structs, ...this.directs],
+      [],
+      [],
+    );
   }
 
   /**
@@ -113,12 +228,27 @@ class KindChecker {
    * as having passed through a pointer.
    */
   public pointer(): KindChecker {
-    const kindchecker = new KindChecker();
-    kindchecker.visiteds = [...this.visiteds, ...this.structs];
-    kindchecker.structs = [];
-    kindchecker.pointers = [...this.pointers, ...this.directs];
-    kindchecker.directs = [];
-    return kindchecker;
+    return this.extend(
+      [...this.visiteds, ...this.structs],
+      [],
+      [...this.pointers, ...this.directs],
+      [],
+    );
+  }
+
+  /**
+   * Returns a new kindchecker that has directly visited the given
+   * fully qualified identifier.
+   *
+   * @param qualifiedIdentifier the fully qualified identifier to visit.
+   */
+  public visit(qualifiedIdentifier: string): KindChecker {
+    return this.extend(
+      undefined,
+      undefined,
+      undefined,
+      [ ...this.directs, qualifiedIdentifier ],
+    );
   }
 
   /**
@@ -137,8 +267,9 @@ class KindChecker {
   /**
    * Returns `true` if the given fully qualified identifier
    * is *recursively* valid in this kindchecker; note that this
-   * is not just the inverse of `isInvalid` -- it must have
-   * already appeared.
+   * is not just the inverse of `isInvalid` -- it must appear
+   * recursively (that is, it must be the type that this kindchecker
+   * is analyzing).
    *
    * @param qualifiedIdentifier the fully qualified identifier
    * to check for recursive validity.
@@ -148,4 +279,4 @@ class KindChecker {
   }
 }
 
-export { TypeChecker, KindChecker };
+export { TypeChecker, KindChecker, Source };

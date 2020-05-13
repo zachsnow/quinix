@@ -7,8 +7,11 @@ namespace kernel {
       ip: byte;
     };
 
+    global interrupt_state: * state = <unsafe * state>0x2;
+
     type task = struct {
       id: byte;
+      killed: bool;
       state: state;
       next: * task;
     };
@@ -46,7 +49,7 @@ namespace kernel {
     }
 
     .interrupt function _timer_interrupt(): void {
-      schedule_task(<unsafe * state>0x2);
+      schedule_task(interrupt_state);
     }
 
     global id: byte = 0;
@@ -56,6 +59,21 @@ namespace kernel {
       task->id = id;
       id = id + 1;
       return task;
+    }
+
+    function destroy_task(task: * task): void {
+      if(!task){
+        panic('scheduler: destroy: no task');
+      }
+
+      std::ilist::remove(&tasks, task);
+      // Schedule next task so that we don't try to return to this task.
+      *interrupt_state = next_task->state;
+    }
+
+    function enqueue_task(task: * task): bool {
+      task->next = tasks;
+      tasks = task;
     }
 
     function init(): void {
@@ -70,8 +88,7 @@ namespace kernel {
 
       // Configure hardware timer interrupt handler.
       support::interrupt(0x2, _timer_interrupt);
-      var timerControl = <unsafe * byte>0x300;
-      *timerControl = 100;
+      *peripherals::timer = 100;
     }
   }
 }

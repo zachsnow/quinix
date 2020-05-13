@@ -1,4 +1,4 @@
-import { InternalError, logger, mixin, HasTags, HasLocation } from '../lib/util';
+import { InternalError, logger, Syntax } from '../lib/util';
 import {
   ConstantDirective, ReferenceConstant,
   InstructionDirective,
@@ -8,6 +8,7 @@ import {
   ImmediateConstant,
 } from '../assembly/assembly';
 import { indent } from '../lib/util';
+import { TypeTable } from './tables';
 import { Type, TypedStorage, PointerType, ArrayType } from './types';
 import { Expression, IntLiteralExpression } from './expressions';
 import { Compiler, StorageCompiler, FunctionCompiler } from './compiler';
@@ -19,8 +20,25 @@ const log = logger('lowlevel:statements');
 ///////////////////////////////////////////////////////////////////////
 // Statements.
 ///////////////////////////////////////////////////////////////////////
-abstract class Statement extends mixin(HasTags, HasLocation) {
+abstract class Statement extends Syntax {
+  /**
+   * Apply the given type substitution to this statement, returning a
+   * new statement. Does not modify this statement.
+   *
+   * @param typeTable the type substitution to apply.
+   */
+  public abstract substitute(typeTable: TypeTable): Statement;
+
+  /**
+   *
+   * @param context
+   */
   public abstract typecheck(context: TypeChecker): void;
+
+  /**
+   *
+   * @param compiler
+   */
   public abstract compile(compiler: Compiler): void;
 
   /**
@@ -36,17 +54,21 @@ abstract class Statement extends mixin(HasTags, HasLocation) {
     s.compile(compiler);
     return new AssemblyProgram(compiler.compile());
   }
-
 }
-interface Statement extends HasTags, HasLocation {}
-
 
 class BlockStatement extends Statement {
-  private statements: Statement[] = [];
-
-  public constructor(statements: Statement[]){
+  public constructor(
+    private readonly statements: readonly Statement[],
+  ){
     super();
-    this.statements = statements;
+  }
+
+  public substitute(bindings: TypeTable): BlockStatement {
+    return new BlockStatement(
+      this.statements.map((statement) => {
+        return statement.substitute(bindings);
+      }),
+    ).at(this.location);
   }
 
   public typecheck(context: TypeChecker): void {
@@ -83,16 +105,22 @@ class BlockStatement extends Statement {
 }
 
 class VarStatement extends Statement {
-  private identifier: string;
-  private type?: Type;
-  private concreteType?: Type;
-  private expression?: Expression;
+  private inferredType!: Type;
 
-  public constructor(identifier: string, type?: Type, expression?: Expression){
+  public constructor(
+    private readonly identifier: string,
+    private readonly type?: Type,
+    private readonly expression?: Expression,
+  ){
     super();
-    this.identifier = identifier;
-    this.type = type;
-    this.expression = expression;
+  }
+
+  public substitute(typeTable: TypeTable): VarStatement {
+    return new VarStatement(
+      this.identifier,
+      this.type ? this.type.substitute(typeTable) : undefined,
+      this.expression ? this.expression.substitute(typeTable): undefined,
+    ).at(this.location);
   }
 
   public typecheck(context: TypeChecker): void {
@@ -103,66 +131,57 @@ class VarStatement extends Statement {
 
     // Check that the type of the variable we are defining is valid.
     if(this.type){
+      this.type.elaborate(context);
       this.type.kindcheck(context, new KindChecker());
+      this.inferredType = this.type.evaluate();
     }
 
     // Check that the expression has the same type as the variable we are defining.
     // We allow conversion for easier use of literals.
     if(this.expression){
       const actualType = this.expression.typecheck(context, this.type);
-      if(this.type && !this.type.isConvertibleTo(actualType, context)){
+      if(this.type && !actualType.isConvertibleTo(this.type)){
         this.error(context, `expected ${this.type}, actual ${actualType}`);
       }
       else if(!this.type) {
-        this.type = actualType;
+        this.inferredType = actualType;
       }
     }
 
-    // At this point we should either have a defined type or an inferred type;
-    // satisfy the tye checker.
-    if(!this.type){
-      throw new InternalError();
-    }
-
+    // At this point we should have an inferred type or an error.
+    //
     // Update the symbol table so subsequent statements in this block
     // (and in nested blocks) can use it.
-    context.symbolTable.set(this.identifier, new TypedStorage(this.type, 'local'));
-
-    // Save the concrete type so we can determine how much storage to allocate;
-    // since we don't always have an expression we have to save this manuall.
-    this.concreteType = this.type.resolve(context);
+    context.symbolTable.set(this.identifier, new TypedStorage(this.inferredType, 'local'));
   }
 
   public compile(compiler: Compiler): void {
-    // We can only compile if we've completed typechecking.
-    if(this.concreteType === undefined){
-      throw new InternalError(`${this} has not been typechecked`);
-    }
-
     // We can only compile a return statement when we are compiling a function.
     if(!(compiler instanceof StorageCompiler)){
       throw new InternalError(`unable to compile ${this} outside of a function`);
     }
 
     // Create storage for this variable.
-    compiler.allocateStorage(this.identifier, this.concreteType.size);
+    compiler.allocateStorage(this.identifier, this.inferredType.size);
 
     // Local declarations without initializers zero out the space.
     if(!this.expression){
       const vr = compiler.allocateRegister();
       const r = compiler.allocateRegister();
+
       compiler.emitIdentifier(this.identifier, 'local', vr, false);
       compiler.emit([
         new ConstantDirective(r, new ImmediateConstant(0)),
       ]);
-      compiler.emitStaticStore(vr, r, this.concreteType.size, 'zero out');
+      compiler.emitStaticStore(vr, r, this.inferredType.size, 'zero out');
 
-      if(this.concreteType instanceof ArrayType && this.concreteType.length !== undefined){
+      if(this.inferredType instanceof ArrayType && this.inferredType.length !== undefined){
         compiler.emit([
-          new ConstantDirective(r, new ImmediateConstant(this.concreteType.length)).comment('array size'),
+          new ConstantDirective(r, new ImmediateConstant(this.inferredType.length)).comment('array size'),
         ]);
         compiler.emitStaticStore(vr, r, 2, 'initialize array capacity and size');
       }
+
       compiler.deallocateRegister(vr);
       compiler.deallocateRegister(r);
       return;
@@ -175,7 +194,7 @@ class VarStatement extends Statement {
     compiler.emitIdentifier(this.identifier, 'local', r, false);
 
     // Store to that address.
-    if(this.concreteType.isIntegral()){
+    if(this.inferredType.integral){
       compiler.emitStaticStore(r, er, 1, `${this}`);
     }
     else {
@@ -187,21 +206,34 @@ class VarStatement extends Statement {
   }
 
   public toString(){
-    if(this.expression){
+    if(this.expression && this.type){
       return `var ${this.identifier}: ${this.type} = ${this.expression};`;
     }
-    return `var ${this.identifier}: ${this.type};`
+    else if(this.expression){
+      return `var ${this.identifier} = ${this.expression}`;
+    }
+    else if(this.type){
+      return `var ${this.identifier}: ${this.type};`
+    }
+    else {
+      throw new InternalError(`var statement with neither type nor expression`);
+    }
   }
 }
 
 class AssignmentStatement extends Statement {
-  private assignable: Expression;
-  private expression: Expression;
-
-  public constructor(assignable: Expression, expression: Expression){
+  public constructor(
+    private readonly assignable: Expression,
+    private readonly expression: Expression,
+  ){
     super();
-    this.assignable = assignable;
-    this.expression = expression;
+  }
+
+  public substitute(typeTable: TypeTable): AssignmentStatement {
+    return new AssignmentStatement(
+      this.assignable.substitute(typeTable),
+      this.expression.substitute(typeTable),
+    ).at(this.location);
   }
 
   public typecheck(context: TypeChecker): void {
@@ -210,12 +242,12 @@ class AssignmentStatement extends Statement {
     const actualType = this.expression.typecheck(context, expectedType);
 
     // Allow conversion.
-    if(!expectedType.isConvertibleTo(actualType, context)){
+    if(!expectedType.isConvertibleTo(actualType)){
       this.error(context, `expected ${expectedType}, actual ${actualType}`);
     }
 
     // Verify that the left side is indeed assignable.
-    if(!this.assignable.isAssignable){
+    if(!this.assignable.assignable){
       this.error(context, `expected ${this.assignable} to be assignable`);
     }
 
@@ -234,7 +266,7 @@ class AssignmentStatement extends Statement {
     // of the array.
     this.assignable.compileAssignmentCheck(compiler, ar, er);
 
-    if(this.assignable.concreteType.isIntegral()){
+    if(this.assignable.concreteType.integral){
       compiler.emitStaticStore(ar, er, 1, `${this}`);
     }
     else {
@@ -251,19 +283,25 @@ class AssignmentStatement extends Statement {
 }
 
 class ExpressionStatement extends Statement {
-  private expression: Expression;
   private type?: Type;
 
-  public constructor(expression: Expression){
+  public constructor(
+    private readonly expression: Expression,
+  ){
     super();
-    this.expression = expression;
+  }
+
+  public substitute(typeTable: TypeTable): ExpressionStatement {
+    return new ExpressionStatement(
+      this.expression.substitute(typeTable),
+    ).at(this.location).tag(this.tags);
   }
 
   public typecheck(context: TypeChecker): void {
     const type = this.expression.typecheck(context);
 
-    if(!type.isConvertibleTo(Type.Void, context)){
-      log(`expected ${Type.Void}, actual ${type}`);
+    if(!type.isConvertibleTo(Type.Void)){
+      this.lint(context, `expected ${Type.Void}, actual ${type}`);
     }
 
     this.type = type;
@@ -287,16 +325,20 @@ class ExpressionStatement extends Statement {
 }
 
 class IfStatement extends Statement {
-  private condition: Expression;
-  private ifBranch: BlockStatement;
-  private elseBranch?: BlockStatement;
-
-  public constructor(condition: Expression, ifBranch: BlockStatement, elseBranch?: BlockStatement){
+  public constructor(
+    private readonly condition: Expression,
+    private readonly ifBranch: BlockStatement,
+    private readonly elseBranch?: BlockStatement,
+  ){
     super();
+  }
 
-    this.condition = condition;
-    this.ifBranch = ifBranch;
-    this.elseBranch = elseBranch;
+  public substitute(typeTable: TypeTable): IfStatement {
+    return new IfStatement(
+      this.condition.substitute(typeTable),
+      this.ifBranch.substitute(typeTable),
+      this.elseBranch ? this.elseBranch.substitute(typeTable) : undefined,
+    ).at(this.location);
   }
 
   public typecheck(context: TypeChecker): void {
@@ -304,7 +346,7 @@ class IfStatement extends Statement {
 
     // Integer conditions -- numbers, pointers, function pointers. We exclude
     // arrays even though they are integral because they are always truthy.
-    if(!conditionType.isIntegral(context)){
+    if(!conditionType.integral){
       this.error(context, `expected integral type, actual ${conditionType}`);
     }
 
@@ -366,7 +408,7 @@ class IfStatement extends Statement {
     return `if(${this.condition}) ${this.ifBranch} else ${this.elseBranch}`;
   }
 
-  public static build(condition: Expression, ifBlock: BlockStatement, elseIfTail: [Expression, BlockStatement][], elseBlock?: BlockStatement){
+  public static build(condition: Expression, ifBlock: BlockStatement, elseIfTail: readonly [Expression, BlockStatement][], elseBlock?: BlockStatement){
     const elseTail = elseIfTail.reduce((elseBlock, [ condition, ifBlock ]) => {
       return new BlockStatement([ new IfStatement(condition, ifBlock, elseBlock) ]);
     }, elseBlock);
@@ -376,17 +418,22 @@ class IfStatement extends Statement {
 }
 
 class ForStatement extends Statement {
-  private initializer: Statement;
-  private condition: Expression;
-  private update: Statement;
-  private block: BlockStatement;
-
-  public constructor(initializer: Statement, condition: Expression, update: Statement, block:BlockStatement){
+  public constructor(
+    private readonly initializer: Statement,
+    private readonly condition: Expression,
+    private readonly update: Statement,
+    private readonly block: BlockStatement,
+  ){
     super();
-    this.initializer = initializer;
-    this.condition = condition;
-    this.update = update;
-    this.block = block;
+  }
+
+  public substitute(typeTable: TypeTable): ForStatement {
+    return new ForStatement(
+      this.initializer.substitute(typeTable),
+      this.condition.substitute(typeTable),
+      this.update.substitute(typeTable),
+      this.block.substitute(typeTable),
+    ).at(this.location);
   }
 
   public typecheck(context: TypeChecker): void {
@@ -395,7 +442,7 @@ class ForStatement extends Statement {
     const conditionType = this.condition.typecheck(context);
 
     // Integer conditions and pointer conditions are allowed.
-    if(!conditionType.isIntegral(context)){
+    if(!conditionType.integral){
       this.error(context, `expected integral type, actual ${conditionType}`);
     }
 
@@ -456,21 +503,25 @@ class ForStatement extends Statement {
 }
 
 class WhileStatement extends Statement {
-  private condition: Expression;
-  private block: BlockStatement;
-
-  public constructor(condition: Expression, block: BlockStatement){
+  public constructor(
+    private readonly condition: Expression,
+    private readonly block: BlockStatement,
+  ){
     super();
+  }
 
-    this.condition = condition;
-    this.block = block;
+  public substitute(typeTable: TypeTable): WhileStatement {
+    return new WhileStatement(
+      this.condition.substitute(typeTable),
+      this.block.substitute(typeTable),
+    ).at(this.location);
   }
 
   public typecheck(context: TypeChecker): void {
     const conditionType = this.condition.typecheck(context);
 
     // Integer conditions and pointer conditions are allowed.
-    if(!conditionType.isIntegral(context)){
+    if(!conditionType.integral){
       this.error(context, `expected integral type, actual ${conditionType}`);
     }
 
@@ -525,11 +576,16 @@ class WhileStatement extends Statement {
  * A return statement of the form `return;` or `return expression;`.
  */
 class ReturnStatement extends Statement {
-  private expression?: Expression;
-
-  public constructor(expression?: Expression){
+  public constructor(
+    private readonly expression?: Expression,
+  ){
     super();
-    this.expression = expression;
+  }
+
+  public substitute(typeTable: TypeTable): ReturnStatement {
+    return new ReturnStatement(
+      this.expression ? this.expression.substitute(typeTable) : undefined,
+    ).at(this.location);
   }
 
   public typecheck(context: TypeChecker): void {
@@ -568,8 +624,8 @@ class ReturnStatement extends Statement {
 }
 
 class BreakStatement extends Statement {
-  public constructor(){
-    super();
+  public substitute(typeTable: TypeTable){
+    return this;
   }
 
   public typecheck(context: TypeChecker): void {
@@ -604,16 +660,21 @@ class BreakStatement extends Statement {
  * A delete statement of the form `delete expression;`.
  */
 class DeleteStatement extends Statement {
-  private expression: Expression;
-
-  public constructor(expression: Expression){
+  public constructor(
+    private readonly expression: Expression,
+  ){
     super();
-    this.expression = expression;
+  }
+
+  public substitute(typeTable: TypeTable): DeleteStatement {
+    return new DeleteStatement(
+      this.expression.substitute(typeTable),
+    ).at(this.location);
   }
 
   public typecheck(context: TypeChecker): void {
     const type = this.expression.typecheck(context);
-    const cType = type.resolve(context);
+    const cType = type.resolve();
 
     if(!(cType instanceof PointerType) && !(cType instanceof ArrayType)){
       this.error(context, `expected array or pointer type, actual ${type}`);

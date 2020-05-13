@@ -17,39 +17,39 @@ namespace kernel {
     // Debug output.
     //
     .constant global debug_output_identifier: byte = 0x1;
-    .constant global debug_output_ptr: * buffered_peripheral = null;
+    .constant global debug_output: * buffered_peripheral = null;
 
     function _init_debug_output(entry: * peripheral_table_entry): void {
-      debug_output_ptr = <unsafe * buffered_peripheral>entry->address;
+      debug_output = <unsafe * buffered_peripheral>entry->address;
     }
 
     //
     // Debug input.
     //
     global debug_input_identifier: byte = 0x2;
-    global debug_input_ptr: * buffered_peripheral = null;
+    global debug_input: * buffered_peripheral = null;
 
     function _init_debug_input(entry: * peripheral_table_entry): void {
-      debug_input_ptr = <unsafe * buffered_peripheral>entry->address;
+      debug_input = <unsafe * buffered_peripheral>entry->address;
     }
 
     //
     // Debug file acccess.
     //
     global debug_file_identifier: byte = 0x11;
-    global debug_file_ptr: * buffered_peripheral = null;
+    global debug_file: * buffered_peripheral = null;
 
     function _init_debug_file(entry: * peripheral_table_entry): void {
-      debug_file_ptr = <unsafe * buffered_peripheral>entry->address;
+      debug_file = <unsafe * buffered_peripheral>entry->address;
     }
 
     //
     // Hardware timer.
     global timer_identifier: byte = 0x10;
-    global timer_ptr: * byte = null;
+    global timer: * byte = null;
 
     function _init_timer(entry: * peripheral_table_entry): void {
-      timer_ptr = entry->address;
+      timer = entry->address;
     }
 
     //
@@ -80,7 +80,7 @@ namespace kernel {
     ];
 
     // Find and initialize the peripheral.
-    function init_peripheral(entry: init_table_entry): void{
+    function init_peripheral(entry: init_table_entry): void {
       for(var i = 0; i < len peripheral_table; i = i + 1){
         var peripheral = peripheral_table[i];
         if(peripheral.identifier == entry.identifier){

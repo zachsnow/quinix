@@ -1,7 +1,7 @@
 import { Instruction, Register, Operation, Program, Immediate } from '../vm/instructions';
 import { Address } from '../lib/base-types';
 import { VM } from '../vm/vm';
-import { Messages, SymbolTable, HasLocation, stringToCodePoints, parseFile } from '../lib/util';
+import { Messages, SymbolTable, Syntax, stringToCodePoints, parseFile } from '../lib/util';
 import { parse } from './parser';
 
 class Assembler extends Messages {
@@ -10,15 +10,21 @@ class Assembler extends Messages {
 }
 
 /**
- * A label introduced by label or data directive, and used by a constant
- * directives. Labels must be unique across a program.
+ * A reference introduced by label or data directive, and used by a constant
+ * directives. References must be unique across a program.
+ *
+ * References take 2 forms, unquoted (@some_qualified::label) and
+ * quoted (@`some label that can contain anything!`).
  */
 class Reference {
-  private readonly name: string;
+  private static QUALIFIED_IDENTIFIER_REGEX = /^[a-zA-Z_][a-zA-Z_0-9\$]+(::[a-zA-Z_][a-zA-Z_0-9\$]+)*$/;
 
-  public constructor(name: string){
-    this.name = name;
-  }
+  public constructor(
+    /**
+     * The name of the reference.
+     */
+    private readonly name: string,
+  ){}
 
   public preassemble(assembler: Assembler, ip: Address): void {
     assembler.addressTable.set(this.name, ip);
@@ -35,6 +41,10 @@ class Reference {
   }
 
   public toString(){
+    // Try to output "nice", unquoted references.
+    if(!Reference.QUALIFIED_IDENTIFIER_REGEX.exec(this.name)){
+      return "@`" + this.name + "`";
+    }
     return `@${this.name}`;
   }
 }
@@ -42,7 +52,7 @@ class Reference {
 /**
  * Base class for directives.
  */
-abstract class Directive extends HasLocation {
+abstract class Directive extends Syntax {
   private _comment: string = '';
 
   /**
@@ -106,7 +116,7 @@ abstract class Directive extends HasLocation {
 /**
  * Base class for data associated with a `data` directive.
  */
-abstract class Data extends HasLocation {
+abstract class Data extends Syntax {
   public abstract assemble(assembler: Assembler): Instruction[];
 
   public get size(){
@@ -257,7 +267,7 @@ class DataDirective extends Directive {
 /**
  * Base class for constants associated with a `constant` directive.
  */
-abstract class Constant extends HasLocation {
+abstract class Constant extends Syntax {
   public abstract assemble(assembler: Assembler): Instruction[];
 }
 

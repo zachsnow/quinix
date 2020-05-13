@@ -12,8 +12,10 @@ PrimaryExpression
     / StructExpression
     / "(" e:Expression ")" { return e; }
     / NullToken { return new NullExpression().at(location(), text(), options); }
-    / SizeofToken _ t:Type { return new SizeOfExpression(t).at(location(), text(), options); }
-    / id:QualifiedIdentifier { return new IdentifierExpression(id).at(location(), text(), options); }
+    / SizeofToken _ t:Type { return new SizeofExpression(t).at(location(), text(), options); }
+    / id:QualifiedIdentifier _ typeArgs:TypeArgumentList? {
+        return new IdentifierExpression(id, typeArgs || []).at(location(), text(), options);
+    }
 
 ExpressionList
     = e:Expression es:(_ "," _ Expression)* (_ ",")? { return [e, ...es.map((e: any) => e[3])]; }
@@ -141,3 +143,6 @@ MemberExpressionList
             return { identifier: m[3], expression: m[7] };
         }) ];
     }
+
+TypeArgumentList
+    = "<" _ ts:TypeList _ ">" { return ts; }

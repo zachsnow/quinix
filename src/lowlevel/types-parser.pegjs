@@ -8,10 +8,22 @@ PrimaryType
     = StructType
     / FunctionType
     / id:QualifiedIdentifier { return IdentifierType.build(id).at(location(), text(), options); }
+    / "(" _ t:Type _ ")" { return t; }
 
 PostfixType
-    = t:PrimaryType tail:(_ "[" _ IntLiteral? _ "]")* {
-        return ArrayType.build(t, tail.map((t: any) => t[3] || undefined)).at(location(), text(), options);
+    = t:PrimaryType _ "<" _ ts:TypeList _ ">" {
+        return new TemplateInstantiationType(t, ts).at(location(), text(), options);
+    }
+    / t:PrimaryType tail:(PostfixTypeSuffix*) {
+        return SuffixType.build(t, tail).at(location(), text(), options);
+    }
+
+PostfixTypeSuffix
+    = _ "." _ id:Identifier {
+        return { identifier: id, range: location(), text: text(), options };
+    }
+    / _ "[" _ i:IntLiteral? _ "]" {
+        return { size: i !== null ? i : undefined, range: location(), text: text(), options };
     }
 
 PrefixType
@@ -32,3 +44,6 @@ FunctionType
 
 TypeList
     = t:Type ts:(_ "," _ Type)* (_ ",")? { return [t, ...ts.map((t: any) => t[3])]; }
+
+TypeVariableList
+    = "<" _ ids:IdentifierList _ ">" { return ids; }

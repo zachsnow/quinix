@@ -1,11 +1,13 @@
 #! /usr/bin/env ts-node
 import fs from 'fs';
+import path from 'path';
 
 import { logger } from '../src/lib/util';
 import { parseArguments } from '../src/lib/cli';
 import { VM, Breakpoint } from '../src/vm/vm';
 import { Memory, Address } from '../src/lib/base-types';
 import { Program } from '../src/vm/instructions';
+import { Compiler } from '../src/lowlevel/compiler';
 
 const log = logger('qvm');
 
@@ -83,6 +85,9 @@ if(!filename){
   programData = new Memory();
 }
 else {
+  if(!filename.endsWith('.qbin')){
+    console.warn(`warning: non-standard extension ${path.extname(filename)}`);
+  }
   const buffer = fs.readFileSync(filename);
   programData = Memory.fromBuffer(buffer);
 }
@@ -101,6 +106,17 @@ const vm = new VM({
 
 vm.run(programData).then((r) => {
   log(`terminated: ${r}`);
+  switch(r){
+    case Compiler.NULL_ERROR:
+      console.error('error: NULL_ERROR');
+      break;
+    case Compiler.BOUNDS_ERROR:
+      console.error('error: BOUNDS_ERROR');
+      break;
+    case Compiler.CAPACITY_ERROR:
+      console.error('error: CAPACITY_ERROR');
+      break;
+  }
   return Promise.resolve(r);
 }, (e) => {
   log(`error: ${e}`);

@@ -44,9 +44,9 @@ class SymbolTable<T> {
    * @param qualifiedIdentifier the fully qualified identifier to set.
    * @param value the value to set.
    */
-  public set(qualifiedIdentifier: string, value: T){
+  public set(qualifiedIdentifier: string, value: T): void {
     if(this.symbols[qualifiedIdentifier] !== undefined){
-      throw new Error(`identifier redefinition ${qualifiedIdentifier} ${this.symbols[qualifiedIdentifier]}`);
+      throw new InternalError(`identifier redefinition ${qualifiedIdentifier}: ${this.symbols[qualifiedIdentifier]}`);
     }
     this.symbols[qualifiedIdentifier] = value;
   }
@@ -132,7 +132,7 @@ function indent(s: string, indent: number = 1): string {
   return s.replace(/\n/g, '\n' + indentation);
 }
 
-function duplicates<T>(array: T[]): T[] {
+function duplicates<T>(array: readonly T[]): T[] {
   const duplicates: T[] = [];
   array.forEach((s, index) => {
     if(array.indexOf(s) !== index){
@@ -168,7 +168,7 @@ class HasTags {
    *
    * @param tags the tags to tag this type with.
    */
-  public tag(tags: string[] = []): this {
+  public tag(tags: readonly string[] = []): this {
     this.tags.push(...tags);
     this.tags = unique(this.tags);
     return this;
@@ -220,14 +220,17 @@ interface IFileRange {
 }
 
 
-class HasLocation {
-  private location?: Location;
+class Syntax extends HasTags {
+  protected location?: Location;
 
-  public at(location: Location): this;
+  public at(location?: Location): this;
   public at(range: IFileRange, text: string, options?: IParseOptions): this;
-  public at(locationOrRange: Location | IFileRange, text?: string, options?: IParseOptions): this {
-    if(locationOrRange instanceof Location){
-      this.location = this.location;
+  public at(locationOrRange?: Location | IFileRange, text?: string, options?: IParseOptions): this {
+    if(locationOrRange === undefined){
+      this.location = undefined;
+    }
+    else if(locationOrRange instanceof Location){
+      this.location = locationOrRange;
     }
     else {
       this.location = new Location(options?.filename || 'stdin', locationOrRange.start.line, locationOrRange.start.column, text!);
@@ -241,6 +244,10 @@ class HasLocation {
 
   public warning(messages: Messages, message: string): void {
     messages.warning(message, this.location);
+  }
+
+  public lint(messages: Messages, message: string): void {
+    // Nothin' for now.
   }
 
   public withLocation(s: string){
@@ -286,6 +293,10 @@ class Messages {
 
   public get errors(): Message[] {
     return this.messages.filter((message) => message.type === 'error');
+  }
+
+  public get warnings(): Message[] {
+    return this.messages.filter((message) => message.type === 'warning');
   }
 
   public toString(){
@@ -362,28 +373,26 @@ function range(i: number, j: number): number[] {
   return l;
 }
 
-type Mixin = new () => any;
-
-function mixin(...mixinCtors: Mixin[]) {
-  const mixed = class Mixed {
-    constructor(){
-      mixinCtors.forEach((mixinCtors) => {
-        const m = new mixinCtors();
-
-        Object.getOwnPropertyNames(m).forEach(name => {
-          (this as any)[name] = m[name];
-        });
-      });
-    }
-  };
-
-  mixinCtors.forEach((mixinCtor) => {
-    Object.getOwnPropertyNames(mixinCtor.prototype).forEach(name => {
-      Object.defineProperty(mixed.prototype, name, Object.getOwnPropertyDescriptor(mixinCtor.prototype, name)!);
-    });
+type Constructor<T> = Function & { prototype: T }
+function writeOnce<K, F extends Constructor<K>>(cls: F, key: string, allowUndefined: boolean = false){
+  const backingKey = `.${key}`;
+  Object.defineProperty(cls.prototype, key, {
+    get: function(){
+      const value = this[backingKey];
+      if(!allowUndefined && value === undefined){
+        throw new InternalError(`write-once property ${key} of ${this.constructor.name} not set`);
+      }
+      return value;
+    },
+    set: function(value){
+      const previousValue = this[backingKey];
+      if(this[backingKey] !== undefined && value !== previousValue){
+        throw new InternalError(`write-once property ${key} of ${this} already set to ${previousValue}, cannot set to ${value}`);
+      }
+      this[backingKey] = value;
+    },
+    enumerable: true,
   });
-
-  return mixed;
 }
 
 export {
@@ -394,13 +403,14 @@ export {
   logger,
   readFiles,
   parseFile,
-  HasLocation, Location, IParseOptions, IFileRange,
-  HasTags,
+  IParseOptions, IFileRange,
+  Syntax,
   Messages,
   ResolvablePromise,
   release,
   stringToCodePoints,
   codePointsToString,
   range,
-  mixin,
+  writeOnce,
+  Location,
 }

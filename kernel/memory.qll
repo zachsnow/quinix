@@ -18,7 +18,7 @@ namespace memory {
     pages: page[];
   }
 
-  global tables: table[] = [];
+  global tables: *table[] = [];
 
   type chunk = byte;
   global chunk_size = 0x4000;
@@ -27,83 +27,14 @@ namespace memory {
     0, 0, 0, 0,
   ];
 
-  function allocate_chunks(chunk: byte, count: byte): * byte {
-    // Mark found chunks as allocated.
-    physical_chunks[chunk] = count;
-    for(var c = 1; c < chunk_count; c++){
-      physical_chunks[c + chunk] = -1;
-    }
-    return <* byte>(chunk * chunk_size);
-  }
-
-  function allocate_physical_memory(size: byte): * byte {
-    var base_chunk = 0;
-    var allocated_chunks = 0;
-    for(var i = 0; i < len physical_chunks; i++){
-      if(!physical_chunks[i]){
-        // If this is the first chunk we have allocated, record
-        // it as the start.
-        if(allocated_chunks == 0){
-          base_chunk = i;
-        }
-        allocated_chunks++;
-
-        // If we've allocated enough physical memory, mark it as
-        // allocated and return it.
-        if(allocated_chunks * chunk_size >= size){
-          return allocate_chunks(base_chunk, allocated_chunks);
-        }
-      }
-      else {
-        base_chunk = 0;
-        size_allocated = 0;
-      }
-    }
-
-    // We didn't find space in our already allocated chunks;
-    // try to allocate more chunks.
-    var new_size = len physical_chunks * 2;
-    if(new_size < max_chunks){
-      base_chunk = len physical_chunks;
-
-      var more_chunks = new chunk[new_size];
-      more_chunks = physical_chunks;
-      physical_chunks = &more_chunks;
-
-      return allocate_chunks(base_chunk, size / chunk_size);
-    }
-
-    kernel::panic('out of physical memory');
-  }
-
-  function deallocate_physical_memory(address: * byte): void {
-    var base_chunk = address / chunk_size;
-    if(base_chunk >= len physical_chunks){
-      kernel::panic('deallocating invalid chunk');
-    }
-
-    var chunk_count = physical_chunks[i];
-    if(chunk_count == 0){
-      kernel::panic('deallocating unallocated chunk');
-    }
-    if(chunk_count == -1){
-      kernel::panic('deallocating sub-chunk');
-    }
-
-    // Mark each chunk as unallocated.
-    for(var i = 0; i < chunk_count; i++){
-      physical_chunks[base_chunk + i] = 0;
-    }
-  }
-
-  function create_table(static_size: byte, executable_size: byte, heap_size: byte, stack_size: byte) {
+  function create_table(static_size: byte, executable_size: byte, heap_size: byte, stack_size: byte): * table {
     // Default virtual memory layout.
     var static_base = 0x10;
     var executable_base = 0x1000;
     var read_write_base = 0x10000;
 
     // Find an available physical location.
-    var base = allocate_physical_memory(static_size + executable_size + heap_size + stack_size);
+    var base = _allocate_physical_memory(static_size + executable_size + heap_size + stack_size);
 
     // We map 3 pages: static, executable, and heap/stack. We leave the
     // first 0x10 bytes unmapped so that a null pointer access will raise.
@@ -128,11 +59,14 @@ namespace memory {
       },
     ];
 
-    var table: * table = new table {
+    return new table = table {
       pages = pages,
     };
+  }
 
-    return table;
+
+  function destroy_table(table: * table){
+
   }
 
   type mmu = struct {
@@ -154,8 +88,21 @@ namespace memory {
     mmu->table = table;
   }
 
+  function translate(table: * table, p: * byte): * byte {
+    // `p` is a virtual address. Translate it against
+    // the given table and return the physical address,
+    // or return `null`.
+    var addr = <unsafe byte>p;
+    for(var i = 0; i < len table->pages; i = i + 1){
+      var page = table->pages[i];
+      if(addr >= page.virtual_address && addr < page.virtual_address + size){
+        return <unsafe * byte>(page.physical_address + addr - page.virtual_address);
+      }
+    }
+    return null;
+  }
 
   function init(): void {
-    mmu = <* mmu>kernel::peripherals::mmu_ptr;
+    mmu = kernel::peripherals::mmu;
   }
 }

@@ -12,20 +12,24 @@ namespace kernel {
   function log(message: byte[]): void {
     // If peripherals have been properly configured, just use that.
     // For now we log to the console.
-    if(peripherals::debug_output_ptr){
-      std::buffered::write(&peripherals::debug_output_ptr.control, peripherals::debug_output_ptr.buffer, message);
+    if(peripherals::debug_output){
+      std::buffered::write(
+        &peripherals::debug_output->control,
+        peripherals::debug_output->buffer,
+        message,
+      );
       return;
     }
 
     // Otherwise hard-code access to the debug output peripheral if it is
     // located where we expect.
-    var debugOutputIdentifier = 0x2;
-    var debugOutputIdentifierPtr = <unsafe * byte> 0x103;
-    var debugOutputPtr = <unsafe * byte> 0x104;
-    if(*debugOutputIdentifierPtr == debugOutputIdentifier){
-      var debugOutputControl = <unsafe * byte> *debugOutputPtr;
-      var debugOutputBuffer = *<unsafe * byte[]>(<unsafe byte>debugOutputPtr + 1);
-      std::buffered::write(debugOutputControl, debugOutputBuffer, message);
+    var debug_output_identifier = 0x2;
+    var debug_output_identifier_ptr = <unsafe * byte> 0x103;
+    var debug_output_ptr = <unsafe * byte> 0x104;
+    if(*debug_output_identifier_ptr == debug_output_identifier){
+      var debug_output_control = <unsafe * byte> *debug_output_ptr;
+      var debug_output_buffer = *<unsafe * byte[]>(<unsafe byte>debug_output_ptr + 1);
+      std::buffered::write(debug_output_control, debug_output_buffer, message);
       return;
     }
 
@@ -42,11 +46,11 @@ namespace kernel {
   global interrupts_enabled: .notnull * bool = null; // INTERRUPTS_ENABLED lives at 0x0000.
 
   function disable_interrupts(): void {
-    *interruptsEnabled = false;
+    *interrupts_enabled = false;
   }
 
   function enable_interrupts(): void {
-    *interruptsEnabled = true;
+    *interrupts_enabled = true;
   }
 
   function init(): void {
@@ -60,17 +64,21 @@ function main(): void {
   kernel::init();
 
   // Load the shell and create a task for it.
-  if(!std::buffered::write(&peripherals::debug_file->control, peripherals::debug_file->buffer, 'shell')){
+  if(!std::buffered::write(&kernel::peripherals::debug_file->control, kernel::peripherals::debug_file->buffer, 'shell')){
     kernel::panic('unable to write shell path');
   }
 
-  var size = std::buffered::read_size(&peripherals::debug_file->control, peripherals::debug_file->buffer);
+  var size = std::buffered::read_size(&kernel::peripherals::debug_file->control, kernel::peripherals::debug_file->buffer);
+  if(size < 1){
+    kernel::panic('unable to read shell size');
+  }
+
   var binary = new byte[size];
   if(!binary){
     kernel::panic('unable to allocate memory for shell');
   }
 
-  if(!std::buffered::read(&peripherals::debug_file->control, peripherals::debug_file->buffer, binary)){
+  if(!std::buffered::read(&kernel::peripherals::debug_file->control, kernel::peripherals::debug_file->buffer, binary)){
     kernel::panic('unable to read shell');
   }
 

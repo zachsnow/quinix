@@ -94,7 +94,7 @@ type Parameter = {
 type CallArgument = {
   register: Register;
   size: number;
-  isIntegral: boolean;
+  integral: boolean;
 }
 
 class Compiler {
@@ -166,7 +166,6 @@ class Compiler {
   public get breakReference(): Reference | undefined {
     return this.breakReferences[this.breakReferences.length - 1];
   }
-
 
   /**
    * @param prefix the name of the context being compiled -- e.g. a function's name.
@@ -256,7 +255,7 @@ class Compiler {
   }
 
   /**
-   * Compile the emitted block.
+   * Compile the emitted block under the given reference.
    */
   public compile(): Directive[] {
     return [
@@ -292,12 +291,13 @@ class Compiler {
     // Push arguments and deallocate them.
     let argSize = 0;
     args.forEach((arg) => {
-      if(arg.isIntegral){
+      if(arg.integral){
         this.emitPush(arg.register, 'push argument');
       }
       else {
+        this.emitPushMany(arg.size, 'allocate argument storage');
         const r = this.allocateRegister();
-        this.emitPushMany(arg.size, r, 'allocate argument storage');
+        this.emitMove(r, Compiler.SP);
         this.emitStaticCopy(r, arg.register, arg.size, 'store argument');
         this.deallocateRegister(r);
       }
@@ -350,7 +350,7 @@ class Compiler {
       new ConstantDirective(tr, new ReferenceConstant(reference)).comment('allocator'),
     ]);
 
-    return this.emitCall([{ register: sr, size: 1, isIntegral: true }], tr, comment);
+    return this.emitCall([{ register: sr, size: 1, integral: true }], tr, comment);
   }
 
   /**
@@ -364,7 +364,7 @@ class Compiler {
     this.emit([
       new ConstantDirective(tr, new ReferenceConstant(reference)).comment('deallocator'),
     ]);
-    return this.emitCall([{ register: sr, size: 1, isIntegral: true }], tr, comment);
+    return this.emitCall([{ register: sr, size: 1, integral: true }], tr, comment);
   }
 
   protected emitPush(r: Register, comment: string = ''): void {
@@ -409,11 +409,7 @@ class Compiler {
     this.emitIncrement(Compiler.SP, n, comment);
   }
 
-  protected emitPushMany(n: number, r: Register, comment: string = ''): void {
-    this.emitMove(r, Compiler.SP, comment);
-    this.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.SUB, r, Compiler.SP, Compiler.ONE)),
-    ]);
+  protected emitPushMany(n: number, comment: string = ''): void {
     this.emit(this.pushMany(n));
   }
 
@@ -642,9 +638,9 @@ class Compiler {
   /**
    * Emits a reference to the given identifier.
    *
-   * @param identifier the identifier to reference
-   * @param storage the storage class of the reference
-   * @param dr the destination register in which to store the reference
+   * @param identifier the identifier to reference.
+   * @param storage the storage class of the reference.
+   * @param dr the destination register in which to store the reference.
    * @param dereference whether to emit a dereference of the address, too.
    */
   public emitIdentifier(identifier: string, storage: Storage, dr: Register, dereference: boolean): void {
@@ -760,20 +756,23 @@ class Compiler {
    * @param lr the register holding the new length, in elements.
    */
   public emitCapacityCheck(ar: Register, lr: Register): void {
-    const endRef = this.generateReference('len_check_end');
+    const endRef = this.generateReference('capacity_check_end');
 
     const cr = this.allocateRegister();
     const er = this.allocateRegister();
 
     this.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.LOAD, cr, ar)),
-      new InstructionDirective(Instruction.createOperation(Operation.GT, cr, lr, cr)),
+      new InstructionDirective(Instruction.createOperation(Operation.LOAD, cr, ar)).comment('load capacity'),
+      new InstructionDirective(Instruction.createOperation(Operation.GT, cr, lr, cr)).comment('compare capacity with new len'),
       new ConstantDirective(er, new ReferenceConstant(endRef)),
       new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, er)),
       new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.CAPACITY_ERROR)).comment('capacity error'),
       new InstructionDirective(Instruction.createOperation(Operation.HALT)),
       new LabelDirective(endRef),
     ]);
+
+    this.deallocateRegister(cr);
+    this.deallocateRegister(er);
   }
 }
 
@@ -857,11 +856,19 @@ class FunctionCompiler extends StorageCompiler {
     super(identifier);
 
     // Find location of parameters.
+    //
+    // Example: Point, byte, Point:
+    // p.y
+    // p.x
+    // b
+    // p.y
+    // p.x
+    // ret
     this.parameterStorage = parameters.reduce((size, parameter) => parameter.size + size, 0);
     let parameterOffset = 0;
     parameters.forEach((parameter) => {
-      this.parameters[parameter.identifier] = this.parameterStorage - parameterOffset - 1;
       parameterOffset += parameter.size;
+      this.parameters[parameter.identifier] = this.parameterStorage - parameterOffset;
     });
   }
 
@@ -1019,9 +1026,9 @@ class FunctionCompiler extends StorageCompiler {
     return directives;
   }
 
-  public compile(): Directive[] {
+  public compile(reference?: Reference): Directive[] {
     return [
-      new LabelDirective(new Reference(this.prefix)),
+      new LabelDirective(reference || new Reference(this.prefix)),
       ...this.prologue(),
       ...super.compile(),
       ...this.epilogue(),

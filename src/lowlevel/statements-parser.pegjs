@@ -7,8 +7,8 @@ Statement
 
 LineStatement
     = VarToken _ ti:TypedIdentifier _ "=" _ e:Expression { return new VarStatement(ti.identifier, ti.type, e).at(location(), text(), options); }
-    / VarToken _ id:Identifier _ "=" _ e:Expression { return new VarStatement(id, undefined, e).at(location(), text(), options); }
     / VarToken _ ti:TypedIdentifier { return new VarStatement(ti.identifier, ti.type).at(location(), text(), options); }
+    / VarToken _ id:Identifier _ "=" _ e:Expression { return new VarStatement(id, undefined, e).at(location(), text(), options); }
 
     / ReturnToken _ e:Expression { return new ReturnStatement(e).at(location(), text(), options); }
     / ReturnToken { return new ReturnStatement().at(location(), text(), options); }
