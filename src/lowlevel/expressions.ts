@@ -293,7 +293,12 @@ class BoolLiteralExpression extends Expression {
   }
 }
 
-function compileLiteralExpressions(hint: string, compiler: Compiler, expressions: Expression[], capacity?: number): Register {
+type LiteralExpression = {
+  type: Type;
+  expression?: Expression;
+}
+
+function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpressions: readonly LiteralExpression[], capacity?: number): Register {
   // We can only compile non-integral literals when our compiler supports storage.
   if(!(compiler instanceof StorageCompiler)){
     throw new InternalError(`expected storage when compiling literal expression`);
@@ -303,8 +308,8 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, expressions
 
   // Allocate local storage; include enough space for the capacity and size, if requested.
   let bytes = capacity === undefined ? 0 : 2;
-  expressions.forEach((expression) => {
-    bytes += expression.concreteType.size;
+  literalExpressions.forEach((literalExpression) => {
+    bytes += literalExpression.type.size;
   });
   compiler.allocateStorage(identifier, bytes);
 
@@ -327,20 +332,29 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, expressions
     compiler.deallocateRegister(sr);
   }
 
-  // Evaluate each value and store it in the data.
-  expressions.forEach((expression, i) => {
-    const er = expression.compile(compiler);
-
-    if(expression.concreteType.integral){
-      compiler.emitStaticStore(ri, er, 1, 'store integral');
+  // Evaluate each value (if there is one) and store it in the data.
+  literalExpressions.forEach((literalExpression, i) => {
+    if(literalExpression.expression !== undefined){
+      const er = literalExpression.expression.compile(compiler);
+      if(literalExpression.type.integral){
+        compiler.emitStaticStore(ri, er, 1, 'store integral');
+      }
+      else {
+        compiler.emitStaticCopy(ri, er, literalExpression.type.size, 'copy non-integral');
+      }
+      compiler.deallocateRegister(er);
     }
     else {
-      compiler.emitStaticCopy(ri, er, expression.concreteType.size, 'copy non-integral');
+      const zr = compiler.allocateRegister();
+      compiler.emit([
+        new ConstantDirective(zr, new ImmediateConstant(0)),
+      ]);
+      compiler.emitStaticStore(ri, zr, literalExpression.type.size);
+      compiler.deallocateRegister(zr);
     }
-    compiler.deallocateRegister(er);
 
-    if(i < expressions.length - 1){
-      compiler.emitIncrement(ri, expression.concreteType.size, 'next literal expression');
+    if(i < literalExpressions.length - 1){
+      compiler.emitIncrement(ri, literalExpression.type.size, 'next literal expression');
     }
   });
 
@@ -367,9 +381,12 @@ class StringLiteralExpression extends Expression {
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
-    const expressions = this.codePoints.map((c) => new IntLiteralExpression(c));
-    expressions.forEach((e) => {
-      e.typecheck(new TypeChecker());
+    const expressions = this.codePoints.map((c) => {
+      const expression = new IntLiteralExpression(c);
+      return {
+        expression,
+        type: Type.Byte,
+      };
     });
     return compileLiteralExpressions('string_literal', compiler, expressions, this.length);
   }
@@ -445,7 +462,14 @@ class ArrayLiteralExpression extends Expression {
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
-    return compileLiteralExpressions('array_literal', compiler, this.expressions, this.expressions.length);
+    const type = (this.concreteType as ArrayType).index();
+    const expressions = this.expressions.map((expression) => {
+      return {
+        expression,
+        type,
+      }
+    });
+    return compileLiteralExpressions('array_literal', compiler, expressions, expressions.length);
   }
 
   public toString(){
@@ -459,23 +483,29 @@ class ArrayLiteralExpression extends Expression {
 
 type MemberLiteralExpression = {
   identifier: string;
-  expression: Expression
+  expression: Expression,
+}
+
+type MemberExpression = {
+  identifier: string,
+  expression?: Expression,
+  type: Type,
 }
 
 class StructLiteralExpression extends Expression {
-  public readonly type: Type;
-  private memberExpressions: MemberLiteralExpression[];
+  private memberExpressions!: readonly MemberExpression[];
 
-  public constructor(type: Type, memberExpressions: MemberLiteralExpression[]){
+  public constructor(
+    private readonly type: Type,
+    private readonly memberLiteralExpressions: readonly MemberLiteralExpression[]
+  ){
     super();
-    this.type = type;
-    this.memberExpressions = memberExpressions;
   }
 
   public substitute(typeTable: TypeTable): Expression {
     return new StructLiteralExpression(
       this.type.substitute(typeTable),
-      this.memberExpressions.map((m) => {
+      this.memberLiteralExpressions.map((m) => {
         return {
           identifier: m.identifier,
           expression: m.expression.substitute(typeTable)
@@ -489,31 +519,39 @@ class StructLiteralExpression extends Expression {
     this.type.kindcheck(context, new KindChecker());
 
     const structType = this.type.resolve();
-
     if(structType instanceof StructType){
       // Ensure we have no duplicates.
-      const identifiers = this.memberExpressions.map((m) => m.identifier);
+      const identifiers = this.memberLiteralExpressions.map((m) => m.identifier);
       const duplicateIdentifiers = duplicates(identifiers);
       if(duplicateIdentifiers.length){
         this.error(context, `duplicate members ${duplicateIdentifiers.join(', ')}`);
       }
 
-      // Check each member. Note that, similarly to assignment, we allow conversion.
-      this.memberExpressions.forEach((member) => {
+      // Check each member. Note that, similarly to assignment, we allow conversion. We
+      // are allowed to skip members, so
+      this.memberLiteralExpressions.forEach((member) => {
         const structMember = structType.member(member.identifier);
-        if(structMember !== undefined){
-          const type = member.expression.typecheck(context, structMember.type);
-          if(!structMember.type.isConvertibleTo(type)){
-            this.error(context, `member ${member.identifier} expected ${structMember.type}, actual ${type}`);
-          }
+        if(structMember === undefined){
+          this.error(context, `unknown member ${member.identifier} not found in ${structType}`);
+          return;
+        }
+        const type = member.expression.typecheck(context, structMember.type);
+        if(!structMember.type.isConvertibleTo(type)){
+          this.error(context, `member ${member.identifier} expected ${structMember.type}, actual ${type}`);
         }
       });
 
-      // Ensure we have no missing members.
-      structType.members.forEach((member) => {
-        if(identifiers.indexOf(member.identifier) === -1){
-          this.error(context, `member ${member.identifier} expected`);
-        }
+      // Get the members in the correct order; since we are allowed to skip / reorder
+      // them when initializing.
+      this.memberExpressions = structType.members.map((member) => {
+        const memberLiteralExpression = this.memberLiteralExpressions.find((memberLiteralExpression) => {
+          return memberLiteralExpression.identifier === member.identifier;
+        });
+        return {
+          identifier: member.identifier,
+          expression: memberLiteralExpression?.expression,
+          type: member.type,
+        };
       });
 
       return this.type;
@@ -524,16 +562,11 @@ class StructLiteralExpression extends Expression {
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
-    const structType = this.concreteType.resolve();
-    if(!(structType instanceof StructType)){
-      throw new InternalError(`struct literal with invalid type`);
-    }
-
-    return compileLiteralExpressions('struct_literal', compiler, this.memberExpressions.map((m) => m.expression));
+    return compileLiteralExpressions('struct_literal', compiler, this.memberExpressions);
   }
 
   public toString(){
-    return `{ ${this.memberExpressions.map((m) => `${m.identifier} = ${m.expression}`).join(', ')} }`;
+    return `{ ${this.memberLiteralExpressions.map((m) => `${m.identifier} = ${m.expression}`).join(', ')} }`;
   }
 }
 
