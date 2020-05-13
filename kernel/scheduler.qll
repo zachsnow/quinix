@@ -62,31 +62,16 @@ namespace kernel {
     }
 
     function destroy_task(task: * task): void {
+      if(!task){
+        panic('scheduler: destroy: no task');
+      }
 
-      // Excise passed task.
-      if(task === tasks){
-        tasks = task->next;
-      }
-      else {
-        var previous_task = tasks;
-        while(previous_task){
-          if(previous_task->next == task){
-            break;
-          }
-          previous_task = previous_task->next;
-        }
-        if(!previous_task){
-
-        }
-      }
-      while(t){
-        if(t == task)
-      }
+      std::ilist::remove(&tasks, task);
       // Schedule next task so that we don't try to return to this task.
       *interrupt_state = next_task->state;
     }
 
-    function schedule_task(task: * task): bool {
+    function enqueue_task(task: * task): bool {
       task->next = tasks;
       tasks = task;
     }

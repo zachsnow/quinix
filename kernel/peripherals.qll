@@ -80,7 +80,7 @@ namespace kernel {
     ];
 
     // Find and initialize the peripheral.
-    function init_peripheral(entry: init_table_entry): void{
+    function init_peripheral(entry: init_table_entry): void {
       for(var i = 0; i < len peripheral_table; i = i + 1){
         var peripheral = peripheral_table[i];
         if(peripheral.identifier == entry.identifier){
