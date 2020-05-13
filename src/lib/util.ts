@@ -220,7 +220,7 @@ interface IFileRange {
 }
 
 
-class HasLocation {
+class Syntax extends HasTags {
   protected location?: Location;
 
   public at(location?: Location): this;
@@ -230,7 +230,7 @@ class HasLocation {
       this.location = undefined;
     }
     else if(locationOrRange instanceof Location){
-      this.location = this.location;
+      this.location = locationOrRange;
     }
     else {
       this.location = new Location(options?.filename || 'stdin', locationOrRange.start.line, locationOrRange.start.column, text!);
@@ -244,6 +244,10 @@ class HasLocation {
 
   public warning(messages: Messages, message: string): void {
     messages.warning(message, this.location);
+  }
+
+  public lint(messages: Messages, message: string): void {
+    // Nothin' for now.
   }
 
   public withLocation(s: string){
