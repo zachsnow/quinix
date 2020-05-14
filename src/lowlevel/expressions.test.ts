@@ -5,7 +5,7 @@ import {
 import { Expression, BinaryExpression,
   IntLiteralExpression, BoolLiteralExpression, StringLiteralExpression,
   SuffixExpression, DotExpression, ArrowExpression, IndexExpression,
-  NewExpression, NewArrayExpression, IdentifierExpression,
+  NewExpression, NewArrayExpression, IdentifierExpression, CallExpression,
 } from './expressions';
 
 const parse: (text: string) => Expression = _parse;
@@ -189,4 +189,12 @@ describe('Expressions', () => {
     expect((id as any).typeArgs[0].toString()).toBe('byte');
     expect((id as any).typeArgs[1].toString()).toBe('* byte');
   });
+
+  test('mixed suffixes', () => {
+    const exp = parse('foo(bar)[baz].bleck(1)');
+    expect(exp).toBeInstanceOf(CallExpression);
+    expect((exp as any).expression).toBeInstanceOf(DotExpression);
+    expect((exp as any).expression.expression).toBeInstanceOf(IndexExpression);
+    expect((exp as any).expression.expression.expression).toBeInstanceOf(CallExpression);
+  })
 });
