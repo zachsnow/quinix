@@ -87,8 +87,6 @@ async function main(): Promise<number | undefined>{
     return -1;
   }
 
-  log(`program:\n${program}\n`);
-
   // Compile.
   const module = argv.module || path.basename(argv.output, path.extname(argv.output));
   const assemblyProgram = program.compile(module, !argv.library);

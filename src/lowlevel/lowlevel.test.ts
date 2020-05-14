@@ -142,6 +142,30 @@ describe('QLLC typechecking', () => {
       `)).toEqual(['expected int, actual byte']);
     });
 
+    test('struct wrong type', () => {
+      expect(errors(`
+        type Point = struct {
+          x: byte;
+          y: byte;
+        };
+        function main(): void {
+          var p = Point { x=2, y='hi' };
+        }`
+      )).toContain('member y expected byte, actual byte[0x02]');
+    });
+
+    test('struct extra', () => {
+      expect(errors(`
+        type Point = struct {
+          x: byte;
+          y: byte;
+        };
+        function main(): void {
+          var p = Point { x=2, y=3, z=4 };
+        }`
+      )).toContain('unknown member z');
+    });
+
     test('no return', () => {
       expect(errors(`
         function main(): byte {
@@ -803,6 +827,55 @@ describe('QLLC end-to-end', () => {
       function main(): byte {
         var p: Point = Point {
           x = 10,
+          y = 20,
+        };
+        return p.y;
+      }
+    `);
+  });
+
+  test('struct literal out of order', () => {
+    return expectRunToBe(20, `
+      type Point = struct {
+        x: byte;
+        y: byte;
+      };
+
+      function main(): byte {
+        var p: Point = Point {
+          y = 20,
+          x = 10,
+        };
+        return p.y;
+      }
+    `);
+  });
+
+  test('struct literal skip', () => {
+    return expectRunToBe(0, `
+      type Point = struct {
+        x: byte;
+        y: byte;
+      };
+
+      function main(): byte {
+        var p: Point = Point {
+          y = 20,
+        };
+        return p.x;
+      }
+    `);
+  });
+
+  test('struct literal skip (other)', () => {
+    return expectRunToBe(20, `
+      type Point = struct {
+        x: byte;
+        y: byte;
+      };
+
+      function main(): byte {
+        var p: Point = Point {
           y = 20,
         };
         return p.y;
@@ -1522,5 +1595,31 @@ describe('QLLC end-to-end', () => {
         return b[2];
       }
     `);
-  })
+  });
+
+  test('return integral', () => {
+    return expectRunToBe(10, `
+      function main(): byte {
+        return f(5);
+      }
+      function f(n: byte): byte {
+        return n * 2;
+      }
+    `);
+  });
+
+  test('return struct', () => {
+    return expectRunToBe(4, `
+      type Point = struct {
+        x: byte;
+        y: byte;
+      };
+      function main(): byte {
+        return (add(Point { x=1, y=2 }, Point { x=3, y=4 })).x;
+      }
+      function add(p1: Point, p2: Point): Point {
+        return Point { x = p1.x + p2.x, y = p1.y + p2.y };
+      }
+    `);
+  });
 });

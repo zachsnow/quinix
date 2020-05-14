@@ -133,7 +133,7 @@ namespace std {
     }
   }
 
-  namespace string {
+  namespace str {
     function reverse(buffer: string): void {
       var length = len buffer;
       for(var i = 0; i < length / 2; i = i + 1){
@@ -241,7 +241,85 @@ namespace std {
     }
   }
 
-  // Formatted console IO.
+  type fmt = struct {
+    fmt_type: fmt::fmt_type;
+    n: byte;
+    base: byte;
+    s: string;
+    p: * byte;
+  };
+
+  namespace fmt {
+    type fmt_type = byte;
+    namespace fmt_type {
+      .constant global S: fmt_type = 1;
+      .constant global U: fmt_type = 2;
+      .constant global I: fmt_type = 3;
+      .constant global P: fmt_type = 4;
+    }
+
+    .constant global nl: fmt = fs('\n');
+
+    function fs(s: string): fmt {
+      return fmt {
+        fmt_type = fmt_type::S,
+        s = s,
+      };
+    }
+    function fi(n: byte): fmt {
+      return fmt {
+        fmt_type = fmt_type::I,
+        n = n,
+      };
+    }
+    function fu(n: byte): fmt {
+      return fmt {
+        fmt_type = fmt_type::U,
+        n = n,
+      };
+    }
+    function fp(p: * byte): fmt {
+      return fmt {
+        fmt_type = fmt_type::P,
+        p = p,
+      };
+    }
+
+    function print(formats: fmt[]): bool {
+      var buffer: byte[33];
+
+      for(var i = 0; i < len formats; i = i + 1){
+        var f = formats[i];
+        if(f.fmt_type == fmt_type::U){
+          if(!str::utoa(f.n, buffer, f.base || 10)){
+            return false;
+          }
+          console::print(buffer);
+        }
+        else if(f.fmt_type == fmt_type::I){
+          if(!str::itoa(f.n, buffer, f.base || 10)){
+            return false;
+          }
+          console::print(buffer);
+        }
+        else if(f.fmt_type == fmt_type::P){
+          if(!str::utoa(<unsafe byte>f.p, buffer, f.base || 16)){
+            return false;
+          }
+          console::print(buffer);
+        }
+        else if(f.fmt_type == fmt_type::S){
+          console::print(f.s);
+        }
+        else {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+
+  // Console IO.
   namespace console {
     function print(s: string): bool {
       var control: *byte = <unsafe * byte> 0x303;
