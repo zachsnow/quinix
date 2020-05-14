@@ -49,7 +49,8 @@ Tokens
   / WhileToken / ForToken
   / VarToken
   / ReturnToken / BreakToken
-  / NamespaceToken / GlobalToken / TypeToken / FunctionToken
+  / NamespaceToken / UsingToken
+  / GlobalToken / TypeToken / FunctionToken
 
 LenToken = tok:"len" !Identifier { return tok; }
 CapacityToken = tok:"capacity" !Identifier { return tok; }
@@ -66,6 +67,7 @@ ReturnToken = tok:"return" !Identifier { return tok; }
 BreakToken = tok:"break" !Identifier { return tok; }
 DeleteToken = tok:"delete" !Identifier { return tok; }
 NamespaceToken = tok:"namespace" !Identifier { return tok; }
+UsingToken = tok:"using" !Identifier { return tok; }
 GlobalToken = tok:"global" !Identifier { return tok; }
 TypeToken = tok:"type" !Identifier { return tok; }
 FunctionToken = tok:"function" !Identifier { return tok; }

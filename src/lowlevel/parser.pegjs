@@ -16,10 +16,16 @@ Declaration
     / GlobalDeclaration
     / FunctionDeclaration
     / NamespaceDeclaration
+    / UsingDeclaration
 
 NamespaceDeclaration
-    = NamespaceToken _ i:Identifier _ "{" _ ds:DeclarationList? _ "}" {
-        return new NamespaceDeclaration(i, ds || []);
+    = NamespaceToken _ id:Identifier _ "{" _ ds:DeclarationList? _ "}" {
+        return new NamespaceDeclaration(id, ds || []).at(location(), text(), options);
+    }
+
+UsingDeclaration
+    = UsingToken _ id:QualifiedIdentifier ";" {
+        return new UsingDeclaration(id).at(location(), text(), options);
     }
 
 TypeDeclaration
