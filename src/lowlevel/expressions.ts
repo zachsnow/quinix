@@ -532,7 +532,7 @@ class StructLiteralExpression extends Expression {
       this.memberLiteralExpressions.forEach((member) => {
         const structMember = structType.member(member.identifier);
         if(structMember === undefined){
-          this.error(context, `unknown member ${member.identifier} not found in ${structType}`);
+          this.error(context, `unknown member ${member.identifier}`);
           return;
         }
         const type = member.expression.typecheck(context, structMember.type);
