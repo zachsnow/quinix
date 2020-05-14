@@ -1649,6 +1649,17 @@ class CallExpression extends Expression {
 }
 writeOnce(CallExpression, 'argumentTypes');
 
+type Suffix = {
+  index?: Expression;
+  unsafe?: boolean;
+  identifier?: string;
+  pointer?: boolean;
+  expressions?: readonly Expression[];
+  range: IFileRange;
+  text: string;
+  options?: IParseOptions
+};
+
 abstract class SuffixExpression extends Expression {
   public constructor(
     public readonly expression: Expression,
@@ -1671,6 +1682,9 @@ abstract class SuffixExpression extends Expression {
       if(suffix.index !== undefined){
         return new IndexExpression(expression, suffix.index).at(suffix.range, suffix.text, suffix.options);
       }
+      if(suffix.expressions !== undefined){
+        return new CallExpression(expression, suffix.expressions).at(suffix.range, suffix.text, suffix.options);
+      }
       throw new InternalError('invalid suffix');
     }, expression);
   }
@@ -1681,6 +1695,10 @@ abstract class SuffixExpression extends Expression {
 
   public static createMember(identifier: string, pointer: boolean, range: IFileRange, text: string, options?: IParseOptions): Suffix {
     return { identifier, pointer, range, text, options };
+  }
+
+  public static createCall(expressions: readonly Expression[], range: IFileRange, text: string, options?: IParseOptions): Suffix {
+    return { expressions, range, text, options };
   }
 }
 
@@ -1811,16 +1829,6 @@ class ArrowExpression extends SuffixExpression {
   }
 }
 writeOnce(ArrowExpression, 'offset');
-
-type Suffix = {
-  index?: Expression;
-  unsafe?: boolean;
-  identifier?: string;
-  pointer?: boolean;
-  range: IFileRange;
-  text: string;
-  options?: IParseOptions
-};
 
 class IndexExpression extends SuffixExpression {
   private stride!: number;

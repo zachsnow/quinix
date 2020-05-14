@@ -21,13 +21,13 @@ ExpressionList
     = e:Expression es:(_ "," _ Expression)* (_ ",")? { return [e, ...es.map((e: any) => e[3])]; }
 
 PostfixExpression
-    = e1:PrimaryExpression _ "(" _ args:ExpressionList? _ ")" { return new CallExpression(e1, args || []).at(location(), text(), options); }
-    / e:PrimaryExpression tail:(PostfixExpressionSuffix)* { return SuffixExpression.build(e, tail).at(location(), text(), options); }
+    = e:PrimaryExpression tail:(PostfixExpressionSuffix)* { return SuffixExpression.build(e, tail).at(location(), text(), options); }
 
 PostfixExpressionSuffix
     = _ "[" _ u:UnsafeToken? _ e:Expression _ "]" { return SuffixExpression.createIndex(e, !!u, location(), text(), options); }
     / _ "." _ id:Identifier { return SuffixExpression.createMember(id, false, location(), text(), options); }
     / _ "->" _ id:Identifier { return SuffixExpression.createMember(id, true, location(), text(), options); }
+    / _ "(" _ args:ExpressionList? _ ")" { return SuffixExpression.createCall(args || [], location(), text(), options); }
 
 PrefixExpression
     = op:UnaryOperator _ e:PrefixExpression { return new UnaryExpression(op, e).at(location(), text(), options); }
