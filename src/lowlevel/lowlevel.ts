@@ -635,11 +635,28 @@ class TemplateFunctionDeclaration extends Declaration {
 }
 writeOnce(FunctionDeclaration, 'context');
 
+class UsingDeclaration extends Declaration {
+  public constructor(identifier: string){
+    super(identifier);
+  }
+
+  public preKindcheck(context: TypeChecker) {
+    // TODO: qualify this for reals.
+    this.qualifiedIdentifier = this.identifier;
+    context.using([this.qualifiedIdentifier]);
+  }
+
+  public toString(){
+    return `using ${this.qualifiedIdentifier};`
+  }
+}
 /**
  * A namespace declaration. Namespaces have nested declarations of all kinds within.
  * Multiple declarations of the same namespace are allowed.
  */
 class NamespaceDeclaration extends Declaration {
+  private usings: string[] = [];
+
   public constructor(
     identifier: string,
     public readonly declarations: readonly Declaration[],
@@ -661,10 +678,12 @@ class NamespaceDeclaration extends Declaration {
     this.declarations.forEach((declaration) => {
       declaration.preKindcheck(context);
     });
+    this.usings = [...context.usings];
   }
 
   public kindcheck(context: TypeChecker) {
     context = context.extend(undefined, undefined, this.qualifiedIdentifier);
+    context.using(this.usings);
     this.declarations.forEach((declaration) => {
       declaration.kindcheck(context);
     });
@@ -679,6 +698,7 @@ class NamespaceDeclaration extends Declaration {
 
   public typecheck(context: TypeChecker) {
     context = context.extend(undefined, undefined, this.qualifiedIdentifier);
+    context.using(this.usings);
     this.declarations.forEach((declaration) => {
       declaration.typecheck(context);
     });
@@ -889,7 +909,8 @@ class LowLevelProgram {
 
 export {
   Declaration,
-  TemplateTypeDeclaration, TypeDeclaration, GlobalDeclaration, FunctionDeclaration, NamespaceDeclaration,
+  TemplateTypeDeclaration, TypeDeclaration, GlobalDeclaration, FunctionDeclaration,
+  UsingDeclaration, NamespaceDeclaration,
   TemplateFunctionDeclaration,
 
   LowLevelProgram,

@@ -120,7 +120,7 @@ class IdentifierExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    const lookup = context.symbolTable.lookup(context.namespace, this.identifier);
+    const lookup = context.symbolTable.lookup(this.identifier, context.namespace, context.usings);
     if(lookup === undefined){
       this.error(context, `unknown identifier ${this.identifier}`);
       return Type.Error;
