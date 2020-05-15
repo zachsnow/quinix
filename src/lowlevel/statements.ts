@@ -612,7 +612,7 @@ class ReturnStatement extends Statement {
     const expression = this.expression || new IntLiteralExpression(0);
     const r = expression.compile(compiler);
 
-    if(!this.returnType.integral){
+    if(!this.returnType.integral && !this.returnType.isConvertibleTo(Type.Void)){
       // We need to copy the value pointed to by `r` into the first function parameter called `$return`.
       const dr = compiler.allocateRegister();
       compiler.emitIdentifier('$return', 'parameter', dr, true);
