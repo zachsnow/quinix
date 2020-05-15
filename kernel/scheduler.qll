@@ -1,27 +1,23 @@
 namespace kernel {
   namespace scheduler {
-    .constant global TIMER: byte = 0x2;
-
-    type state = struct {
-      registers: byte[64];
-      ip: byte;
-    };
-
-    global interrupt_state: * state = <unsafe * state>0x2;
-
     type task = struct {
       id: byte;
       killed: bool;
-      state: state;
+      state: interrupts::state;
       next: * task;
     };
 
     global current_task: * task = null;
     global tasks: * task = null;
 
+    function _restore_current_task(): void {
+      *state = current_task->state;
+      memory::use_table(current_task->table);
+    }
+
     // This function will be called by the timer interrupt handler.
     // Its argument will be a pointer to the current values of all registers.
-    function schedule_task(state: * state): void {
+    function _schedule_task(state: * interrupts::state): void {
       log('scheduler: scheduling...');
 
       // Invalid state.
@@ -45,11 +41,11 @@ namespace kernel {
       }
 
       // Restore the next task's state.
-      *state = current_task->state;
+      restore_current_task(state);
     }
 
     .interrupt function _timer_interrupt(): void {
-      schedule_task(interrupt_state);
+      _schedule_task(interrupts::state);
     }
 
     global id: byte = 0;
@@ -61,19 +57,34 @@ namespace kernel {
       return task;
     }
 
+    function enqueue_task(task: * task): bool {
+      task->next = tasks;
+      tasks = task;
+    }
+
     function destroy_task(task: * task): void {
       if(!task){
         panic('scheduler: destroy: no task');
       }
+      if(task->id == 0){
+        panic('scheduler: destroy: destroying PID 0');
+      }
+
+      var destroyed_current_task = task == current_task;
+      var next_task = task->next || tasks;
 
       std::ilist::remove(&tasks, task);
-      // Schedule next task so that we don't try to return to this task.
-      *interrupt_state = next_task->state;
-    }
+      delete task;
 
-    function enqueue_task(task: * task): bool {
-      task->next = tasks;
-      tasks = task;
+      // Now we need to schedule a different task,
+      // otherwise when we may return to the one we just
+      // destroyed if this was called in an interrupt
+      //  handler.
+      if(destroyed_current_task){
+        current_task = next_task;
+        *interrupts::state = current_task->state;
+        memory::use_table(current_task->table);
+      }
     }
 
     function init(): void {
@@ -87,7 +98,7 @@ namespace kernel {
       current_task = task;
 
       // Configure hardware timer interrupt handler.
-      support::interrupt(0x2, _timer_interrupt);
+      support::interrupt(interrupts::TIMER, _timer_interrupt);
       *peripherals::timer = 100;
     }
   }

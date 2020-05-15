@@ -14,3 +14,4 @@ ${QLLC_PATH} --library --namespace system -o bin/system.qasm system.qll
 
 echo "Compiling lib..."
 ${QLLC_PATH} --library -o bin/lib.qasm lib.qll
+

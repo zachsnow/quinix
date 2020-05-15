@@ -1,7 +1,8 @@
 import {
   LowLevelProgram, Declaration, TypeDeclaration, TemplateTypeDeclaration,
   GlobalDeclaration,
-  TemplateFunctionDeclaration, FunctionDeclaration, NamespaceDeclaration
+  TemplateFunctionDeclaration, FunctionDeclaration,
+  UsingDeclaration, NamespaceDeclaration,
 } from './lowlevel';
 import {
   VarStatement,

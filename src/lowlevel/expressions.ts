@@ -120,7 +120,7 @@ class IdentifierExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    const lookup = context.symbolTable.lookup(context.namespace, this.identifier);
+    const lookup = context.symbolTable.lookup(this.identifier, context.namespace, context.usings);
     if(lookup === undefined){
       this.error(context, `unknown identifier ${this.identifier}`);
       return Type.Error;
@@ -1104,7 +1104,7 @@ class CastExpression extends Expression {
 
 type BinaryOperator =
   '+' | '-' | '*' | '/' | '%' |
-  '&&' | '||' |
+  '&&' | '||' | '|' | '&' |
   '==' | '!=' | '<' | '<=' | '>' | '>=';
 
 class BinaryExpression extends Expression {
@@ -1133,7 +1133,9 @@ class BinaryExpression extends Expression {
       case '-':
       case '*':
       case '/':
-      case '%': {
+      case '%':
+      case '|':
+      case '&': {
         // We can do arithmetic on numbers of the same type.
         if(!tLeft.numeric){
           this.error(context, `expected numeric type, actual ${tLeft}`);
@@ -1210,6 +1212,8 @@ class BinaryExpression extends Expression {
       '*': Operation.MUL,
       '/': Operation.DIV,
       '%': Operation.MOD,
+      '|': Operation.OR,
+      '&': Operation.AND,
       '==': Operation.NEQ,
       '!=': Operation.EQ,
       '<': Operation.LT,

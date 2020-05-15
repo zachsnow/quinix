@@ -114,8 +114,17 @@ EqualityOperator
     = "=="
     / "!="
 
+BitwiseExpression
+    = e:EqualityExpression tail:(_ BitwiseOperator _ EqualityExpression)* {
+        return BinaryExpression.build(e, tail.map((t: any) => [ t[1], t[3] ])).at(location(), text(), options);
+    }
+
+BitwiseOperator
+    = op:"|" !"|" { return op; }
+    / op:"&" !"&" { return op; }
+
 LogicalExpression
-    = e:EqualityExpression tail:(_ LogicalOperator _ EqualityExpression)* {
+    = e:BitwiseExpression tail:(_ LogicalOperator _ BitwiseExpression)* {
         return BinaryExpression.build(e, tail.map((t: any) => [t[1], t[3]])).at(location(), text(), options);
     }
 

@@ -196,5 +196,13 @@ describe('Expressions', () => {
     expect((exp as any).expression).toBeInstanceOf(DotExpression);
     expect((exp as any).expression.expression).toBeInstanceOf(IndexExpression);
     expect((exp as any).expression.expression.expression).toBeInstanceOf(CallExpression);
-  })
+  });
+
+  test('bitwise', () => {
+    const exp = parse('a & b | c');
+    expect(exp).toBeInstanceOf(BinaryExpression);
+    expect((exp as any).operator).toBe('|');
+    expect((exp as any).left).toBeInstanceOf(BinaryExpression);
+    expect((exp as any).left.operator).toBe('&');
+  });
 });

@@ -8,7 +8,7 @@ if [ "${1-}" == "--compiled" ]; then
 fi
 
 echo "Compiling kernel..."
-${QLLC_PATH} kernel.qll support.qll scheduler.qll peripherals.qll ../lib/std.qll
+${QLLC_PATH} kernel.qll support.qll scheduler.qll peripherals.qll process.qll memory.qll ../lib/std.qll ../lib/std.bare.qll
 
 echo "Assembling kernel..."
 ${QASM_PATH} -o kernel.qbin out.qasm support.qasm

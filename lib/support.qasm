@@ -3,6 +3,11 @@
 ;
 ; NOTE: there's no operating system yet, so this is just a sketch.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+@global::lib::support::debugger:
+  constant r1 0x3
+  int r1
+  jmp r0
+
 @global::lib::support::syscall:
   store r63 r0      ; Store return.
   sub r63 r63 r62

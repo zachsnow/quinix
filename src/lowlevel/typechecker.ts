@@ -57,6 +57,8 @@ class TypeChecker extends Messages {
   public readonly typeTable: TypeTable;
   public readonly symbolTable: StorageTable;
 
+  public readonly usings: string[] = [];
+
   private loopCount: number = 0;
   private instantiationSource: Source = new Source();
   private checks: Check[] = [];
@@ -94,11 +96,20 @@ class TypeChecker extends Messages {
     // Use the same reference table; only update via `recordReferences`.
     context.recordedReferences = this.recordedReferences;
 
+    // If we are changing namespaces, clear the usings.
+    if(!namespace){
+      context.usings.push(...this.usings);
+    }
+
     return context;
   }
 
   public prefix(identifier: string): string {
     return this.namespace ? `${this.namespace}::${identifier}` : identifier;
+  }
+
+  public using(usings: string[]){
+    this.usings.push(...usings);
   }
 
   public loop(): TypeChecker {

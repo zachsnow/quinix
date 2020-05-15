@@ -71,34 +71,47 @@ class SymbolTable<T> {
    * Given a namespace and a bare identifier, returns the possible locations
    * to search for the bare identifier.
    *
-   * For example, if the current namespace is `global::foo::bar`, and
+   * For example, if the current namespace is `global::foo::bar`, there's a
+   * single `using` in the current namespace for `global::bleck`, and
    * we are looking up the bare identifier `baz`, we generate the following
    * lookups:
    *
    *    baz -- for locals / parameters.
+   *
    *    global::foo::bar::baz -- search in the current namespace.
    *    global::foo::baz -- search in the containing namespace.
    *    global::baz -- search in the next containing namespace.
+   *
+   *    global::bleck::baz -- searching using.
    *
    * Once we've reached `global`, the top-level namespace, we are done.
    *
    * @param namespace the namespace in which the identifier is found
    * @param identifier the bare identifier to generate lookups for
    */
-  private lookups(namespace: string, identifier: string): string[] {
+  private lookups(identifier: string, namespace: string, usings: string[]): string[] {
     if(!namespace){
       return [ identifier ];
     }
 
-    const parts = namespace.split('::');
+    // Cascading lookup.
     const lookups: string[] = [];
+    const parts = namespace.split('::');
     parts.forEach((part, i) => {
       const lookup = parts.slice(0, i + 1);
       lookup.push(identifier);
       lookups.push(lookup.join('::'));
     });
-    lookups.push(identifier)
     lookups.reverse();
+
+    // Base identifier first.
+    lookups.unshift(identifier);
+
+    // Usings last.
+    lookups.push(...usings.map((using) => {
+      return [using, identifier].join('::');
+    }));
+
     return lookups;
   }
 
@@ -108,11 +121,12 @@ class SymbolTable<T> {
    * the value of the identifier if it is found, along with its fully qualified
    * name, or `undefined`.
    *
-   * @param namespace
    * @param identifier
+   * @param namespace
+   * @param usings
    */
-  public lookup(namespace: string, identifier: string): { qualifiedIdentifier: string, value: T } | undefined {
-    let lookup = this.lookups(namespace, identifier).find((lookup) => {
+  public lookup(identifier: string, namespace: string, usings: string[]): { qualifiedIdentifier: string, value: T } | undefined {
+    let lookup = this.lookups(identifier, namespace, usings).find((lookup) => {
       return this.has(lookup);
     });
 

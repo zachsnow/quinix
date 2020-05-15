@@ -1,80 +1,117 @@
 namespace kernel {
   namespace syscall {
     .constant global EXIT: byte = 0x0;
-    .constant
+    .constant global READ: byte = 0x1;
+    .constant global WRITE: byte = 0x2;
+    .constant global OPEN: byte = 0x3;
+    .constant global CLOSE: byte = 0x4;
+    .constant global CREATE: byte = 0x5;
+    .constant global DESTROY: byte = 0x6;
+    .constant global SPAWN: byte = 0x7;
 
-    // interrupt 0x80 handler; special calling convention `interrupt`.
-    .interrupt function syscall(syscall: byte, arg0: byte, arg1: byte, arg2: byte): byte {
-      if(syscall == EXIT){
-        _exit();
-        return;
+    type syscall = struct {
+      syscall: byte;
+      arg0: byte;
+      arg1: byte;
+      arg2: byte;
+    };
+
+    // interrupt 0x80 handler.
+    .interrupt function _syscall_interrupt(): byte {
+      log('syscall: interrupt');
+
+      // Arguments are passed in r0...r3.
+      var syscall = syscall {
+        syscall = interrupts::state->registers[0],
+        arg0 = interrupts::state->registers[1],
+        arg1 = interrupts::state->registers[2],
+        arg2 = interrupts::state->registers[3],
+      };
+
+      // For now if we make an invalid syscall, we just exit.
+      if(syscall.syscall < 0 || syscall.syscall >= len syscalls){
+        log('syscall: invalid syscall');
+        _exit(call);
+        return 0;
       }
+
+      var fn = syscalls[syscall.syscall];
+      return fn(syscall);
     }
 
     global syscalls: syscall[] = [
       _exit,
-      _debugger,
-      _open,
-      _close,
       _read,
       _write,
+      _open,
+      _close,
+      _create,
+      _destroy,
+      _spawn,
     ];
 
-    function translate_pointer(p: * byte): * byte {
-      // Get the current task and check if the pointer
-      // is valid within the task's memory table. If so,
-      // convert it to physical memory.
+    function _translate_pointer<T>(p: * byte): * T {
       var current_process = process::current_process();
-      if(!current_process){
-        kernel::panic('syscall: invalid process');
-      }
-      return memory::translate(current_process->table, p);
+      return <unsafe * T>memory::translate(current_process->table, p);
     }
 
-    function translate_array(a: byte[]): byte[] {
-      return <unsafe byte[]>translate_pointer(<unsafe * byte>a);
-    }
-
-    function validate_handle(handle: handle): bool {
+    function _translate_array<T>(p: * byte): T {
       var current_process = process::current_process();
+      return <unsafe T>memory::translate(current_process->table, p);
     }
 
-    function _read(handle: handle, buffer: byte[]): error {
-      if(!validate_handle(handle)){
-        return error::INVALID_HANDLE;
-      }
-
-      buffer = convert_array(buffer);
-      if(!buffer){
-        return error::INVALID_POINTER;
-      }
-      std::buffered::read(buffer,)
-      return error::OK;
+    function _validate_pointer(p: * byte): bool {
+      return memory::translate(current_process->table, p) != null;
     }
 
-    function _write(): errors::error {
-      if(!validate_pointer(buffer)){
-        return errors::INVALID_POINTER;
+    function _validate_array<T>(p: * byte): bool {
+      if(!_validate_pointer(p)){
+        return false;
       }
-      if(!validate_pointer_offset(buffer, size)){
-        return errors::INVALID_POINTER;
-      }
-
-      //
-
+      var arr = <unsafe T[]>p;
+      var cap = capacity arr;
+      return _validate_pointer(<unsafe byte>p + cap);
     }
 
-    function _exit(): void {
+    function _exit(sc: syscall) {
       var process = process::current_process();
-      if(!process){
-        kernel::panic('syscall: invalid process');
-      }
       process::destroy_process(process);
+      return 0;
+    }
+
+    function _write(sc: syscall): byte {
+      var handle = <unsafe handle>sc.arg0;
+
+      if(!_validate_array<string>(sc.arg1)){
+        return 0;
+      }
+      var data = _translate_array<string>(sc.arg1);
+
+      return fs::write(handle, data);
+    }
+
+    function _read(sc: syscall): byte {
+      var handle = <unsafe handle>sc.arg0;
+
+      if(!_validate_array<string>(sc.arg1)){
+        return 0;
+      }
+      var data = _translate_array<string>(sc.arg1);
+
+      return fs::read(handle, data);
+    }
+
+    function _create_process(sc: syscall): byte {
+      if(!_validate_array<string>(sc.arg0)){
+        return 0;
+      }
+      var binary = _translate_array<string>(sc.arg0);
+      return kernel::process::create(binary);
     }
 
     function init(): void {
       // Register `syscall` to handle interrupt 0x80.
-      support::interrupt(syscall, 0x80);
+      support::interrupt(interrupts::SYSCALL, _syscall_interrupt);
     }
   }
 }

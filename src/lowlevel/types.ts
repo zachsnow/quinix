@@ -706,7 +706,7 @@ class IdentifierType extends Type {
   }
 
   public elaborate(context: TypeChecker): void {
-    const lookup = context.typeTable.lookup(context.namespace, this.identifier);
+    const lookup = context.typeTable.lookup(this.identifier, context.namespace, context.usings);
     if(lookup === undefined){
       this.error(context, `unknown type identifier ${this.identifier}`);
 

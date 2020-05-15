@@ -9,6 +9,32 @@ namespace kernel {
     .constant global NO_LOG: error = -2;
   }
 
+  type interrupt = byte;
+  namespace interrupt {
+    .constant global ERROR: interrupt = 0x1;
+    .constant global TIMER: interrupt = 0x2;
+    .constant global SYSCALL: interrupt = 0x80;
+  }
+
+  namespace interrupts {
+    type state = struct {
+      registers: byte[64];
+      ip: byte;
+    };
+
+    global state: * state = <unsafe * state>0x2;
+
+    global _interrupts_enabled: .notnull * bool = null; // Lives at 0x0000.
+
+    function disable(): void {
+      *_interrupts_enabled = false;
+    }
+
+    function enable(): void {
+      *_interrupts_enabled = true;
+    }
+  }
+
   function log(message: byte[]): void {
     // If peripherals have been properly configured, just use that.
     // For now we log to the console.
@@ -43,16 +69,6 @@ namespace kernel {
     support::halt(error::PANIC);
   }
 
-  global interrupts_enabled: .notnull * bool = null; // INTERRUPTS_ENABLED lives at 0x0000.
-
-  function disable_interrupts(): void {
-    *interrupts_enabled = false;
-  }
-
-  function enable_interrupts(): void {
-    *interrupts_enabled = true;
-  }
-
   function init(): void {
     peripherals::init();
     scheduler::init();
@@ -60,7 +76,7 @@ namespace kernel {
 }
 
 function main(): void {
-  kernel::disable_interrupts();
+  kernel::interrupts::disable();
   kernel::init();
 
   // Load the shell and create a task for it.
@@ -89,5 +105,7 @@ function main(): void {
   delete binary;
 
   kernel::enable_interrupts();
-  kernel::support::wait();
+  while(true){
+    kernel::support::wait();
+  }
 }

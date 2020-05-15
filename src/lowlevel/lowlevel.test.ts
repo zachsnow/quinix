@@ -1622,4 +1622,25 @@ describe('QLLC end-to-end', () => {
       }
     `);
   });
+
+  test('namespace lookups', () =>{
+    return expectRunToBe(34, `
+      namespace bar {
+        using global::bleck;
+        function baz(): byte {
+          return frob;
+        }
+      }
+      namespace bleck {
+        global frob: byte = 12;
+      }
+      namespace oops {
+        global frob: byte = 22;
+      }
+      using global::oops;
+      function main(): byte {
+        return bar::baz() + frob;
+      }
+    `);
+  })
 });
