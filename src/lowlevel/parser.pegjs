@@ -19,7 +19,7 @@ Declaration
     / UsingDeclaration
 
 NamespaceDeclaration
-    = NamespaceToken _ id:Identifier _ "{" _ ds:DeclarationList? _ "}" {
+    = NamespaceToken _ id:QualifiedIdentifier _ "{" _ ds:DeclarationList? _ "}" {
         return new NamespaceDeclaration(id, ds || []).at(location(), text(), options);
     }
 

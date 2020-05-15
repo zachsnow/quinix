@@ -335,6 +335,9 @@ class FunctionDeclaration extends Declaration {
 
   public kindcheck(context: TypeChecker): void {
     this.type.elaborate(context);
+  }
+
+  public preTypecheck(context: TypeChecker): void {
     this.type.kindcheck(context, new KindChecker());
 
     const duplicateParameters = duplicates(this.parameters.map((parameter) => {
@@ -349,9 +352,7 @@ class FunctionDeclaration extends Declaration {
         this.error(context, `expected non-void argument, actual ${argumentType}`);
       }
     });
-  }
 
-  public preTypecheck(context: TypeChecker): void {
     this.qualifiedIdentifier = context.prefix(this.identifier);
     context.symbolTable.set(this.qualifiedIdentifier, new TypedStorage(this.type, 'function'));
   }
