@@ -81,23 +81,18 @@ namespace std {
       *vec = v;
     }
 
-    function is_empty<T>(arr: vector<T>): bool {
-      return len arr == 0;
-    }
-
     function create<T>(n: byte): vector<T> {
       var v = new T[n];
       len v = 0;
       return v;
     }
 
-    function from_array<T>(arr: vector<T>): vector<T> {
-      var v = new T[capacity arr];
-      len v = len arr;
-      for(var i = 0; i < len v; i = i + 1){
-        v[i] = arr[i];
-      }
-      return v;
+    function destroy<T>(vec: vector<T>): void {
+      delete vec;
+    }
+
+    function from_array<T>(arr: T[]): vector<T> {
+      return new T[] = arr;
     }
 
     function add<T>(vec: * vector<T>, element: T): void {
@@ -117,12 +112,31 @@ namespace std {
       len vec = n;
     }
 
+    function remove_by<T, C>(vec: vector<T>, fn: (T, C) => bool, context: C): void {
+      var index = find_by(vec, fn);
+      if(index == -1){
+        return;
+      }
+      remove(vec, index);
+    }
+
     function find<T>(vec: vector<T>, el: T): byte {
       for(var i = 0; i < len vec; i = i + 1){
         if(el == vec[i]){
           return i;
         }
       }
+      return -1;
+    }
+
+    function find_by<T, C>(vec: vector<T>, fn: (T, C) => bool, context: C): T {
+      for(var i = 0; i < len vec; i = i + 1){
+        var el = vec[i];
+        if(fn(el, context)){
+          return i;
+        }
+      }
+
       return -1;
     }
 
@@ -134,6 +148,12 @@ namespace std {
   }
 
   namespace str {
+    function from_string(s: string): string {
+      var new_s = new byte[len s];
+      std::copy(new_s, s);
+      return new_s;
+    }
+
     function reverse(buffer: string): void {
       var length = len buffer;
       for(var i = 0; i < length / 2; i = i + 1){
@@ -201,43 +221,6 @@ namespace std {
 
     function utoa(number: byte, buffer: string, base: byte): bool {
       return ntoa(number, buffer, base, false);
-    }
-  }
-
-  // Buffered IO.
-  namespace buffered {
-    .constant global READY: byte = 0x0;
-    .constant global WRITE: byte = 0x1;
-    .constant global READ: byte = 0x2;
-    .constant global PENDING: byte = 0x3;
-    .constant global ERROR: byte = 0x4;
-
-    function write(control: * byte, buffer: string, data: string): bool {
-      len buffer = len data;
-      for(var i = 0; i < len data; i = i + 1){
-        buffer[i] = data[i];
-      }
-
-      *control = WRITE;
-
-      while(*control == PENDING){}
-
-      return *control == READY;
-    }
-
-    function read(control: * byte, buffer: string, data: string): bool {
-      *control = READ;
-
-      while(*control == PENDING){}
-      if(*control != READY){
-        return false;
-      }
-
-      len data = len buffer;
-      for(var i = 0; i < len buffer; i = i + 1){
-        data[i] = buffer[i];
-      }
-      return true;
     }
   }
 
@@ -319,18 +302,17 @@ namespace std {
     }
   }
 
-  // Console IO.
-  namespace console {
-    function print(s: string): bool {
-      var control: *byte = <unsafe * byte> 0x303;
-      var buffer: string = <unsafe string> 0x304;
-      return buffered::write(control, buffer, s);
+  function copy<T>(destination: T[], source: T[]): void {
+    var length = math::min(capacity destination, len source);
+    for(var i = 0; i < length; i = i + 1){
+      destination[i] = source[i];
     }
+    len destination = length;
+  }
 
-    function input(s: string): bool {
-      var control = <unsafe * byte> 0x403;
-      var buffer = <unsafe string> 0x404;
-      return buffered::read(control, buffer, s);
+  function unsafe_copy<T>(destination: * T, source: * T, length: byte): void {
+    for(var i = 0; i < length; i = i + 1){
+      destination[i] = source[i];
     }
   }
 }
