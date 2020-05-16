@@ -963,8 +963,15 @@ class LowLevelProgram {
     const context = new TypeChecker(this.globalNamespace);
 
     // Kindcheck and typecheck all definitions.
-    this.globalNamespace.kindcheck(context);
-    this.globalNamespace.typecheck(context);
+    try {
+      this.globalNamespace.kindcheck(context);
+      this.globalNamespace.typecheck(context);
+    }
+    catch(e){
+      if(e instanceof InternalError){
+        context.error(e.message);
+      }
+    }
 
     // Some checks we can't perform until we are sure that we've
     // checked the entire program.  If we already have a bunch of errors,
