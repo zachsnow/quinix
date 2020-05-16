@@ -205,7 +205,7 @@ class TemplateTypeDeclaration extends BaseTypeDeclaration {
 
     // Kindcheck in this context (so that name lookups work correct),
     // but with whatever substitution was in place at the instantiation point
-    // (so that generic variables can be found)
+    // (so that generic variables can be found).
     type.kindcheck(context, new KindChecker(this.qualifiedIdentifier).withTypeTable(kindchecker.typeTable));
   }
 
@@ -606,6 +606,11 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
       type.returnType,
       this.block.substitute(typeTable),
     );
+
+    // Put this function declaration in our namespace.
+    if(this.namespace){
+      functionDeclaration.inNamespace(this.namespace);
+    }
 
     this.instantiations.push({
       identifier,

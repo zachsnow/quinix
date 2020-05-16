@@ -2,7 +2,6 @@ import { Immediate } from '../lib/base-types';
 import { indent, InternalError, Syntax, Location, duplicates, writeOnce, IFileRange, IParseOptions } from '../lib/util';
 import { TypeChecker, KindChecker, Source } from './typechecker';
 import { TypeTable } from './tables';
-import { NamespaceDeclaration } from './lowlevel';
 
 ///////////////////////////////////////////////////////////////////////
 // Types.
@@ -678,8 +677,18 @@ class IdentifierType extends Type {
     const lookup = kindchecker.typeTable.lookup(this.identifier);
     const declaration = context.namespace.lookupType(context, this.identifier);
 
+    // If we have already looked this identifier up, we're done.
+    // We don't want to look up already-bound identifiers because we
+    // probably just instantiated them into a new spot that is not
+    // the context in which they should be looked up!
+    if(this.qualifiedIdentifier !== undefined){
+      return;
+    }
+
     if(lookup !== undefined){
-      // This is a type binding; it can't be recursive.
+      // This is a type binding; it can't be recursive. We don't
+      // save the qualified identifier because it doesn't really have
+      // one.
       return;
     }
     else if(declaration !== undefined){
@@ -746,16 +755,19 @@ class IdentifierType extends Type {
   }
 
   public substitute(typeTable: TypeTable): Type {
-    // If we have bound this type variable, replace it, otherwise leave it alone.
+    // If we have bound this type variable, replace it with
+    // the value we bound in the type table.
     if(typeTable.has(this.identifier)){
       return typeTable.get(this.identifier).value;
     }
 
+    // Otherwise, it's just a regular type identifier.
     const t = new IdentifierType(
       this.identifier,
     ).at(this.location).tag(this.tags);
 
-    // We should only encounter elaborated identifiers?
+    // We should only encounter elaborated identifiers because we should have
+    // already kindchecked the body of any type before we instantiate it.
     t.qualifiedIdentifier = this.qualifiedIdentifier;
     t.type = this.type;
 
