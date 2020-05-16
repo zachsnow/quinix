@@ -166,7 +166,7 @@ class IdentifierExpression extends Expression {
       // We mangle the identifier in the same way as when we compile
       // each template instantiation so that when we compile the reference
       // to this function we will find it.
-      const instantiatedType = cType.instantiate(context, this.typeArgs, this.location);
+      const instantiatedType = cType.instantiate(context, new KindChecker(), this.typeArgs, this.location);
       this.qualifiedIdentifier = `${qualifiedIdentifier}<${instantiatedType}>`;
       if(needsReference){
         context.reference(this.qualifiedIdentifier);
@@ -1600,7 +1600,7 @@ class CallExpression extends Expression {
         returnType,
       ).at(this.location);
 
-      const inferredType = cType.infer(context, expectedType, this.location);
+      const inferredType = cType.infer(context, new KindChecker(), expectedType, this.location);
       if(!inferredType){
         this.error(context, `unable to infer template instantiation, actual ${type}`);
         return Type.Error;

@@ -99,6 +99,16 @@ function indent(s: string, indent: number = 1): string {
   return s.replace(/\n/g, '\n' + indentation);
 }
 
+function flatten<T>(array: readonly T[][]): T[] {
+  const result: T[] = [];
+  array.forEach((arr) => {
+    arr.forEach((el) => {
+      result.push(el);
+    });
+  });
+  return result;
+}
+
 function duplicates<T>(array: readonly T[]): T[] {
   const duplicates: T[] = [];
   array.forEach((s, index) => {
@@ -366,7 +376,7 @@ function writeOnce<K, F extends Constructor<K>>(cls: F, key: string, allowUndefi
 export {
   InternalError,
   indent,
-  duplicates, unique,
+  duplicates, unique, flatten,
   SymbolTable,
   logger,
   readFiles,

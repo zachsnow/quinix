@@ -1,7 +1,8 @@
 import { Messages, Location, InternalError } from '../lib/util';
 import { TypeTable, StorageTable } from './tables';
-import { Type } from './types';
+import { Type, IdentifierType } from './types';
 import { NamespaceDeclaration } from './lowlevel';
+import { IdentifierExpression } from './expressions';
 
 type SourceInstantiation = {
   identity: string;
@@ -165,11 +166,9 @@ class TypeChecker extends Messages {
   }
 
   public builtinType(identifier: string): Type {
-    const type = this.namespace.root.lookupType(this, 'bool');
-    if(type !== undefined){
-      return type.type;
-    }
-    throw new InternalError(`unknown builtin type ${identifier}`);
+    const type = new IdentifierType(identifier);
+    type.kindcheck(this, new KindChecker());
+    return type;
   }
 }
 
@@ -224,9 +223,9 @@ class KindChecker {
     }
   }
 
-  public extendTypeTable(): KindChecker {
+  public withTypeTable(typeTable: TypeTable): KindChecker {
     const kindchecker = this.extend();
-    kindchecker.typeTable = kindchecker.typeTable.extend();
+    kindchecker.typeTable = typeTable;
     return kindchecker;
   }
 

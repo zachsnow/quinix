@@ -1,4 +1,4 @@
-import { InternalError, logger, Messages, indent, parseFile, writeOnce, duplicates } from '../lib/util';
+import { InternalError, logger, Messages, indent, parseFile, writeOnce, duplicates, flatten } from '../lib/util';
 import {
   Directive,
 
@@ -191,12 +191,10 @@ class TemplateTypeDeclaration extends BaseTypeDeclaration {
 
   public kindcheck(context: TypeChecker): void {
     this.type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
-
-    // We can't kindcheck a tetmplate type, we can only check its instantiations.
     this.context = context;
   }
 
-  private instantiator(type: Type, typeTable: TypeTable, source: Source): void {
+  private instantiator(type: Type, kindchecker: KindChecker, typeTable: TypeTable, source: Source): void {
     const context = this.context.forSource(source);
 
     // Don't go too deep!
@@ -205,8 +203,10 @@ class TemplateTypeDeclaration extends BaseTypeDeclaration {
       return;
     }
 
-    // Kindcheck in this context.
-    type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
+    // Kindcheck in this context (so that name lookups work correct),
+    // but with whatever substitution was in place at the instantiation point
+    // (so that generic variables can be found)
+    type.kindcheck(context, new KindChecker(this.qualifiedIdentifier).withTypeTable(kindchecker.typeTable));
   }
 
   public typecheck(context: TypeChecker): void {}
@@ -552,7 +552,7 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
     // instead they are typechecked when they are instantiated.
   }
 
-  private instantiator(type: Type, typeTable: TypeTable, source: Source): void {
+  private instantiator(type: Type, kindchecker: KindChecker, typeTable: TypeTable, source: Source): void {
     if(!this.block){
       throw new InternalError(`unexpected template pre-declaration`);
     }
@@ -568,8 +568,8 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
     // Record references found in this function instantiation.
     const context = this.context.forSource(source).recordReferences();
 
-    // TODO: should we do this instantiate()?
-    type.kindcheck(context, new KindChecker());
+    // TODO: should we do this in instantiate()?
+    type.kindcheck(context, new KindChecker().withTypeTable(kindchecker.typeTable));
     type.argumentTypes.forEach((argumentType) => {
       if(argumentType.isConvertibleTo(Type.Void)){
         this.error(context, `expected non-void argument, actual ${argumentType}`);
@@ -650,8 +650,8 @@ class UsingDeclaration extends Declaration {
     }
 
     // Make sure that this using refers to a namespace.
-    const namespace = this.namespace.root.getNamespace(this.identifier);
-    if(namespace === undefined){
+    const namespaces = this.namespace.root.getNamespaces(this.identifier);
+    if(namespaces.length === 0){
       this.error(context, `unknown namespace identifier ${this.identifier}`);
       return;
     }
@@ -730,28 +730,44 @@ class NamespaceDeclaration extends NamedDeclaration {
   }
 
   /**
-   * Looks up the potentially partially qualified identifier in this
-   * namespace and its parents, taking into account usings.
-   *
-   * @param identifier a partially qualified namespace identifier to look up.
-   */
-  public lookupNamespace(context: TypeChecker, identifier: string){
-    return this.lookup<NamespaceDeclaration>(context, NamespaceDeclaration, identifier);
-  }
-
-  /**
-   * Get the given namespace within this namespace, ignoring parent
-   * namespaces and usings.
+   * Gets the given namespace within this namespace, ignoring parent
+   * namespaces and usings.  Because we may have multiple declarations of
+   * the same namespace, we return a list of declarations.
    *
    * @param identifier the namespace fully qualified identifier.
    */
-  public getNamespace(identifier: string){
-    // Special case: `global`.
-    if(!this.namespace && this.identifier === identifier){
-      return this;
+  public getNamespaces(identifier: string) : NamespaceDeclaration[] {
+    const fullyQualifiedIdentifier = `${this.qualifiedIdentifier}::${identifier}`;
+    if(this.namespace){
+      return this.root.getNamespaces(fullyQualifiedIdentifier);
     }
 
-    return this.get<NamespaceDeclaration>(NamespaceDeclaration, identifier);
+    // Now we have a fully qualified identifier.
+    const parts = identifier.split('::');
+
+    // Special case: `global` always refers to the outermost namespace
+    // (which doesn't have a parent).
+    if(parts[0] === this.identifier){
+      parts.shift();
+      if(!parts.length){
+        return [ this ];
+      }
+    }
+
+    function get(namespace: NamespaceDeclaration, path: string[]): NamespaceDeclaration[] {
+      const namespaces = namespace.declarations.map((dec) => {
+        if(dec instanceof NamespaceDeclaration && dec.identifier === path[0]){
+          if(path.length > 1){
+            return get(dec, path.slice(1));
+          }
+          return [ dec ]
+        }
+        return [];
+      });
+      return flatten(namespaces);
+    }
+
+    return get(this, parts);
   }
 
   private lookup<T extends NamedDeclaration>(context: TypeChecker, cls: Function, identifier: string, using: boolean = true): T | undefined {
@@ -768,12 +784,11 @@ class NamespaceDeclaration extends NamedDeclaration {
     // a direct lookup.
     const objects = this.usings.map((using) => {
       const usingIdentifier = `${using.qualifiedIdentifier}::${identifier}`;
-      console.info('looking for', usingIdentifier, 'in root', this.root.qualifiedIdentifier);
       return this.root.get<T>(cls, usingIdentifier);
     }).filter((object): object is T => !!object);
     if(objects.length > 1){
       this.error(context, `ambiguous identifier ${identifier} refers to ${objects.map((object) => object.qualifiedIdentifier).join(', ')}`);
-      return undefined;
+      return;
     }
     else if(objects.length === 1){
       return objects[0];
@@ -789,15 +804,28 @@ class NamespaceDeclaration extends NamedDeclaration {
   }
 
   private get<T extends NamedDeclaration>(cls: Function, identifier: string): T | undefined {
-    // If we have a qualified identifier, look up the first element
-    // as a namespace, and lookup the rest directly in that namespace.
+    // If we have a qualified identifier, get the prefix
+    // as a namespace, and lookup the final identifier directly in that namespace.
     const parts = identifier.split('::');
     if(parts.length > 1){
-      const namespace = this.getNamespace(parts[0]);
-      if(namespace !== undefined){
-        return namespace.get<T>(cls, parts.slice(1).join('::'));
+      const namespaceIdentifier = parts.slice(0, parts.length - 1).join('::');
+      const objectIdentifier = parts[parts.length - 1];
+
+      const namespaces = this.getNamespaces(namespaceIdentifier);
+
+      const results = namespaces.map((namespace) => {
+        return namespace.get<T>(cls, objectIdentifier);
+      }).filter((dec): dec is T => !!dec);
+
+      if(results.length > 1){
+        throw new InternalError(`multiple definitions: ${results.join(', ')}`);
       }
-      return;
+      else if(results.length === 1){
+        return results[0];
+      }
+      else {
+        return;
+      }
     }
 
     // Otherwise we have an unqualified identifier; just look in our own declarations.

@@ -220,7 +220,7 @@ class BuiltinType extends Type {
   }
 }
 
-type Instantiator = (type: Type, bindings: TypeTable, source: Source) => void;
+type Instantiator = (type: Type, kindchecker: KindChecker, bindings: TypeTable, source: Source) => void;
 
 class VariableType extends Type {
   private static id = 0;
@@ -318,7 +318,7 @@ class TemplateType extends Type {
     // We need to elaborate the body of the template type, but
     // we want to make sure that bound type variables are left
     // alone.
-    const nestedKindchecker = kindchecker.extendTypeTable();
+    const nestedKindchecker = kindchecker.withTypeTable(kindchecker.typeTable.extend());
     this.typeVariables.forEach((tv) => {
       nestedKindchecker.typeTable.set(tv, new IdentifierType(tv));
     });
@@ -354,7 +354,7 @@ class TemplateType extends Type {
    * @param typeArgs the type arguments with which to instantiate this template type.
    * @param location the location of the instantiation.
    */
-  public instantiate(context: TypeChecker, typeArgs: readonly Type[], location?: Location): Type {
+  public instantiate(context: TypeChecker, kindchecker: KindChecker, typeArgs: readonly Type[], location?: Location): Type {
     // Check that we passed the right number of arguments.
     if(this.typeVariables.length !== typeArgs.length){
       this.error(context, `expected ${this.typeVariables.length} type arguments, actual ${typeArgs.join(', ')}`);
@@ -383,7 +383,7 @@ class TemplateType extends Type {
     // Call the instantiators so we can typecheck the body of the function with
     // the instantiation we just developed.
     this.instantiators.forEach((instantiator) => {
-      instantiator(iType, typeTable, source);
+      instantiator(iType, kindchecker, typeTable, source);
     });
 
     return iType;
@@ -399,7 +399,7 @@ class TemplateType extends Type {
    * unify with.
    * @param location the location of the instantiation.
    */
-  public infer(context: TypeChecker, expectedType: Type, location?: Location): Type | undefined {
+  public infer(context: TypeChecker, kindchecker: KindChecker, expectedType: Type, location?: Location): Type | undefined {
     // Build a substitution mapping type variables to new variables
     // that can bind during unification.
     const typeTable = new TypeTable();
@@ -426,7 +426,7 @@ class TemplateType extends Type {
 
     // Otherwise, we inferred an instantiation. Extract it and instantiate
     // this template type.
-    return this.instantiate(context, typeArgs.map((arg) => arg.evaluate()), location);
+    return this.instantiate(context, kindchecker, typeArgs.map((arg) => arg.evaluate()), location);
   }
 
   public toString(){
@@ -480,7 +480,7 @@ class TemplateInstantiationType extends Type {
       this.location,
     ));
 
-    this.instantiatedType = type.instantiate(nestedContext, this.typeArguments, this.location);
+    this.instantiatedType = type.instantiate(nestedContext, kindchecker, this.typeArguments, this.location);
   }
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
@@ -705,6 +705,7 @@ class IdentifierType extends Type {
       this.type.kindcheck(context, kindchecker.visit(this.qualifiedIdentifier));
     }
     else {
+      debugger;
       this.error(context, `unknown type identifier ${this.identifier}`);
 
       // We don't have a real qualified identifier for this, but we expect

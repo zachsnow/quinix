@@ -361,7 +361,7 @@ describe('Types', () => {
       const int = parse('int');
       int.kindcheck(context, new KindChecker());
 
-      expect(dec.type.instantiate(context, [ Type.Byte, int ]).toString()).toBe('(byte, * int) => int');
+      expect(dec.type.instantiate(context, new KindChecker(), [ Type.Byte, int ]).toString()).toBe('(byte, * int) => int');
 
     });
   });
