@@ -12,7 +12,7 @@ describe('Reference', () => {
     const assembler = new Assembler();
     const ref = new Reference('ref');
     ref.preassemble(assembler, 0x10);
-    expect(assembler.addressTable.get('ref')).toBe(0x10);
+    expect(assembler.addressTable.get('ref').value).toBe(0x10);
   });
 
   test('assembles to its address', () => {

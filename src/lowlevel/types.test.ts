@@ -6,14 +6,19 @@ import {
   SuffixType,
 } from './types';
 import { TypeChecker, KindChecker } from './typechecker';
+import { NamespaceDeclaration, TypeDeclaration, TemplateTypeDeclaration } from './lowlevel';
 
 describe('Types', () => {
   const parse: (text: string) => Type = _parse;
 
+  const defaultNamespace = new NamespaceDeclaration('global', [
+    ...NamespaceDeclaration.builtins,
+  ]);
+  const defaultContext = new TypeChecker(defaultNamespace)
+
   function kindcheck(s: string, context?: TypeChecker): Type{
     const type = parse(s);
-    type.elaborate(context || new TypeChecker());
-    type.kindcheck(context || new TypeChecker(), new KindChecker());
+    type.kindcheck(context || defaultContext, new KindChecker());
     return type;
   }
 
@@ -56,8 +61,11 @@ describe('Types', () => {
 
   describe('Equality / Conversion', () => {
     test('identifier equality', () => {
-      const context = new TypeChecker();
-      context.typeTable.set('int', Type.Byte);
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('int', Type.Byte),
+        ...NamespaceDeclaration.builtins,
+      ]);
+      const context = new TypeChecker(ns);
 
       // Equal to self.
       expect(kindcheck('byte').isEqualTo(kindcheck('byte'))).toBe(true);
@@ -99,9 +107,6 @@ describe('Types', () => {
     });
 
     test('structs', () => {
-      const context = new TypeChecker();
-      context.typeTable.set('int', Type.Byte);
-
       expect(kindcheck('struct { x: byte; }').isConvertibleTo(kindcheck('struct { x: byte; }'))).toBe(true);
       expect(kindcheck('struct { x: byte; y: byte; }').isConvertibleTo(kindcheck('struct { x: byte; y: byte; }'))).toBe(true);
       expect(kindcheck('struct { x: byte; }').isEqualTo(kindcheck('struct { x: byte; }'))).toBe(true);
@@ -125,9 +130,15 @@ describe('Types', () => {
       expect(kindcheck('bool').isEqualTo(kindcheck('(struct { x: bool; }).x'))).toBe(true);
       expect(kindcheck('byte').isConvertibleTo(kindcheck('(struct { x: bool; }).x'))).toBe(true);
       expect(kindcheck('bool').isConvertibleTo(kindcheck('(struct { x: bool; }).x'))).toBe(true);
+    });
 
-      const struct = kindcheck('struct { x: bool; }');
-      context.typeTable.set('s', struct);
+    test('structs', () => {
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('s', parse('struct { x: bool; }')),
+        ...NamespaceDeclaration.builtins,
+      ]);
+      const context = new TypeChecker(ns);
+
       expect(kindcheck('s.x', context).isEqualTo(kindcheck('byte'))).toBe(false);
       expect(kindcheck('s.x', context).isEqualTo(kindcheck('bool'))).toBe(true);
       expect(kindcheck('s.x', context).isConvertibleTo(kindcheck('byte'))).toBe(true);
@@ -136,9 +147,14 @@ describe('Types', () => {
       expect(kindcheck('bool').isEqualTo(kindcheck('s.x', context))).toBe(true);
       expect(kindcheck('byte').isConvertibleTo(kindcheck('s.x', context))).toBe(true);
       expect(kindcheck('bool').isConvertibleTo(kindcheck('s.x', context))).toBe(true);
+    });
 
-      const deepStruct = kindcheck('struct { x: struct { y: bool; }; }');
-      context.typeTable.set('d', deepStruct);
+    test('structs', () => {
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('d', parse('struct { x: struct { y: bool; }; }')),
+        ...NamespaceDeclaration.builtins,
+      ]);
+      const context = new TypeChecker(ns);
       expect(kindcheck('d.x.y', context).isEqualTo(kindcheck('byte'))).toBe(false);
       expect(kindcheck('d.x.y', context).isEqualTo(kindcheck('bool'))).toBe(true);
       expect(kindcheck('d.x.y', context).isConvertibleTo(kindcheck('byte'))).toBe(true);
@@ -150,16 +166,20 @@ describe('Types', () => {
     });
 
     test('templates', () => {
-      const context = new TypeChecker();
-
-      const f = new FunctionType(
-        [ new IdentifierType('T') ],
-        new IdentifierType('T'),
+      const idType = new TemplateType(
+        ['T'],
+        new FunctionType(
+          [ new IdentifierType('T') ],
+          new IdentifierType('T'),
+        ),
       );
-      const idType = new TemplateType(['T'], f);
 
-      context.typeTable.set('id', idType);
-      f.elaborate(context);
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('id', idType),
+        ...NamespaceDeclaration.builtins,
+      ]);
+
+      const context = new TypeChecker(ns);
 
       expect(kindcheck('id<byte>', context).isEqualTo(kindcheck('(byte) => byte'))).toBe(true);
       expect(kindcheck('id<byte>', context).isConvertibleTo(kindcheck('(byte) => byte'))).toBe(true);
@@ -200,93 +220,92 @@ describe('Types', () => {
 
   describe('Kindchecking', () => {
     test('invalid recursive type: type int = int', () => {
-      const context = new TypeChecker(undefined, undefined, 'test');
-      const t = parse('int');
-      context.typeTable.set('int', t);
-      t.elaborate(context);
-      t.kindcheck(context, new KindChecker());
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('int', parse('int')),
+        ...NamespaceDeclaration.builtins,
+      ]);
+      const context = new TypeChecker(ns);
+      ns.kindcheck(context);
       expect(context.errors[0].text).toBe(`recursive type int`);
     });
 
     test('invalid recursive type: type int = number; type number = int;', () => {
-      const context = new TypeChecker(undefined, undefined, 'test');
-      const n = parse('number');
-      const i = parse('int');
-      context.typeTable.set('int', n);
-      context.typeTable.set('number', i);
-      n.elaborate(context);
-      i.elaborate(context);
-      n.kindcheck(context, new KindChecker());
-      i.kindcheck(context, new KindChecker());
-      expect(context.errors[0].text).toBe(`recursive type number`);
-      expect(context.errors[1].text).toBe(`recursive type int`);
-    });
-
-    test('invalid recursive type: type int = * int', () => {
-      const context = new TypeChecker(undefined, undefined, 'test');
-      const t = parse('* int');
-      context.typeTable.set('int', t);
-      t.elaborate(context);
-      t.kindcheck(context, new KindChecker());
-      expect(context.errors[0].text).toBe(`recursive type int`);
-    });
-
-    test('invalid recursive type: type int = * number; type number = int;', () => {
-      const context = new TypeChecker(undefined, undefined, 'test');
-      const pn = parse('* number');
-      const i = parse('int');
-      context.typeTable.set('int', pn);
-      context.typeTable.set('number', i);
-      i.elaborate(context);
-      pn.elaborate(context);
-      i.kindcheck(context, new KindChecker());
-      pn.kindcheck(context, new KindChecker());
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('number', parse('int')),
+        new TypeDeclaration('int', parse('number')),
+      ]);
+      const context = new TypeChecker(ns);
+      ns.kindcheck(context);
       expect(context.errors[0].text).toBe(`recursive type int`);
       expect(context.errors[1].text).toBe(`recursive type number`);
     });
 
+    test('invalid recursive type: type int = * int', () => {
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('int', parse('* int')),
+        ...NamespaceDeclaration.builtins,
+      ]);
+      const context = new TypeChecker(ns);
+      ns.kindcheck(context);
+      expect(context.errors[0].text).toBe(`recursive type int`);
+    });
+
+    test('invalid recursive type: type int = * number; type number = int;', () => {
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('int', parse('* number')),
+        new TypeDeclaration('number', parse('* int')),
+        ...NamespaceDeclaration.builtins,
+      ]);
+      const context = new TypeChecker(ns);
+      ns.kindcheck(context);
+      expect(context.errors[0].text).toBe(`recursive type number`);
+      expect(context.errors[1].text).toBe(`recursive type int`);
+    });
+
     test('invalid recursive type: type int = struct { x: int; }', () => {
-      const context = new TypeChecker(undefined, undefined, 'test');
-      const t = parse('struct { x: int; }');
-      context.typeTable.set('int', t);
-      t.elaborate(context);
-      t.kindcheck(context, new KindChecker());
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('int', parse('struct { x: int; }')),
+        ...NamespaceDeclaration.builtins,
+      ]);
+      const context = new TypeChecker(ns);
+      ns.kindcheck(context);
       expect(context.errors[0].text).toBe(`recursive type int`);
     });
 
     test('invalid recursive type: type int = int[]', () => {
-      const context = new TypeChecker(undefined, undefined, 'test');
-      const t = parse('int[]');
-      context.typeTable.set('int', t);
-      t.elaborate(context);
-      t.kindcheck(context, new KindChecker());
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('int', parse('int[]')),
+        ...NamespaceDeclaration.builtins,
+      ]);
+      const context = new TypeChecker(ns);
+      ns.kindcheck(context);
       expect(context.errors[0].text).toBe(`recursive type int`);
     });
 
     test('valid recursive type: type int = struct { x: int[]; }', () => {
-      const context = new TypeChecker(undefined, undefined, 'test');
-      const t = parse('struct { x: int[]; }');
-      context.typeTable.set('int', t);
-      t.elaborate(context);
-      t.kindcheck(context, new KindChecker());
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('int', parse('struct { x: int[]; }')),
+      ]);
+      const context = new TypeChecker(ns);
+      ns.kindcheck(context);
       expect(context.errors.length).toBe(0);
     });
 
     test('valid recursive type: type int = struct { x: * int; }', () => {
-      const context = new TypeChecker(undefined, undefined, 'test');
-      const t = parse('struct { x: * int; }');
-      context.typeTable.set('int', t);
-      t.elaborate(context);
-      t.kindcheck(context, new KindChecker());
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('int', parse('struct { x: * int; }')),
+      ]);
+      const context = new TypeChecker(ns);
+      ns.kindcheck(context);
       expect(context.errors.length).toBe(0);
     });
 
     test('valid recursive type: type point = struct { x: byte; y: byte; add: (byte, byte) => point; };', () => {
-      const context = new TypeChecker(undefined, undefined, 'test');
-      const t = parse('struct { x: byte; y: byte; add: (byte, byte) => point; }');
-      context.typeTable.set('point', t);
-      t.elaborate(context);
-      t.kindcheck(context, new KindChecker());
+      const ns = new NamespaceDeclaration('global', [
+        new TypeDeclaration('point', parse('struct { x: byte; y: byte; add: (byte, byte) => point; }')),
+      ]);
+      const context = new TypeChecker(ns);
+      ns.kindcheck(context);
       expect(context.errors.length).toBe(0);
     });
   });
@@ -316,12 +335,11 @@ describe('Types', () => {
 
   describe('dots', () => {
     test('simple dotted type', () => {
-      const instantiations: Type[] = [];
       const s = new StructType(
         [ { identifier: 'foo', type: Type.Byte }]
       );
       const d = new DotType(s, 'foo');
-      const context = new TypeChecker();
+      const context = new TypeChecker(new NamespaceDeclaration('global', []));
       d.kindcheck(context, new KindChecker());
 
       expect(d.resolve()).toBe(Type.Byte);
@@ -331,52 +349,20 @@ describe('Types', () => {
 
   describe('templates', () => {
     test('simple instantiation', () => {
-      const t1 = new IdentifierType('t');
-      const instantiations: Type[] = [];
-      var f = new TemplateType(
-        ['A', 'B'],
-        new FunctionType(
-          [new IdentifierType('A'), new PointerType(new IdentifierType('B'))],
-          new IdentifierType('B'),
-        ),
-        [(type) => { instantiations.push(type); }],
-      );
-      expect(f.toString()).toBe('<A, B>(A, * B) => B');
+      const dec = new TemplateTypeDeclaration('t', ['A', 'B'], parse('(A, * B) => B'));
+      const ns = new NamespaceDeclaration('global', [
+        dec,
+        new TypeDeclaration('int', Type.Byte),
+      ]);
 
+      const context = new TypeChecker(ns);
+      ns.kindcheck(context);
 
-      const context = new TypeChecker();
-      context.typeTable.set('t', Type.Byte);
-      expect(f.instantiate(context, [ Type.Byte, t1 ]).toString()).toBe('(byte, * t) => t');
+      const int = parse('int');
+      int.kindcheck(context, new KindChecker());
 
-      expect(instantiations.length).toBe(1);
-    });
+      expect(dec.type.instantiate(context, [ Type.Byte, int ]).toString()).toBe('(byte, * int) => int');
 
-    test('simple instantiation type', () => {
-      const context = new TypeChecker();
-      const t = new IdentifierType('t');
-      const instantiations: Type[] = [];
-      var f = new TemplateType(
-        ['A', 'B'],
-        new FunctionType(
-          [new IdentifierType('A'), new PointerType(new IdentifierType('B'))],
-          new IdentifierType('B'),
-        ),
-        [(type) => { instantiations.push(type); }],
-      );
-
-      expect(f.toString()).toBe('<A, B>(A, * B) => B');
-
-      const instantiationType = new TemplateInstantiationType(
-        f,
-        [ Type.Byte, t ],
-      );
-      expect(instantiationType.toString()).toBe('(<A, B>(A, * B) => B)<byte, t>')
-
-      instantiationType.elaborate(context);
-      instantiationType.kindcheck(context, new KindChecker());
-      context.typeTable.set('t1', Type.Byte);
-      expect(instantiationType.resolve().toString()).toBe('(byte, * t) => t');
-      expect(instantiations.length).toBe(1);
     });
   });
 });

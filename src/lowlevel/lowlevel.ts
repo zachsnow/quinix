@@ -13,7 +13,7 @@ import {
 } from '../assembly/assembly';
 import { VM } from '../vm/vm';
 import { Instruction, Operation } from '../vm/instructions';
-import { Type, TypedIdentifier, TypedStorage, FunctionType, TemplateType, IdentifierType } from './types';
+import { Type, TypedIdentifier, TypedStorage, FunctionType, TemplateType, Storage, ArrayType } from './types';
 import { Expression, StringLiteralExpression } from './expressions';
 import { BlockStatement } from './statements';
 import { TypeChecker, KindChecker, Source } from './typechecker';
@@ -26,7 +26,7 @@ const log = logger('lowlevel');
 
 class Liveness {
   public readonly live: { [ref: string]: boolean } = {};
-  public readonly links: { [ref: string]: string[] } = {};
+  public readonly links: { [ref: string]: readonly string[] } = {};
 
   public propagate(): void {
     // Iterate to a fixed point.
@@ -62,48 +62,42 @@ class Liveness {
 // Declarations.
 ///////////////////////////////////////////////////////////////////////
 abstract class Declaration extends Syntax {
-  protected qualifiedIdentifier!: string;
+  /**
+   * All declarations live in a namespace. We don't
+   * know which namespace when we instantiate the
+   * declaration, but when we add declarations to
+   * a namespace we update them.
+   *
+   * The top-level `global` namespace is the only namespace
+   * that has no parent.
+   */
+  protected namespace?: NamespaceDeclaration;
 
-  protected constructor(
-    protected readonly identifier: string,
-  ){
-    super();
+  /**
+   * Sets the parent namespace of this declaration.
+   *
+   * @param namespace the namespace in which this declaration appears.
+   */
+  public inNamespace(namespace: NamespaceDeclaration): void {
+    this.namespace = namespace;
   }
 
   /**
-   * A first pass over type-level objects that constructs
-   * the type table for the program.  This allows us to
-   * create recursive types without pre-declaring types.
-   *
-   * @param context the type checking context.
-   */
-  public preKindcheck(context: TypeChecker): void {};
-
-  /**
-   * A second pass over type-level objects that verifies
+   * Checks type-level declarations to verify
    * that each type is valid.  This ensures that e.g. all
    * identifiers resolve to a type.
    *
    * @param context the type checking context.
    */
-  public kindcheck(context: TypeChecker): void {};
+  public abstract kindcheck(context: TypeChecker): void;
 
   /**
-   * A first pass over value-level objects that constructs
-   * a symbol table for the program. This allows us to e.g.
-   * call recursive functions without pre-declarations.
-   *
-   * @param context the type checking context.
-   */
-  public preTypecheck(context: TypeChecker): void {};
-
-  /**
-   * A second pass over value-level objects that verifies
+   * Checks value-level objects to verity
    * type correctness. This the "real" typechecking pass.
    *
    * @param context the type checking context.
    */
-  public typecheck(context: TypeChecker): void {};
+  public abstract typecheck(context: TypeChecker): void;
 
   /**
    * Returns all of the declarations found within
@@ -113,71 +107,97 @@ abstract class Declaration extends Syntax {
     return [ this ];
   }
 }
-writeOnce(Declaration, 'qualifiedIdentifier');
+
+/**
+ * Base class for declarations with an identifier; the only
+ * unnmamed declarations are `using` declarations.
+ */
+abstract class NamedDeclaration extends Declaration {
+  public constructor(
+    public readonly identifier: string,
+  ){
+    super();
+
+    if(this.identifier.indexOf('::') !== -1){
+      throw new InternalError('unexpected qualified identifier');
+    }
+  }
+
+  public get qualifiedIdentifier(): string {
+    if(this.namespace){
+      return `${this.namespace.qualifiedIdentifier}::${this.identifier}`;
+    }
+    return `${this.identifier}`;
+  }
+}
+
+/**
+ * Base class for declarations that introduce a value (e.g. a function, a global).
+ */
+abstract class BaseValueDeclaration extends NamedDeclaration {
+  public abstract get storage(): Storage;
+  public abstract get type(): Type;
+}
+
+/**
+ * Base class for declarations that introduce a type.
+ */
+abstract class BaseTypeDeclaration extends NamedDeclaration {
+  public abstract get type(): Type;
+}
 
 /**
  * A type declaration. For now type declarations cannot
  * be "abstract".
  */
-class TypeDeclaration extends Declaration {
+class TypeDeclaration extends BaseTypeDeclaration {
   public constructor(
     identifier: string,
-    private readonly type: Type,
+    public readonly type: Type,
   ){
     super(identifier);
   }
 
-  public preKindcheck(context: TypeChecker): void {
-    this.qualifiedIdentifier = context.prefix(this.identifier);
-    context.typeTable.set(this.qualifiedIdentifier, this.type);
-  }
-
   public kindcheck(context: TypeChecker): void {
-    this.type.elaborate(context);
-  }
-
-  public preTypecheck(context: TypeChecker): void {
+    log(`kindchecking ${this}`);
     this.type.kindcheck(context, new KindChecker());
   }
+
+  public typecheck(context: TypeChecker): void {}
 
   public toString(){
     return `type ${this.identifier} = ${this.type};`;
   }
 }
 
-class TemplateTypeDeclaration extends Declaration {
+class TemplateTypeDeclaration extends BaseTypeDeclaration {
   private context!: TypeChecker;
 
   public constructor(
     identifier: string,
     private readonly typeVariables: readonly string[],
-    private readonly type: Type,
+    private readonly unboundType: Type,
   ){
     super(identifier);
   }
 
-  private get templateType(): TemplateType {
+  public get type(): TemplateType {
     return new TemplateType(
       this.typeVariables,
-      this.type,
+      this.unboundType,
       [this.instantiator.bind(this)],
     ).at(this.location).tag(this.tags);
   }
 
-  public preKindcheck(context: TypeChecker): void {
-    this.qualifiedIdentifier = context.prefix(this.identifier);
-    context.typeTable.set(this.qualifiedIdentifier, this.templateType);
-  }
-
   public kindcheck(context: TypeChecker): void {
-    this.templateType.elaborate(context);
+    this.type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
 
     // We can't kindcheck a tetmplate type, we can only check its instantiations.
     this.context = context;
   }
 
   private instantiator(type: Type, typeTable: TypeTable, source: Source): void {
-    const context = this.context.fromSource(source);
+    const context = this.context.forSource(source);
 
     // Don't go too deep!
     if(context.instantiationDepth > TypeChecker.MAX_INSTANTIATION_DEPTH){
@@ -188,6 +208,8 @@ class TemplateTypeDeclaration extends Declaration {
     // Kindcheck in this context.
     type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
   }
+
+  public typecheck(context: TypeChecker): void {}
 
   public toString(){
     return `type <${this.typeVariables.join(', ')}>${this.identifier} = ${this.type};`;
@@ -200,40 +222,40 @@ writeOnce(TemplateTypeDeclaration, 'context');
  * which do not have an initializing expression, or declarations proper,
  * which do.
  */
-class GlobalDeclaration extends Declaration {
+class GlobalDeclaration extends BaseValueDeclaration {
   private references: string[] = [];
 
   public constructor(
     identifier: string,
-    private readonly type: Type,
+    public readonly type: Type,
     private readonly expression?: Expression,
   ){
     super(identifier);
   }
 
-  public kindcheck(context: TypeChecker){
-    this.type.elaborate(context);
+  public get storage(): Storage {
+    return 'global';
   }
 
-  public preTypecheck(context: TypeChecker): void {
+  public kindcheck(context: TypeChecker){
     this.type.kindcheck(context, new KindChecker());
-
-    this.qualifiedIdentifier = context.prefix(this.identifier);
-    context.symbolTable.set(this.qualifiedIdentifier, new TypedStorage(this.type, 'global'));
   }
 
   public typecheck(context: TypeChecker){
     // Pre-declarations don't need typechecking; we assume that the module
     // that actually declares them is already typechecked and that the
     // pre-declaration is correct.
-    if(this.expression){
-      const expressionContext = context.recordReferences();
-      const type = this.expression.typecheck(expressionContext, this.type);
-      if(!type.isConvertibleTo(this.type)){
-        this.error(context, `expected ${this.type}, actual ${type}`)
-      }
-      this.references = expressionContext.references;
+    if(!this.expression){
+      return;
     }
+
+    const expressionContext = context.recordReferences();
+    const type = this.expression.typecheck(expressionContext, this.type);
+    if(!type.isConvertibleTo(this.type)){
+      this.error(context, `expected ${this.type}, actual ${type}`)
+    }
+
+    this.references = expressionContext.references;
   }
 
   public compile(): Directive[] {
@@ -307,8 +329,9 @@ class GlobalDeclaration extends Declaration {
  * A function declaration. Functions can either be pre-declarations,
  * which do not have a body block, or declarations proper, which do.
  */
-class FunctionDeclaration extends Declaration {
-  private references!: string[];
+class FunctionDeclaration extends BaseValueDeclaration {
+  private references!: readonly string[];
+  private parameterIdentities!: readonly string[]
   private live: boolean = false;
 
   public constructor(
@@ -320,7 +343,11 @@ class FunctionDeclaration extends Declaration {
     super(identifier);
   }
 
-  private get type(): FunctionType {
+  public get storage(): Storage {
+    return 'function';
+  }
+
+  public get type(): FunctionType {
     return new FunctionType(
       this.parameters.map((parameters) => {
         return parameters.type;
@@ -329,15 +356,7 @@ class FunctionDeclaration extends Declaration {
     );
   }
 
-  public qualified(qualifiedIdentifier: string){
-    this.qualifiedIdentifier = qualifiedIdentifier;
-  }
-
   public kindcheck(context: TypeChecker): void {
-    this.type.elaborate(context);
-  }
-
-  public preTypecheck(context: TypeChecker): void {
     this.type.kindcheck(context, new KindChecker());
 
     const duplicateParameters = duplicates(this.parameters.map((parameter) => {
@@ -346,15 +365,6 @@ class FunctionDeclaration extends Declaration {
     if(duplicateParameters.length){
       this.error(context, `duplicate parameters ${duplicateParameters.join(', ')}`);
     }
-
-    this.type.argumentTypes.forEach((argumentType) => {
-      if(argumentType.isConvertibleTo(Type.Void)){
-        this.error(context, `expected non-void argument, actual ${argumentType}`);
-      }
-    });
-
-    this.qualifiedIdentifier = context.prefix(this.identifier);
-    context.symbolTable.set(this.qualifiedIdentifier, new TypedStorage(this.type, 'function'));
   }
 
   public typecheck(context: TypeChecker): void {
@@ -363,10 +373,12 @@ class FunctionDeclaration extends Declaration {
       return;
     }
 
-    // Add argument and return types.
-    const nestedContext = context.recordReferences().extend(undefined, context.symbolTable.extend());
-    this.parameters.forEach((parameter) => {
-      nestedContext.symbolTable.set(parameter.identifier, new TypedStorage(parameter.type, 'parameter'));
+    // Add argument and return types; record the parameter identities so that
+    // we can handle shadowing.
+    const nestedContext = context.recordReferences().extend(context.symbolTable.extend());
+    this.parameterIdentities = this.parameters.map((parameter) => {
+      const identity = nestedContext.symbolTable.set(parameter.identifier, new TypedStorage(parameter.type, 'parameter'));
+      return identity;
     });
     nestedContext.symbolTable.set('return', new TypedStorage(this.returnType, 'local'));
 
@@ -406,7 +418,7 @@ class FunctionDeclaration extends Declaration {
 
     const parameters = this.parameters.map((parameter, i) => {
       return {
-        identifier: parameter.identifier,
+        identifier: this.parameterIdentities[i],
         size: parameter.type.size,
       };
     });
@@ -467,14 +479,14 @@ writeOnce(FunctionDeclaration, 'references');
  * function declaration.
  */
 type Instantiation = {
-  qualifiedIdentifier: string;
+  identifier: string;
   declaration: FunctionDeclaration;
 };
 
 /**
  * A template function declaration.
  */
-class TemplateFunctionDeclaration extends Declaration {
+class TemplateFunctionDeclaration extends BaseValueDeclaration {
   private readonly instantiations: Instantiation[] = [];
   private context!: TypeChecker;
 
@@ -492,7 +504,11 @@ class TemplateFunctionDeclaration extends Declaration {
     }
   }
 
-  private get functionType(): FunctionType {
+  public get storage(): Storage {
+    return 'function';
+  }
+
+  private get unboundType(): FunctionType {
     return new FunctionType(
       this.parameters.map((parameter) => {
         return parameter.type;
@@ -501,10 +517,10 @@ class TemplateFunctionDeclaration extends Declaration {
     ).at(this.location).tag(this.tags);
   }
 
-  private get type(): Type {
+  public get type(): Type {
     return new TemplateType(
       this.typeVariables,
-      this.functionType,
+      this.unboundType,
       [this.instantiator.bind(this)],
     ).at(this.location).tag(this.tags);
   }
@@ -516,6 +532,8 @@ class TemplateFunctionDeclaration extends Declaration {
   }
 
   public kindcheck(context: TypeChecker){
+    this.type.kindcheck(context, new KindChecker());
+
     const duplicateParameters = duplicates(this.parameters.map((parameter) => {
       return parameter.identifier;
     }));
@@ -523,24 +541,11 @@ class TemplateFunctionDeclaration extends Declaration {
       this.error(context, `duplicate parameters ${duplicateParameters.join(', ')}`);
     }
 
-    const nestedContext = context.extend(
-      context.typeTable.extend(),
-      undefined,
-    );
-    this.typeVariables.forEach((tv) => {
-      nestedContext.typeTable.set(tv, new IdentifierType(tv));
-    });
-    this.functionType.elaborate(nestedContext);
-
     // Since we want to check the instantiation in the context in which
     // the template was defined, we save it for later use.
     this.context = context;
   }
 
-  public preTypecheck(context: TypeChecker): void {
-    this.qualifiedIdentifier = context.prefix(this.identifier);
-    context.symbolTable.set(this.qualifiedIdentifier, new TypedStorage(this.type, 'function'));
-  }
 
   public typecheck(context: TypeChecker){
     // We can't typecheck function declarations that are templated;
@@ -561,7 +566,7 @@ class TemplateFunctionDeclaration extends Declaration {
     // which it is being instantiated.
     //
     // Record references found in this function instantiation.
-    const context = this.context.fromSource(source).recordReferences();
+    const context = this.context.forSource(source).recordReferences();
 
     // TODO: should we do this instantiate()?
     type.kindcheck(context, new KindChecker());
@@ -578,9 +583,9 @@ class TemplateFunctionDeclaration extends Declaration {
     }
 
     // If we have already checked this instantiation, we're done.
-    const qualifiedIdentifier = `${this.qualifiedIdentifier}<${type}>`;
+    const identifier = `${this.identifier}<${type}>`;
     const instantiation = this.instantiations.find((instantiation) => {
-      return qualifiedIdentifier === instantiation.qualifiedIdentifier;
+      return identifier === instantiation.identifier;
     });
     if(instantiation){
       return;
@@ -591,7 +596,7 @@ class TemplateFunctionDeclaration extends Declaration {
     // of the function body so that each instantiation can have different concrete
     // types for expressions.
     const functionDeclaration = new FunctionDeclaration(
-      this.identifier,
+      identifier,
       this.parameters.map((parameter, i) => {
         return new TypedIdentifier(
           parameter.identifier,
@@ -602,12 +607,8 @@ class TemplateFunctionDeclaration extends Declaration {
       this.block.substitute(typeTable),
     );
 
-    // The function declaration already has a qualified identifier,
-    // which includes the type.
-    functionDeclaration.qualified(qualifiedIdentifier);
-
     this.instantiations.push({
-      qualifiedIdentifier,
+      identifier,
       declaration: functionDeclaration,
     });
 
@@ -637,32 +638,177 @@ class TemplateFunctionDeclaration extends Declaration {
 writeOnce(FunctionDeclaration, 'context');
 
 class UsingDeclaration extends Declaration {
-  public constructor(identifier: string){
-    super(identifier);
+  public constructor(
+    private readonly identifier: string,
+  ) {
+    super();
   }
 
-  public preKindcheck(context: TypeChecker) {
-    // TODO: qualify this for reals.
-    this.qualifiedIdentifier = this.identifier;
-    context.using([this.qualifiedIdentifier]);
+  public kindcheck(context: TypeChecker): void {
+    if(!this.namespace){
+      throw new InternalError('using outside of namespace');
+    }
+
+    // Make sure that this using refers to a namespace.
+    const namespace = this.namespace.root.getNamespace(this.identifier);
+    if(namespace === undefined){
+      this.error(context, `unknown namespace identifier ${this.identifier}`);
+      return;
+    }
+
+    // Let's avoid redundant usings.
+    this.namespace.usings.forEach((using) => {
+      if(using !== this && using.identifier === this.identifier){
+        this.error(context, `duplicate using declaration ${this.identifier}`);
+      }
+    });
   }
+
+  public typecheck(context: TypeChecker){}
+
+  public get qualifiedIdentifier(): string {
+    return this.identifier;
+  }
+
 
   public toString(){
-    return `using ${this.qualifiedIdentifier};`
+    return `using ${this.identifier};`
   }
 }
+
 /**
  * A namespace declaration. Namespaces have nested declarations of all kinds within.
  * Multiple declarations of the same namespace are allowed.
  */
-class NamespaceDeclaration extends Declaration {
-  private usings: string[] = [];
-
+class NamespaceDeclaration extends NamedDeclaration {
   public constructor(
     identifier: string,
     public readonly declarations: readonly Declaration[],
   ){
     super(identifier);
+
+    // Push
+    this.declarations.forEach((dec) => {
+      dec.inNamespace(this);
+    });
+  }
+
+  /**
+   * Get the root namespace.
+   */
+  public get root(): NamespaceDeclaration {
+    return this.namespace ? this.namespace.root : this;
+  }
+
+  /**
+   * Returns the using declarations found in this namespace.
+   */
+  public get usings(): UsingDeclaration[] {
+    return this.declarations.filter((dec): dec is UsingDeclaration => {
+      return dec instanceof UsingDeclaration;
+    });
+  }
+
+  /**
+   * Looks up the potentially partially qualified identifier in this
+   * namespace and its parents, taking into account usings.
+   *
+   * @param identifier a partially qualified type identifier to look up.
+   */
+  public lookupType(context: TypeChecker, identifier: string): TypeDeclaration | TemplateTypeDeclaration | undefined {
+    return this.lookup<BaseTypeDeclaration>(context, BaseTypeDeclaration, identifier);
+  }
+
+  /**
+   * Looks up the potentially partially qualified identifier in this
+   * namespace and its parents, taking into account usings.
+   *
+   * @param identifier a partially qualified value identifier to look up.
+   */
+  public lookupValue(context: TypeChecker, identifier: string){
+    return this.lookup<BaseValueDeclaration>(context, BaseValueDeclaration, identifier);
+  }
+
+  /**
+   * Looks up the potentially partially qualified identifier in this
+   * namespace and its parents, taking into account usings.
+   *
+   * @param identifier a partially qualified namespace identifier to look up.
+   */
+  public lookupNamespace(context: TypeChecker, identifier: string){
+    return this.lookup<NamespaceDeclaration>(context, NamespaceDeclaration, identifier);
+  }
+
+  /**
+   * Get the given namespace within this namespace, ignoring parent
+   * namespaces and usings.
+   *
+   * @param identifier the namespace fully qualified identifier.
+   */
+  public getNamespace(identifier: string){
+    // Special case: `global`.
+    if(!this.namespace && this.identifier === identifier){
+      return this;
+    }
+
+    return this.get<NamespaceDeclaration>(NamespaceDeclaration, identifier);
+  }
+
+  private lookup<T extends NamedDeclaration>(context: TypeChecker, cls: Function, identifier: string, using: boolean = true): T | undefined {
+    // First do a direct lookup in the current namespace. For instance,
+    // if `identifier` is `foo::bar`, then look for a namespace named `foo`
+    // in `this`, and then an identifier named `bar` in that namespace.
+    const object = this.get<T>(cls, identifier);
+    if(object !== undefined){
+      return object;
+    }
+
+    // Next use our usings. Each using is a fully qualified
+    // identifier; we append the identifier we are looking for and perform
+    // a direct lookup.
+    const objects = this.usings.map((using) => {
+      const usingIdentifier = `${using.qualifiedIdentifier}::${identifier}`;
+      console.info('looking for', usingIdentifier, 'in root', this.root.qualifiedIdentifier);
+      return this.root.get<T>(cls, usingIdentifier);
+    }).filter((object): object is T => !!object);
+    if(objects.length > 1){
+      this.error(context, `ambiguous identifier ${identifier} refers to ${objects.map((object) => object.qualifiedIdentifier).join(', ')}`);
+      return undefined;
+    }
+    else if(objects.length === 1){
+      return objects[0];
+    }
+
+    // Finally, do a recursive lookup the parent, if we have one.
+    if(this.namespace){
+      return this.namespace.lookup<T>(context, cls, identifier);
+    }
+
+    // Not found.
+    return;
+  }
+
+  private get<T extends NamedDeclaration>(cls: Function, identifier: string): T | undefined {
+    // If we have a qualified identifier, look up the first element
+    // as a namespace, and lookup the rest directly in that namespace.
+    const parts = identifier.split('::');
+    if(parts.length > 1){
+      const namespace = this.getNamespace(parts[0]);
+      if(namespace !== undefined){
+        return namespace.get<T>(cls, parts.slice(1).join('::'));
+      }
+      return;
+    }
+
+    // Otherwise we have an unqualified identifier; just look in our own declarations.
+    return this.declarations.find((declaration): declaration is T  => {
+      if(declaration instanceof cls){
+        if((declaration as T).identifier === identifier){
+          return true;
+        }
+      }
+      return false;
+    });
   }
 
   public get allDeclarations(): Declaration[] {
@@ -673,35 +819,17 @@ class NamespaceDeclaration extends Declaration {
     return declarations;
   }
 
-  public preKindcheck(context: TypeChecker) {
-    this.qualifiedIdentifier = context.prefix(this.identifier);
-    context = context.extend(undefined, undefined, this.qualifiedIdentifier);
-    this.declarations.forEach((declaration) => {
-      declaration.preKindcheck(context);
-    });
-    this.usings = [...context.usings];
-  }
-
   public kindcheck(context: TypeChecker) {
-    context = context.extend(undefined, undefined, this.qualifiedIdentifier);
-    context.using(this.usings);
+    const nestedContext = context.forNamespace(this);
     this.declarations.forEach((declaration) => {
-      declaration.kindcheck(context);
-    });
-  }
-
-  public preTypecheck(context: TypeChecker) {
-    context = context.extend(undefined, undefined, this.qualifiedIdentifier);
-    this.declarations.forEach((declaration) => {
-      declaration.preTypecheck(context);
+      declaration.kindcheck(nestedContext);
     });
   }
 
   public typecheck(context: TypeChecker) {
-    context = context.extend(undefined, undefined, this.qualifiedIdentifier);
-    context.using(this.usings);
+    const nestedContext = context.forNamespace(this);
     this.declarations.forEach((declaration) => {
-      declaration.typecheck(context);
+      declaration.typecheck(nestedContext);
     });
   }
 
@@ -730,7 +858,7 @@ class NamespaceDeclaration extends Declaration {
    * @param namespaces the namespaces to concatenate.
    */
   public static concat(identifier: string, namespaces: NamespaceDeclaration[]): NamespaceDeclaration {
-    const declarations: Declaration[] = [];
+    const declarations: Declaration[] = [...NamespaceDeclaration.builtins];
     namespaces.forEach((namespace) => {
       if(identifier !== namespace.identifier){
         throw new InternalError(`unable to concatenate mismatched namespaces; expected ${identifier}, actual ${namespace.identifier}`);
@@ -739,6 +867,48 @@ class NamespaceDeclaration extends Declaration {
     });
     return new NamespaceDeclaration(identifier, declarations);
   }
+
+  /**
+   * Creates a new namespace containing the given declarations; for qualified
+   * identifiers creates nested namespaces. This effectively converts:
+   *
+   *  namespace std::io {
+   *    // ...
+   *  }
+   *
+   * To:
+   *
+   *  namespace std {
+   *    namespace io {
+   *      // ...
+   *    }
+   *  }
+   *
+   * @param identifier a possibly qualified identifier.
+   * @param declarations the declarations for the namespace.
+   */
+  public static build(identifier: string, declarations: Declaration[]): NamespaceDeclaration {
+    const parts = identifier.split('::');
+    const final = parts.pop();
+    parts.reverse();
+
+    if(!final){
+      throw new InternalError(`invalid identifier ${identifier}`);
+    }
+
+
+    let ns = new NamespaceDeclaration(final, declarations);
+    parts.forEach((part) => {
+      ns = new NamespaceDeclaration(part, [ns])
+    });
+
+    return ns;
+  }
+
+  public static builtins = [
+    new TypeDeclaration('bool', Type.Byte),
+    new TypeDeclaration('string', new ArrayType(Type.Byte)),
+  ];
 }
 
 class LowLevelProgram {
@@ -757,12 +927,10 @@ class LowLevelProgram {
    * if any.
    */
   public typecheck(): Messages {
-    const context = new TypeChecker();
+    const context = new TypeChecker(this.globalNamespace);
 
-    // Construct type and symbol tables and typecheck all declarations.
-    this.globalNamespace.preKindcheck(context);
+    // Kindcheck and typecheck all definitions.
     this.globalNamespace.kindcheck(context);
-    this.globalNamespace.preTypecheck(context);
     this.globalNamespace.typecheck(context);
 
     // Some checks we can't perform until we are sure that we've
@@ -887,8 +1055,8 @@ class LowLevelProgram {
    * @param namespace the top-level namespace to use; assumes that *all* programs
    * were compiled under the same top-level namespce.
    */
-  public static concat(programs: LowLevelProgram[], namespace: string = LowLevelProgram.DEFAULT_NAMESPACE): LowLevelProgram {
-    const declaration = NamespaceDeclaration.concat(namespace, programs.map((program) => {
+  public static concat(programs: LowLevelProgram[], identifier: string = LowLevelProgram.DEFAULT_NAMESPACE): LowLevelProgram {
+    const declaration = NamespaceDeclaration.concat(identifier, programs.map((program) => {
       return program.globalNamespace;
     }));
     return new LowLevelProgram(declaration);

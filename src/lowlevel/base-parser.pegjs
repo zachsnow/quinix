@@ -42,7 +42,9 @@ Whitespace
   = [ \t\n]* { return; }
 
 Tokens
-  = LenToken / NullToken / SizeofToken
+  = LenToken / CapacityToken
+  / NullToken / VoidToken / ByteToken
+  / SizeofToken / DefaultToken
   / NewToken / DeleteToken
   / UnsafeToken
   / IfToken / ElseToken
@@ -55,6 +57,8 @@ Tokens
 LenToken = tok:"len" !Identifier { return tok; }
 CapacityToken = tok:"capacity" !Identifier { return tok; }
 NullToken = tok:"null" !Identifier { return tok; }
+ByteToken = tok:"byte" !Identifier { return tok; }
+VoidToken = tok:"void" !Identifier { return tok; }
 SizeofToken = tok:"sizeof" !Identifier { return tok; }
 NewToken = tok:"new" !Identifier { return tok; }
 UnsafeToken = tok:"unsafe" !Identifier { return tok; }
@@ -71,3 +75,6 @@ UsingToken = tok:"using" !Identifier { return tok; }
 GlobalToken = tok:"global" !Identifier { return tok; }
 TypeToken = tok:"type" !Identifier { return tok; }
 FunctionToken = tok:"function" !Identifier { return tok; }
+
+// Unused tokens.
+DefaultToken = tok:"default" !Identifier { return tok; }

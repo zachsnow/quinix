@@ -74,7 +74,7 @@ class BlockStatement extends Statement {
   public typecheck(context: TypeChecker): void {
     // Use a nested symbol table so that identifiers created inside the block
     // don't leak outside of the block.
-    const nestedContext = context.extend(undefined, context.symbolTable.extend());
+    const nestedContext = context.extend(context.symbolTable.extend());
     this.statements.forEach((statement) => {
       statement.typecheck(nestedContext);
     });
@@ -106,6 +106,7 @@ class BlockStatement extends Statement {
 
 class VarStatement extends Statement {
   private inferredType!: Type;
+  private identity!: string;
 
   public constructor(
     private readonly identifier: string,
@@ -131,7 +132,6 @@ class VarStatement extends Statement {
 
     // Check that the type of the variable we are defining is valid.
     if(this.type){
-      this.type.elaborate(context);
       this.type.kindcheck(context, new KindChecker());
       this.inferredType = this.type.evaluate();
     }
@@ -152,7 +152,7 @@ class VarStatement extends Statement {
     //
     // Update the symbol table so subsequent statements in this block
     // (and in nested blocks) can use it.
-    context.symbolTable.set(this.identifier, new TypedStorage(this.inferredType, 'local'));
+    this.identity = context.symbolTable.set(this.identifier, new TypedStorage(this.inferredType, 'local'));
   }
 
   public compile(compiler: Compiler): void {
@@ -162,14 +162,14 @@ class VarStatement extends Statement {
     }
 
     // Create storage for this variable.
-    compiler.allocateStorage(this.identifier, this.inferredType.size);
+    compiler.allocateStorage(this.identity, this.inferredType.size);
 
     // Local declarations without initializers zero out the space.
     if(!this.expression){
       const vr = compiler.allocateRegister();
       const r = compiler.allocateRegister();
 
-      compiler.emitIdentifier(this.identifier, 'local', vr, false);
+      compiler.emitIdentifier(this.identity, 'local', vr, false);
       compiler.emit([
         new ConstantDirective(r, new ImmediateConstant(0)),
       ]);
@@ -191,7 +191,7 @@ class VarStatement extends Statement {
 
     // Get the address of the local.
     const r = compiler.allocateRegister();
-    compiler.emitIdentifier(this.identifier, 'local', r, false);
+    compiler.emitIdentifier(this.identity, 'local', r, false);
 
     // Store to that address.
     if(this.inferredType.integral){
@@ -220,6 +220,8 @@ class VarStatement extends Statement {
     }
   }
 }
+writeOnce(VarStatement, 'inferredType');
+writeOnce(VarStatement, 'identity');
 
 class AssignmentStatement extends Statement {
   public constructor(
@@ -253,7 +255,7 @@ class AssignmentStatement extends Statement {
 
     // Verify that the left hand side hasn't been tagged constant.
     if(expectedType.tagged('.constant')){
-      this.error(context, `expected non-constant assignable, actual ${expectedType}`);
+      this.error(context, `expected non-constant assignable, actual ${expectedType.withTags(expectedType.toString())}`);
     }
   }
 
@@ -592,7 +594,7 @@ class ReturnStatement extends Statement {
 
   public typecheck(context: TypeChecker): void {
     const returnType = this.expression ? this.expression.typecheck(context) : Type.Void;
-    const storage = context.symbolTable.get('return');
+    const storage = context.symbolTable.get('return').value;
 
     if(!returnType.isEqualTo(storage.type)){
       this.error(context, `expected ${storage.type}, actual ${returnType}`);

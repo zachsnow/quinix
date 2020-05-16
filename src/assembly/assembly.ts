@@ -36,7 +36,7 @@ class Reference {
     }
 
     // Relocate reference.
-    const address = assembler.addressTable.get(this.name);
+    const address = assembler.addressTable.get(this.name).value;
     return [ Instruction.createImmediate(address + assembler.programSectionBase) ];
   }
 

@@ -1,6 +1,7 @@
-import { Messages, Location } from '../lib/util';
+import { Messages, Location, InternalError } from '../lib/util';
 import { TypeTable, StorageTable } from './tables';
 import { Type } from './types';
+import { NamespaceDeclaration } from './lowlevel';
 
 type SourceInstantiation = {
   identity: string;
@@ -53,31 +54,27 @@ type Check = (context: TypeChecker) => void;
 class TypeChecker extends Messages {
   public static MAX_INSTANTIATION_DEPTH = 10;
 
-  public readonly namespace: string;
-  public readonly typeTable: TypeTable;
-  public readonly symbolTable: StorageTable;
-
-  public readonly usings: string[] = [];
+  public symbolTable: StorageTable;
 
   private loopCount: number = 0;
   private instantiationSource: Source = new Source();
   private checks: Check[] = [];
   private recordedReferences: string[] = [];
 
-  public constructor(typeTable?: TypeTable, symbolTable?: StorageTable, namespace: string = ''){
+  public constructor(
+    public namespace: NamespaceDeclaration,
+  ){
     super();
-
-    this.typeTable = typeTable ?? TypeTable.default();
-    this.symbolTable = symbolTable ?? new StorageTable();
-    this.namespace = namespace;
+    this.symbolTable = new StorageTable();
   }
 
-  public extend(typeTable: TypeTable | undefined, symbolTable: StorageTable | undefined, namespace?: string): TypeChecker {
+  public extend(symbolTable: StorageTable | undefined): TypeChecker {
     const context = new TypeChecker(
-      typeTable ?? this.typeTable,
-      symbolTable ?? this.symbolTable,
-      namespace ?? this.namespace,
+      this.namespace,
     );
+
+    // Allow overriding the symbol table.
+    context.symbolTable = symbolTable ?? this.symbolTable;
 
     // Always use the same messages.
     context.messages = this.messages;
@@ -96,11 +93,12 @@ class TypeChecker extends Messages {
     // Use the same reference table; only update via `recordReferences`.
     context.recordedReferences = this.recordedReferences;
 
-    // If we are changing namespaces, clear the usings.
-    if(!namespace){
-      context.usings.push(...this.usings);
-    }
+    return context;
+  }
 
+  public forNamespace(namespace: NamespaceDeclaration){
+    const context = this.extend(undefined);
+    context.namespace = namespace;
     return context;
   }
 
@@ -108,18 +106,14 @@ class TypeChecker extends Messages {
     return this.namespace ? `${this.namespace}::${identifier}` : identifier;
   }
 
-  public using(usings: string[]){
-    this.usings.push(...usings);
-  }
-
   public loop(): TypeChecker {
-    const context = this.extend(undefined, undefined, undefined);
+    const context = this.extend(undefined);
     context.loopCount++;
     return context;
   }
 
-  public fromSource(source: Source): TypeChecker {
-    const context = this.extend(undefined, undefined, undefined);
+  public forSource(source: Source): TypeChecker {
+    const context = this.extend(undefined);
     context.instantiationSource = source;
     return context;
   }
@@ -133,7 +127,7 @@ class TypeChecker extends Messages {
   }
 
   public recordReferences(): TypeChecker {
-    const context = this.extend(undefined, undefined, undefined);
+    const context = this.extend(undefined);
     context.recordedReferences = [];
     return context;
   }
@@ -169,6 +163,14 @@ class TypeChecker extends Messages {
       check(this);
     });
   }
+
+  public builtinType(identifier: string): Type {
+    const type = this.namespace.root.lookupType(this, 'bool');
+    if(type !== undefined){
+      return type.type;
+    }
+    throw new InternalError(`unknown builtin type ${identifier}`);
+  }
 }
 
 class KindChecker {
@@ -198,6 +200,13 @@ class KindChecker {
    */
   private directs: string[] = [];
 
+
+  /**
+   * The current type table; for substitutions only (we
+   * don't allow 'local' type declarations for now).
+   */
+  public typeTable: TypeTable = new TypeTable();
+
   /**
    * Instantiate a new kindchecker for checking the validity of
    * a type definition. If no type is being defined, the kindchecker
@@ -206,10 +215,19 @@ class KindChecker {
    * @param qualifiedIdentifier the qualified identifier being *defined*;
    * optional.
    */
-  public constructor(qualifiedIdentifier?: string){
+  public constructor(qualifiedIdentifier?: string, typeTable?: TypeTable){
     if(qualifiedIdentifier){
       this.directs.push(qualifiedIdentifier);
     }
+    if(typeTable){
+      this.typeTable = typeTable;
+    }
+  }
+
+  public extendTypeTable(): KindChecker {
+    const kindchecker = this.extend();
+    kindchecker.typeTable = kindchecker.typeTable.extend();
+    return kindchecker;
   }
 
   private extend(visiteds?: string[], structs?: string[], pointers?: string[], directs?: string[]): KindChecker {
@@ -218,6 +236,7 @@ class KindChecker {
     kindchecker.structs = structs || [...this.structs];
     kindchecker.pointers = pointers || [...this.pointers];
     kindchecker.directs = directs || [...this.directs];
+    kindchecker.typeTable = this.typeTable;
     return kindchecker;
   }
 
