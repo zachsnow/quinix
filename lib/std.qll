@@ -151,7 +151,7 @@ namespace std {
     function from_string(s: string): string {
       var new_s = new byte[len s];
       std::copy(new_s, s);
-      return new_s;
+      return <string>new_s;
     }
 
     function reverse(buffer: string): void {

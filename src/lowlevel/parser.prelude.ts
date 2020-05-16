@@ -23,7 +23,7 @@ import {
   IdentifierExpression,
   CastExpression,
   NewExpression, NewArrayExpression,
-  NullExpression,
+  NullExpression, VoidExpression,
   SizeofExpression,
 } from './expressions';
 

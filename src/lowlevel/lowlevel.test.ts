@@ -8,12 +8,10 @@ import { VM, VMResult } from '../vm/vm';
 import { Immediate } from '../lib/base-types';
 import { AssemblyProgram } from '../assembly/assembly';
 
-const parse = LowLevelProgram.parse;
-
 describe('QLLC parsing', () => {
   function parseError(programText: string){
     return () => {
-      parse(programText);
+      LowLevelProgram.parse(programText);
     };
   }
 
@@ -29,26 +27,26 @@ describe('QLLC parsing', () => {
 
   describe('Comments and whitespace', () => {
     test('empty file', () => {
-      expect(parse('').declarations.length).toBe(0);
+      expect(LowLevelProgram.parse('').declarations.length).toBe(0);
     });
     test('almost empty file', () => {
-      expect(parse('  \n  ').declarations.length).toBe(0);
+      expect(LowLevelProgram.parse('  \n  ').declarations.length).toBe(0);
     });
     test('comment only', () => {
-      expect(parse('// Hi!\n').declarations.length).toBe(0);
+      expect(LowLevelProgram.parse('// Hi!\n').declarations.length).toBe(0);
     });
     test('comment only no newline', () => {
-      expect(parse('// Hi!').declarations.length).toBe(0);
+      expect(LowLevelProgram.parse('// Hi!').declarations.length).toBe(0);
     });
     test('simple comments', () => {
-      expect(parse(`
+      expect(LowLevelProgram.parse(`
         // Hi!
         type int = byte; // Yeah!
       `).declarations.length).toBe(1);
     });
 
     test('more simple comments', () => {
-      expect(parse(`
+      expect(LowLevelProgram.parse(`
         // Hi!
 
         // And more.
@@ -59,7 +57,7 @@ describe('QLLC parsing', () => {
     });
 
     test('tagged types', () => {
-      expect(parse(`
+      expect(LowLevelProgram.parse(`
         type constant_byte = .constant byte;
         type constant_fn = .constant (byte) => void;
         type return_constant = (byte) => .constant byte;
@@ -73,7 +71,7 @@ describe('QLLC parsing', () => {
     });
 
     test('template function', () => {
-      expect(parse(`
+      expect(LowLevelProgram.parse(`
         function foo<T>(t: T): void {}
       `).declarations.length).toBe(1);
     });
@@ -82,7 +80,7 @@ describe('QLLC parsing', () => {
 
 describe('QLLC typechecking', () => {
   function expectValid(programText: string){
-    const program: LowLevelProgram = parse(programText);
+    const program: LowLevelProgram = LowLevelProgram.parse(programText);
     const messages = program.typecheck();
     if(messages.errors.length){
       throw new Error(messages.toString());
@@ -91,7 +89,7 @@ describe('QLLC typechecking', () => {
   }
 
   function errors(programText: string): string[] {
-    const program: LowLevelProgram = parse(programText);
+    const program: LowLevelProgram = LowLevelProgram.parse(programText);
     try {
       return program.typecheck().errors.map((error) => error.text);
     }
@@ -302,7 +300,7 @@ describe('QLLC end-to-end', () => {
 
   async function run(programText: string, includeSystem: boolean, cycles: number = 500): Promise<VMResult | string> {
     try {
-      const program: LowLevelProgram = parse(programText);
+      const program: LowLevelProgram = LowLevelProgram.concat([LowLevelProgram.parse(programText)]);
       const errors = program.typecheck().errors;
       if(errors.length){
         throw new Error(errors.join('\n'));
@@ -1012,6 +1010,7 @@ describe('QLLC end-to-end', () => {
 
       namespace foo {
         global i: byte = 22;
+
         function fn(): byte {
           return global::i;
         }
@@ -1626,7 +1625,7 @@ describe('QLLC end-to-end', () => {
   test('namespace lookups', () =>{
     return expectRunToBe(34, `
       namespace bar {
-        using global::bleck;
+        using bleck;
         function baz(): byte {
           return frob;
         }

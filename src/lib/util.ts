@@ -1,5 +1,6 @@
 import fs from 'fs';
 import debug from 'debug';
+import { parse } from 'src/lowlevel/parser';
 
 class InternalError extends Error {
   public constructor(message?: string){
@@ -8,32 +9,56 @@ class InternalError extends Error {
 }
 
 class SymbolTable<T> {
-  private parent?: SymbolTable<T>;
+  private id: number = 0;
   private symbols: { [key: string]: T } = {};
+
+  public constructor(
+    private readonly parent?: SymbolTable<T>,
+  ){
+    if(parent){
+      this.id = parent.id + 1;
+    }
+  }
 
   public extend(): SymbolTable<T> {
     return new SymbolTable<T>(this);
   }
 
-  public constructor(parent?: SymbolTable<T>){
-    this.parent = parent;
+  private identify(identifier: string): string {
+    return `${identifier}$${this.id}`;
   }
 
   /**
-   * Gets the value associated with the given fully qualified identifier;
-   * raises an error if it was not found.
+   * Tries to get the value associated with the given fully qualified
+   * identifier, along with the identity of the scope in which it was found.
+   * Returns `undefined` if it was not found.
+   * @param identifier
+   */
+  public lookup(identifier: string): { value: T, identity: string } | undefined {
+    if(this.has(identifier)){
+      return this.get(identifier);
+    }
+  }
+
+  /**
+   * Gets the value associated with the given fully qualified identifier,
+   * along with the identity of the scope in which it was found. Raises
+   * an error if it was not found.
    *
    * @param qualifiedIdentifier the fully qualified identifier to get.
    */
-  public get(qualifiedIdentifier: string): T {
-    const value = this.symbols[qualifiedIdentifier];
+  public get(identifier: string): { value: T, identity: string } {
+    const value = this.symbols[identifier];
     if(value !== undefined){
-      return value;
+      return {
+        identity: this.identify(identifier),
+        value,
+      };
     }
     if(this.parent !== undefined){
-      return this.parent.get(qualifiedIdentifier);
+      return this.parent.get(identifier);
     }
-    throw new Error(`invalid identifier ${qualifiedIdentifier}`);
+    throw new InternalError(`unknown identifier ${identifier}`);
   }
 
   /**
@@ -44,11 +69,12 @@ class SymbolTable<T> {
    * @param qualifiedIdentifier the fully qualified identifier to set.
    * @param value the value to set.
    */
-  public set(qualifiedIdentifier: string, value: T): void {
-    if(this.symbols[qualifiedIdentifier] !== undefined){
-      throw new InternalError(`identifier redefinition ${qualifiedIdentifier}: ${this.symbols[qualifiedIdentifier]}`);
+  public set(identifier: string, value: T): string {
+    if(this.symbols[identifier] !== undefined){
+      throw new InternalError(`identifier redefinition ${identifier}: ${this.symbols[identifier]}`);
     }
-    this.symbols[qualifiedIdentifier] = value;
+    this.symbols[identifier] = value;
+    return this.identify(identifier);
   }
 
   /**
@@ -66,84 +92,21 @@ class SymbolTable<T> {
     }
     return false;
   }
-
-  /**
-   * Given a namespace and a bare identifier, returns the possible locations
-   * to search for the bare identifier.
-   *
-   * For example, if the current namespace is `global::foo::bar`, there's a
-   * single `using` in the current namespace for `global::bleck`, and
-   * we are looking up the bare identifier `baz`, we generate the following
-   * lookups:
-   *
-   *    baz -- for locals / parameters.
-   *
-   *    global::foo::bar::baz -- search in the current namespace.
-   *    global::foo::baz -- search in the containing namespace.
-   *    global::baz -- search in the next containing namespace.
-   *
-   *    global::bleck::baz -- searching using.
-   *
-   * Once we've reached `global`, the top-level namespace, we are done.
-   *
-   * @param namespace the namespace in which the identifier is found
-   * @param identifier the bare identifier to generate lookups for
-   */
-  private lookups(identifier: string, namespace: string, usings: string[]): string[] {
-    if(!namespace){
-      return [ identifier ];
-    }
-
-    // Cascading lookup.
-    const lookups: string[] = [];
-    const parts = namespace.split('::');
-    parts.forEach((part, i) => {
-      const lookup = parts.slice(0, i + 1);
-      lookup.push(identifier);
-      lookups.push(lookup.join('::'));
-    });
-    lookups.reverse();
-
-    // Base identifier first.
-    lookups.unshift(identifier);
-
-    // Usings last.
-    lookups.push(...usings.map((using) => {
-      return [using, identifier].join('::');
-    }));
-
-    return lookups;
-  }
-
-  /**
-   * Given a namespace and a bare identifier, looks up the bare identifier
-   * respecting the lookup order (described in `lookups`, above). Returns
-   * the value of the identifier if it is found, along with its fully qualified
-   * name, or `undefined`.
-   *
-   * @param identifier
-   * @param namespace
-   * @param usings
-   */
-  public lookup(identifier: string, namespace: string, usings: string[]): { qualifiedIdentifier: string, value: T } | undefined {
-    let lookup = this.lookups(identifier, namespace, usings).find((lookup) => {
-      return this.has(lookup);
-    });
-
-    if(lookup !== undefined){
-      return {
-        qualifiedIdentifier: lookup,
-        value: this.get(lookup),
-      };
-    }
-
-    return;
-  }
 }
 
 function indent(s: string, indent: number = 1): string {
   const indentation = new Array(indent).fill('  ').join('');
   return s.replace(/\n/g, '\n' + indentation);
+}
+
+function flatten<T>(array: readonly T[][]): T[] {
+  const result: T[] = [];
+  array.forEach((arr) => {
+    arr.forEach((el) => {
+      result.push(el);
+    });
+  });
+  return result;
 }
 
 function duplicates<T>(array: readonly T[]): T[] {
@@ -394,6 +357,7 @@ function writeOnce<K, F extends Constructor<K>>(cls: F, key: string, allowUndefi
     get: function(){
       const value = this[backingKey];
       if(!allowUndefined && value === undefined){
+        debugger;
         throw new InternalError(`write-once property ${key} of ${this.constructor.name} not set`);
       }
       return value;
@@ -412,7 +376,7 @@ function writeOnce<K, F extends Constructor<K>>(cls: F, key: string, allowUndefi
 export {
   InternalError,
   indent,
-  duplicates, unique,
+  duplicates, unique, flatten,
   SymbolTable,
   logger,
   readFiles,

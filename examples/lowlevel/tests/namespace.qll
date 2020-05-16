@@ -1,6 +1,6 @@
 using global::oops;
 namespace bar {
-  using global::bleck;
+  using bleck;
   function baz(): byte {
     return frob;
   }

@@ -12,6 +12,7 @@ PrimaryExpression
     / StructExpression
     / "(" e:Expression ")" { return e; }
     / NullToken { return new NullExpression().at(location(), text(), options); }
+    / VoidToken { return new VoidExpression().at(location(), text(), options); }
     / SizeofToken _ t:Type { return new SizeofExpression(t).at(location(), text(), options); }
     / id:QualifiedIdentifier _ typeArgs:TypeArgumentList? {
         return new IdentifierExpression(id, typeArgs || []).at(location(), text(), options);

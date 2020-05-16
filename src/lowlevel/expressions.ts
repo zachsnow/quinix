@@ -120,26 +120,39 @@ class IdentifierExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    const lookup = context.symbolTable.lookup(this.identifier, context.namespace, context.usings);
-    if(lookup === undefined){
+    const lookup = context.symbolTable.lookup(this.identifier);
+    const declaration = context.namespace.lookupValue(context, this.identifier);
+
+    let needsReference = false;
+    let type: Type;
+    let qualifiedIdentifier: string;
+    if(lookup !== undefined){
+      // First check for parameters and locals.
+      this.storage = lookup.value.storage;
+      qualifiedIdentifier = lookup.identity;
+      type = lookup.value.type;
+    }
+    else if(declaration !== undefined){
+      // Next check for globals, functions, and template functions.
+      this.storage = declaration.storage;
+      qualifiedIdentifier = declaration.qualifiedIdentifier;
+      type = declaration.type;
+
+      // Only globally-scoped identifiers need to be recorded for
+      // liveness analysis.
+      needsReference = true;
+    }
+    else {
       this.error(context, `unknown identifier ${this.identifier}`);
       return Type.Error;
     }
 
-    this.storage = lookup.value.storage;
-
-    // Only globally-scoped identifiers need to be recorded for
-    // liveness analysis.
-    const needsReference = this.storage === 'function' || this.storage === 'global';
-
-    const type = lookup.value.type;
     const cType = type.resolve();
 
     // Explicitly instantiated template type.
     if(this.typeArgs.length){
       // Elaborate and check type arguments in this context.
       this.typeArgs.forEach((typeArg) => {
-        typeArg.elaborate(context);
         typeArg.kindcheck(context, new KindChecker());
       });
 
@@ -153,8 +166,8 @@ class IdentifierExpression extends Expression {
       // We mangle the identifier in the same way as when we compile
       // each template instantiation so that when we compile the reference
       // to this function we will find it.
-      const instantiatedType = cType.instantiate(context, this.typeArgs, this.location);
-      this.qualifiedIdentifier = `${lookup.qualifiedIdentifier}<${instantiatedType}>`;
+      const instantiatedType = cType.instantiate(context, new KindChecker(), this.typeArgs, this.location);
+      this.qualifiedIdentifier = `${qualifiedIdentifier}<${instantiatedType}>`;
       if(needsReference){
         context.reference(this.qualifiedIdentifier);
       }
@@ -176,7 +189,7 @@ class IdentifierExpression extends Expression {
       // so we can emit it during compilation.
       return cType.extendInstantiators((instantiatedType: Type) => {
         this.instantiated = true;
-        this.qualifiedIdentifier = `${lookup.qualifiedIdentifier}<${instantiatedType}>`;
+        this.qualifiedIdentifier = `${qualifiedIdentifier}<${instantiatedType}>`;
         if(needsReference){
           context.reference(this.qualifiedIdentifier);
         }
@@ -184,9 +197,9 @@ class IdentifierExpression extends Expression {
     }
 
     // Non-templated case.
-    this.qualifiedIdentifier = lookup.qualifiedIdentifier;
+    this.qualifiedIdentifier = qualifiedIdentifier;
     if(needsReference){
-      context.reference(lookup.qualifiedIdentifier);
+      context.reference(this.qualifiedIdentifier);
     }
     return type;
   }
@@ -273,7 +286,7 @@ class BoolLiteralExpression extends Expression {
     if(contextualType && contextualType.numeric){
       return contextualType;
     }
-    return Type.Bool;
+    return context.builtinType('bool');
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
@@ -515,7 +528,6 @@ class StructLiteralExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    this.type.elaborate(context);
     this.type.kindcheck(context, new KindChecker());
 
     const structType = this.type.resolve();
@@ -570,6 +582,35 @@ class StructLiteralExpression extends Expression {
   }
 }
 
+class VoidExpression extends Expression {
+  public substitute(typeTable: TypeTable): VoidExpression {
+    return new VoidExpression().at(this.location).tag(this.tags);
+  }
+
+  public typecheck(context: TypeChecker, contextual?: Type): Type {
+    if(contextual && contextual.isConvertibleTo(Type.Void)){
+      return contextual;
+    }
+    return Type.Void;
+  }
+
+  public compile(compiler: Compiler, lvalue?: boolean): Register {
+    const dr = compiler.allocateRegister();
+    compiler.emit([
+      new ConstantDirective(dr, new ImmediateConstant(0)),
+    ]);
+    return dr;
+  }
+
+  public constant(): number {
+    return 0;
+  }
+
+  public toString(): string {
+    return `void`;
+  }
+}
+
 class NullExpression extends Expression {
   public substitute(typeTable: TypeTable): NullExpression {
     return new NullExpression().at(this.location).tag(this.tags);
@@ -614,7 +655,6 @@ class SizeofExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    this.type.elaborate(context);
     this.type.kindcheck(context, new KindChecker());
     return Type.Byte;
   }
@@ -696,7 +736,6 @@ class NewExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    this.type.elaborate(context);
     this.type.kindcheck(context, new KindChecker());
 
     const cType = this.type.resolve();
@@ -709,7 +748,7 @@ class NewExpression extends Expression {
       }
 
       this.newArrayExpression = new NewArrayExpression(
-        this.type.substitute(TypeTable.empty()), // HACK: we already elaborated this.
+        this.type,
         new IntLiteralExpression(cType.length || 0),
         this.expression,
         this.ellipsis,
@@ -833,7 +872,6 @@ class NewArrayExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    this.type.elaborate(context);
     this.type.kindcheck(context, new KindChecker());
 
     // This type must be an array.
@@ -1063,7 +1101,6 @@ class CastExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    this.type.elaborate(context);
     this.type.kindcheck(context, new KindChecker());
 
     const type = this.expression.typecheck(context, this.type);
@@ -1182,7 +1219,7 @@ class BinaryExpression extends Expression {
         if(!tLeft.isEqualTo(tRight)){
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
         }
-        return Type.Bool;
+        return context.builtinType('bool');
 
       case '==':
       case '!=': {
@@ -1196,8 +1233,7 @@ class BinaryExpression extends Expression {
         if(!tLeft.isEqualTo(tRight)){
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
         }
-
-        return Type.Bool;
+        return context.builtinType('bool');
       }
 
       default:
@@ -1371,7 +1407,7 @@ class UnaryExpression extends Expression {
         if(!type.integral){
           this.error(context, `expected integral type, actual ${type}`);
         }
-        return Type.Bool;
+        return context.builtinType('bool');
       }
 
       case '*': {
@@ -1564,7 +1600,7 @@ class CallExpression extends Expression {
         returnType,
       ).at(this.location);
 
-      const inferredType = cType.infer(context, expectedType, this.location);
+      const inferredType = cType.infer(context, new KindChecker(), expectedType, this.location);
       if(!inferredType){
         this.error(context, `unable to infer template instantiation, actual ${type}`);
         return Type.Error;
@@ -2031,7 +2067,8 @@ class ConditionalExpression extends Expression {
   CallExpression,
   DotExpression, ArrowExpression, IndexExpression, SuffixExpression,
   ConditionalExpression,
-  CastExpression, NewExpression, NewArrayExpression, NullExpression,
+  CastExpression, NewExpression, NewArrayExpression,
+  NullExpression, VoidExpression,
   ArrayLiteralExpression, StructLiteralExpression,
   SizeofExpression,
 ].forEach((expressionClass) => {
@@ -2051,7 +2088,8 @@ export {
   CallExpression,
   DotExpression, ArrowExpression, IndexExpression, SuffixExpression,
   ConditionalExpression,
-  CastExpression, NewExpression, NewArrayExpression, NullExpression,
+  CastExpression, NewExpression, NewArrayExpression,
+  NullExpression, VoidExpression,
   ArrayLiteralExpression, StructLiteralExpression,
   SizeofExpression,
 };

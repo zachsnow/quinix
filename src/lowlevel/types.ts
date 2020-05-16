@@ -11,14 +11,6 @@ import { TypeTable } from './tables';
  */
 abstract class Type extends Syntax {
   /**
-   * Elaborate a type in the given context, so that all
-   * identifiers are annotated with their fully qualified type.
-   *
-   * @param context the context in which to elaborate.
-   */
-  public abstract elaborate(context: TypeChecker): void;
-
-  /**
    * Check that the type is valid, recording errors on the given `context`.
    * `kindchecker` is used to verify that type *definitions* are valid.
    *
@@ -105,7 +97,7 @@ abstract class Type extends Syntax {
       cType instanceof PointerType ||
       cType instanceof FunctionType ||
       (cType instanceof ArrayType && cType.length === undefined) ||
-      (cType instanceof BuiltinType && cType.size === 1)
+      (cType instanceof BuiltinType)
     );
   }
 
@@ -222,16 +214,12 @@ class BuiltinType extends Type {
     return this.builtin;
   }
 
-  public get size(): number {
-    return this.builtin === 'void' ? 0 : 1;
-  }
-
   public substitute(typeTable: TypeTable) {
     return this;
   }
 }
 
-type Instantiator = (type: Type, bindings: TypeTable, source: Source) => void;
+type Instantiator = (type: Type, kindchecker: KindChecker, bindings: TypeTable, source: Source) => void;
 
 class VariableType extends Type {
   private static id = 0;
@@ -320,7 +308,7 @@ class TemplateType extends Type {
     throw new InternalError(`unable to substitute template type`);
   }
 
-  public elaborate(context: TypeChecker): void {
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
     const duplicateTypeVariables = duplicates(this.typeVariables);
     if(duplicateTypeVariables.length){
       this.error(context, `duplicate type variables ${duplicateTypeVariables.join(', ')}`);
@@ -329,18 +317,11 @@ class TemplateType extends Type {
     // We need to elaborate the body of the template type, but
     // we want to make sure that bound type variables are left
     // alone.
-    const nestedContext = context.extend(
-      context.typeTable.extend(),
-      undefined,
-    );
+    const nestedKindchecker = kindchecker.withTypeTable(kindchecker.typeTable.extend());
     this.typeVariables.forEach((tv) => {
-      nestedContext.typeTable.set(tv, new IdentifierType(tv));
+      nestedKindchecker.typeTable.set(tv, new IdentifierType(tv));
     });
-    this.type.elaborate(nestedContext);
-  }
-
-  public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
-    throw new InternalError(`unable to kindcheck template type`);
+    this.type.kindcheck(context, nestedKindchecker);
   }
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
@@ -349,7 +330,7 @@ class TemplateType extends Type {
       type = type.unify(this);
     }
 
-    const substitution = TypeTable.empty();
+    const substitution = new TypeTable();
     this.typeVariables.forEach((tv) => {
       substitution.set(tv, new VariableType());
     });
@@ -372,7 +353,7 @@ class TemplateType extends Type {
    * @param typeArgs the type arguments with which to instantiate this template type.
    * @param location the location of the instantiation.
    */
-  public instantiate(context: TypeChecker, typeArgs: readonly Type[], location?: Location): Type {
+  public instantiate(context: TypeChecker, kindchecker: KindChecker, typeArgs: readonly Type[], location?: Location): Type {
     // Check that we passed the right number of arguments.
     if(this.typeVariables.length !== typeArgs.length){
       this.error(context, `expected ${this.typeVariables.length} type arguments, actual ${typeArgs.join(', ')}`);
@@ -380,7 +361,7 @@ class TemplateType extends Type {
     }
 
     // Build a substitution mapping type variables to type arguments.
-    const typeTable = TypeTable.empty();
+    const typeTable = new TypeTable();
     this.typeVariables.forEach((tv, i) => {
       typeTable.set(tv, typeArgs[i]);
     });
@@ -401,7 +382,7 @@ class TemplateType extends Type {
     // Call the instantiators so we can typecheck the body of the function with
     // the instantiation we just developed.
     this.instantiators.forEach((instantiator) => {
-      instantiator(iType, typeTable, source);
+      instantiator(iType, kindchecker, typeTable, source);
     });
 
     return iType;
@@ -417,10 +398,10 @@ class TemplateType extends Type {
    * unify with.
    * @param location the location of the instantiation.
    */
-  public infer(context: TypeChecker, expectedType: Type, location?: Location): Type | undefined {
+  public infer(context: TypeChecker, kindchecker: KindChecker, expectedType: Type, location?: Location): Type | undefined {
     // Build a substitution mapping type variables to new variables
     // that can bind during unification.
-    const typeTable = TypeTable.empty();
+    const typeTable = new TypeTable();
     const typeArgs = this.typeVariables.map((tv) => {
       const v = new VariableType();
       typeTable.set(tv, v);
@@ -444,7 +425,7 @@ class TemplateType extends Type {
 
     // Otherwise, we inferred an instantiation. Extract it and instantiate
     // this template type.
-    return this.instantiate(context, typeArgs.map((arg) => arg.evaluate()), location);
+    return this.instantiate(context, kindchecker, typeArgs.map((arg) => arg.evaluate()), location);
   }
 
   public toString(){
@@ -479,14 +460,12 @@ class TemplateInstantiationType extends Type {
     ).at(this.location).tag(this.tags);
   }
 
-  public elaborate(context: TypeChecker){
-    this.type.elaborate(context);
-    this.typeArguments.forEach((typeArgument) => {
-      typeArgument.elaborate(context);
-    });
-  }
-
   public kindcheck(context: TypeChecker, kindchecker: KindChecker){
+    this.type.kindcheck(context, kindchecker);
+    this.typeArguments.forEach((type) => {
+      type.kindcheck(context, kindchecker);
+    });
+
     const type = this.type.resolve();
     if(!(type instanceof TemplateType)){
       this.error(context, `expected template type, actual ${this.type}`);
@@ -494,13 +473,13 @@ class TemplateInstantiationType extends Type {
       return;
     }
 
-    const nestedContext = context.fromSource(context.source.extend(
+    const nestedContext = context.forSource(context.source.extend(
       this.toString(),
       `instantiating ${this}`,
       this.location,
     ));
 
-    this.instantiatedType = type.instantiate(nestedContext, this.typeArguments, this.location);
+    this.instantiatedType = type.instantiate(nestedContext, kindchecker, this.typeArguments, this.location);
   }
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
@@ -557,10 +536,6 @@ class DotType extends Type {
       this.type.substitute(typeTable),
       this.identifier,
     ).at(this.location).tag(this.tags);
-  }
-
-  public elaborate(context: TypeChecker): void {
-    this.type.elaborate(context);
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
@@ -622,13 +597,6 @@ class FunctionType extends Type {
       this.argumentTypes.map((argumentType) => argumentType.substitute(typeTable)),
       this.returnType.substitute(typeTable),
     ).at(this.location).tag(this.tags);
-  }
-
-  public elaborate(context: TypeChecker): void {
-    this.argumentTypes.forEach((argumentType) => {
-      argumentType.elaborate(context);
-    });
-    this.returnType.elaborate(context);
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
@@ -705,9 +673,48 @@ class IdentifierType extends Type {
     }
   }
 
-  public elaborate(context: TypeChecker): void {
-    const lookup = context.typeTable.lookup(this.identifier, context.namespace, context.usings);
-    if(lookup === undefined){
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
+    const lookup = kindchecker.typeTable.lookup(this.identifier);
+    const declaration = context.namespace.lookupType(context, this.identifier);
+
+    // If we have already looked this identifier up, we're done.
+    // We don't want to look up already-bound identifiers because we
+    // probably just instantiated them into a new spot that is not
+    // the context in which they should be looked up!
+    if(this.qualifiedIdentifier !== undefined){
+      return;
+    }
+
+    if(lookup !== undefined){
+      // This is a type binding; it can't be recursive. We don't
+      // save the qualified identifier because it doesn't really have
+      // one.
+      return;
+    }
+    else if(declaration !== undefined){
+      // This is a type name.
+
+      // Save for later comparisons.
+      this.qualifiedIdentifier = declaration.qualifiedIdentifier;
+      this.type = declaration.type;
+
+      // Invalid recursive reference.
+      if(kindchecker.isInvalid(this.qualifiedIdentifier)){
+        this.error(context, `recursive type ${this}`);
+        return;
+      }
+
+      // Valid recursive reference; we're done.
+      if(kindchecker.isRecursive(this.qualifiedIdentifier)){
+        return;
+      }
+
+      // Otherwise we must pass through this type so we can verify
+      // (mutually) recursive types.
+      this.type.kindcheck(context, kindchecker.visit(this.qualifiedIdentifier));
+    }
+    else {
+      debugger;
       this.error(context, `unknown type identifier ${this.identifier}`);
 
       // We don't have a real qualified identifier for this, but we expect
@@ -717,27 +724,6 @@ class IdentifierType extends Type {
       this.type = Type.Error;
       return;
     }
-
-    // Save for later comparisons.
-    this.qualifiedIdentifier = lookup.qualifiedIdentifier;
-    this.type = lookup.value;
-  }
-
-  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
-    // Invalid recursive reference.
-    if(kindchecker.isInvalid(this.qualifiedIdentifier)){
-      this.error(context, `recursive type ${this}`);
-      return;
-    }
-
-    // Valid recursive reference; we're done.
-    if(kindchecker.isRecursive(this.qualifiedIdentifier)){
-      return;
-    }
-
-    // Otherwise we must pass through this type so we can verify
-    // (mutually) recursive types.
-    this.type.kindcheck(context, kindchecker.visit(this.qualifiedIdentifier));
   }
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
@@ -769,16 +755,19 @@ class IdentifierType extends Type {
   }
 
   public substitute(typeTable: TypeTable): Type {
-    // If we have bound this type variable, replace it, otherwise leave it alone.
+    // If we have bound this type variable, replace it with
+    // the value we bound in the type table.
     if(typeTable.has(this.identifier)){
-      return typeTable.get(this.identifier);
+      return typeTable.get(this.identifier).value;
     }
 
+    // Otherwise, it's just a regular type identifier.
     const t = new IdentifierType(
       this.identifier,
     ).at(this.location).tag(this.tags);
 
-    // We should only encounter elaborated identifiers.
+    // We should only encounter elaborated identifiers because we should have
+    // already kindchecked the body of any type before we instantiate it.
     t.qualifiedIdentifier = this.qualifiedIdentifier;
     t.type = this.type;
 
@@ -797,16 +786,8 @@ class IdentifierType extends Type {
   public toString(){
     return this.identifier;
   }
-
-  public static build(identifier: string): Type {
-    const builtin = identifier as Builtin;
-    if(Builtins.indexOf(builtin) !== -1){
-      return new BuiltinType(builtin);
-    }
-    return new IdentifierType(identifier);
-  }
 }
-writeOnce(IdentifierType, 'qualifiedIdentifier');
+writeOnce(IdentifierType, 'qualifiedIdentifier', true);
 writeOnce(IdentifierType, 'type');
 
 class PointerType extends Type {
@@ -815,10 +796,6 @@ class PointerType extends Type {
   public constructor(type: Type){
     super();
     this.type = type;
-  }
-
-  public elaborate(context: TypeChecker): void {
-    this.type.elaborate(context);
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker){
@@ -862,10 +839,6 @@ class ArrayType extends Type {
     public readonly length?: number,
   ){
     super();
-  }
-
-  public elaborate(context: TypeChecker): void {
-    this.type.elaborate(context);
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker){
@@ -928,12 +901,6 @@ class StructType extends Type {
   public member(identifier: string): Member | undefined {
     return this.members.find((member) => {
       return member.identifier === identifier;
-    });
-  }
-
-  public elaborate(context: TypeChecker): void {
-    this.members.forEach((member) => {
-      member.type.elaborate(context);
     });
   }
 
@@ -1022,17 +989,10 @@ class StructType extends Type {
 }
 
 namespace Type {
+  // Builtins.
   export const Void = new BuiltinType('void');
   export const Byte = new BuiltinType('byte');
-  export const Bool = new IdentifierType('bool');
-  export const String = new IdentifierType('string');
   export const Error = new BuiltinType('<error>');
-
-  Void.elaborate(new TypeChecker());
-  Byte.elaborate(new TypeChecker());
-  Error.elaborate(new TypeChecker());
-  Bool.elaborate(new TypeChecker());
-  String.elaborate(new TypeChecker());
 }
 
 export {
