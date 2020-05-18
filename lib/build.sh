@@ -10,7 +10,7 @@ if [ "${1-}" == "--compiled" ]; then
 fi
 
 echo "Compiling system..."
-${QLLC_PATH} --library --namespace system -o bin/system.qasm system.qll
+${QLLC_PATH} --library -o bin/system.qasm system.qll
 
 echo "Compiling lib..."
 ${QLLC_PATH} --library -o bin/lib.qasm lib.qll
