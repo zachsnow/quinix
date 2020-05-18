@@ -25,6 +25,4 @@ function main(): void {
   var handlerAddress = <unsafe * byte>(*handlerTableAddressPtr + 0x2);
   *handlerAddress = tick;
 
-  // TODO: maybe make this work?
-  ::system::wait();
 }

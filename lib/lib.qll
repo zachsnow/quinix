@@ -8,10 +8,13 @@
 namespace lib {
   namespace support {
     .constant global EXIT_SYSCALL: byte = 0x0;
-    .constant global OPEN_SYSCALL: byte = 0x1;
-    .constant global CLOSE_SYSCALL: byte = 0x2;
-    .constant global READ_SYSCALL: byte = 0x3;
-    .constant global WRITE_SYSCALL: byte = 0x4;
+    .constant global READ_SYSCALL: byte = 0x1;
+    .constant global WRITE_SYSCALL: byte = 0x2;
+    .constant global OPEN_SYSCALL: byte = 0x3;
+    .constant global CLOSE_SYSCALL: byte = 0x4;
+    .constant global CREATE_SYSCALL: byte = 0x5;
+    .constant global DESTROY_SYSCALL: byte = 0x6;
+    .constant global SPAWN_SYSCALL: byte = 0x7;
 
     function syscall(syscall: byte): byte;
     function syscall1(syscall: byte, arg0: byte): byte;
@@ -48,11 +51,11 @@ namespace lib {
   }
 
   function input(buffer: string): error {
-    return read(debug_input_handle, buffer);
+    return read(handle::input, buffer);
   }
 
   function print(text: string): error {
-    return write(debug_output_handle, text);
+    return write(handle::output, text);
   }
 
   function debugger(): void {
@@ -64,6 +67,6 @@ namespace lib {
   }
 
   function create(binary: string): error {
-    return supprt::syscall1(binary);
+    return <error>support::syscall1(support::CREATE_SYSCALL, <unsafe byte>binary);
   }
 }

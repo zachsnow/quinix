@@ -4,7 +4,7 @@ type Point = struct {
 };
 
 function main(): byte {
-  var p: Point[] = Point[] [
+  var p: Point[] = [
     Point {
       x = 10,
       y = 20,
