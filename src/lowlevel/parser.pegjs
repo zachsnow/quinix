@@ -2,9 +2,9 @@ Program
     = _ ds:DeclarationList? _ {
         return new LowLevelProgram(
             new NamespaceDeclaration(
-                options?.namespace ?? LowLevelProgram.DEFAULT_NAMESPACE,
+                LowLevelProgram.GLOBAL_NAMESPACE,
                 ds|| [],
-            )
+            ).at(location(), text(), options),
         );
     }
 
@@ -20,7 +20,7 @@ Declaration
 
 NamespaceDeclaration
     = NamespaceToken _ id:QualifiedIdentifier _ "{" _ ds:DeclarationList? _ "}" {
-        return new NamespaceDeclaration(id, ds || []).at(location(), text(), options);
+        return NamespaceDeclaration.build(id, ds || [], location(), text(), options);
     }
 
 UsingDeclaration

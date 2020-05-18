@@ -16,7 +16,6 @@ interface Options {
   files: string[];
   library: boolean;
   module: string;
-  namespace?: string;
   strict: boolean;
 }
 
@@ -43,10 +42,6 @@ const argv = parseArguments<Options>(
         type: 'string',
         default: '',
       },
-      namespace: {
-        describe: 'the global namespace',
-        type: 'string',
-      },
       strict: {
         describe: 'treat warnings as errors',
         type: 'boolean',
@@ -71,9 +66,9 @@ async function main(): Promise<number | undefined>{
   const filenames = argv.files;
   const programTexts = await readFiles(filenames);
   const programs: LowLevelProgram[] = programTexts.map((programText, i) => {
-    return LowLevelProgram.parse(programText, filenames[i], argv.namespace);
+    return LowLevelProgram.parse(programText, filenames[i]);
   });
-  const program = LowLevelProgram.concat(programs, argv.namespace);
+  const program = LowLevelProgram.concat(programs);
 
   // Typecheck.
   const messages = program.typecheck();

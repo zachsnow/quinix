@@ -133,7 +133,7 @@ class Compiler {
   /**
    * The default memory allocator; implemented in `lib/system.qll`.
    */
-  public static readonly DefaultAllocator = 'system::alloc'
+  public static readonly DefaultAllocator = 'global::system::alloc'
 
   /**
    * The fully qualified identifier for the memory allocator.
@@ -143,7 +143,7 @@ class Compiler {
   /**
    * The default memory deallocator; implemented in `lib/system.qll`.
    */
-  public static readonly DefaultDeallocator = 'system::dealloc';
+  public static readonly DefaultDeallocator = 'global::system::dealloc';
 
   /**
    * The fully qualified identifier for the memory deallocator.

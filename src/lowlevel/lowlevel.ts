@@ -1,4 +1,7 @@
-import { InternalError, logger, Messages, indent, parseFile, writeOnce, duplicates, flatten } from '../lib/util';
+import {
+  InternalError, logger, Messages, indent, parseFile, writeOnce, duplicates, flatten,
+  IFileRange, IParseOptions,
+} from '../lib/util';
 import {
   Directive,
 
@@ -123,11 +126,20 @@ abstract class NamedDeclaration extends Declaration {
     }
   }
 
+  /**
+   * Returns the fully qualified identifier for this declaration. For instance,
+   * if this declaration is a global `foo` in namespace `bar`, the fully qualified
+   * identifier is `global::foo::bar`.
+   */
   public get qualifiedIdentifier(): string {
     if(this.namespace){
       return `${this.namespace.qualifiedIdentifier}::${this.identifier}`;
     }
-    return `${this.identifier}`;
+    throw new InternalError('no namespace');
+  }
+
+  public static isFullyQualified(qualifiedIdentifier: string): boolean {
+    return qualifiedIdentifier.split('::')[0] === LowLevelProgram.GLOBAL_NAMESPACE;
   }
 }
 
@@ -190,8 +202,8 @@ class TemplateTypeDeclaration extends BaseTypeDeclaration {
   }
 
   public kindcheck(context: TypeChecker): void {
-    this.type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
     this.context = context;
+    this.type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
   }
 
   private instantiator(type: Type, kindchecker: KindChecker, typeTable: TypeTable, source: Source): void {
@@ -448,14 +460,16 @@ class FunctionDeclaration extends BaseValueDeclaration {
     return this.tagged('.interrupt');
   }
 
-  public initializeLiveness(liveness: Liveness, entrypoint?: string): void {
+  public initializeLiveness(liveness: Liveness): void {
     if(!this.block){
       return;
     }
 
-    if(entrypoint && this.qualifiedIdentifier === entrypoint){
+    // We always mark `main` as live.
+    if(this.qualifiedIdentifier === LowLevelProgram.ENTRYPOINT){
       liveness.live[this.qualifiedIdentifier] = true;
     }
+
     if(this.tagged('.export')){
       liveness.live[this.qualifiedIdentifier] = true;
     }
@@ -631,7 +645,7 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
 
   public initializeLiveness(liveness: Liveness, entrypoint?: string): void {
     this.instantiations.forEach((instantiation) => {
-      instantiation.declaration.initializeLiveness(liveness, entrypoint);
+      instantiation.declaration.initializeLiveness(liveness);
     });
   }
 
@@ -654,17 +668,24 @@ class UsingDeclaration extends Declaration {
       throw new InternalError('using outside of namespace');
     }
 
-    // Make sure that this using refers to a namespace.
-    const namespaces = this.namespace.root.getNamespaces(this.identifier);
+    // Make sure this is a fully qualified identifier.
+    if(!NamedDeclaration.isFullyQualified(this.qualifiedIdentifier)){
+      this.error(context, `expected fully qualified namespace identifier`);
+      return;
+    }
+
+    // Make sure that this using refers to a real namespace.
+    const namespaces = this.namespace.root.getNamespaces(this.qualifiedIdentifier);
     if(namespaces.length === 0){
       this.error(context, `unknown namespace identifier ${this.identifier}`);
       return;
     }
 
-    // Let's avoid redundant usings.
+    // Let's avoid redundant usings; we only check in "our" namespace declaration because
+    // that's the only place where our using is in effect.
     this.namespace.usings.forEach((using) => {
-      if(using !== this && using.identifier === this.identifier){
-        this.error(context, `duplicate using declaration ${this.identifier}`);
+      if(using !== this && using.qualifiedIdentifier === this.qualifiedIdentifier){
+        this.error(context, `duplicate using declaration ${this.qualifiedIdentifier}`);
       }
     });
   }
@@ -705,6 +726,15 @@ class NamespaceDeclaration extends NamedDeclaration {
     return this.namespace ? this.namespace.root : this;
   }
 
+  public get qualifiedIdentifier(): string {
+    if(this.namespace){
+      return `${this.namespace.qualifiedIdentifier}::${this.identifier}`;
+    }
+
+    // Global.
+    return this.identifier;
+  }
+
   /**
    * Returns the using declarations found in this namespace.
    */
@@ -739,26 +769,38 @@ class NamespaceDeclaration extends NamedDeclaration {
    * namespaces and usings.  Because we may have multiple declarations of
    * the same namespace, we return a list of declarations.
    *
-   * @param identifier the namespace fully qualified identifier.
+   * @param qualifiedIdentifier the namespace for which to find all declarations.
    */
-  public getNamespaces(identifier: string) : NamespaceDeclaration[] {
-    const fullyQualifiedIdentifier = `${this.qualifiedIdentifier}::${identifier}`;
+  public getNamespaces(qualifiedIdentifier: string) : NamespaceDeclaration[] {
+    // If we aren't the root namespace, build the fully qualified identifier
+    // for the given qualified identifier and get all namespace declarations that define
+    // the namespace from the root.
+    //
+    // For instance, if we are looking for `foo::bar` in namespace `bleck::baz`,
+    // build the fully qualified identifier `bleck::baz::foo::bar` and ask the
+    // root namespace to return all matching declarations.
     if(this.namespace){
-      return this.root.getNamespaces(fullyQualifiedIdentifier);
+      return this.root.getNamespaces(`${this.qualifiedIdentifier}::${qualifiedIdentifier}`);
     }
-
-    // Now we have a fully qualified identifier.
-    const parts = identifier.split('::');
+    // Now we have a fully qualified identifier and we are the root namespace.
+    if(!NamedDeclaration.isFullyQualified(qualifiedIdentifier)){
+      qualifiedIdentifier = `${this.qualifiedIdentifier}::${qualifiedIdentifier}`;
+    }
+    const parts = qualifiedIdentifier.split('::');
 
     // Special case: `global` always refers to the outermost namespace
-    // (which doesn't have a parent).
-    if(parts[0] === this.identifier){
-      parts.shift();
-      if(!parts.length){
-        return [ this ];
-      }
+    // (which doesn't have a parent), so we just strip it off.
+    if(parts[0] !== LowLevelProgram.GLOBAL_NAMESPACE){
+      throw new InternalError(`expected ${qualifiedIdentifier} to be fully qualified`);
+    }
+    parts.shift();
+
+    // If we are just looking for `global`, we've found it, and there's only 1.
+    if(!parts.length){
+      return [ this ];
     }
 
+    // Now we recurse through the tree of declarations and collect all namespaces that match.
     function get(namespace: NamespaceDeclaration, path: string[]): NamespaceDeclaration[] {
       const namespaces = namespace.declarations.map((dec) => {
         if(dec instanceof NamespaceDeclaration && dec.identifier === path[0]){
@@ -771,15 +813,19 @@ class NamespaceDeclaration extends NamedDeclaration {
       });
       return flatten(namespaces);
     }
-
     return get(this, parts);
   }
 
-  private lookup<T extends NamedDeclaration>(context: TypeChecker, cls: Function, identifier: string, using: boolean = true): T | undefined {
+  private lookup<T extends NamedDeclaration>(context: TypeChecker, cls: Function, qualifiedIdentifier: string): T | undefined {
+    // If we are looking up a fully qualified identifier, jump straight to the root.
+    if(NamedDeclaration.isFullyQualified(qualifiedIdentifier)){
+      return this.root.get<T>(cls, qualifiedIdentifier);
+    }
+
     // First do a direct lookup in the current namespace. For instance,
     // if `identifier` is `foo::bar`, then look for a namespace named `foo`
     // in `this`, and then an identifier named `bar` in that namespace.
-    const object = this.get<T>(cls, identifier);
+    const object = this.get<T>(cls, qualifiedIdentifier);
     if(object !== undefined){
       return object;
     }
@@ -788,11 +834,11 @@ class NamespaceDeclaration extends NamedDeclaration {
     // identifier; we append the identifier we are looking for and perform
     // a direct lookup.
     const objects = this.usings.map((using) => {
-      const usingIdentifier = `${using.qualifiedIdentifier}::${identifier}`;
-      return this.root.get<T>(cls, usingIdentifier);
+      const fullyQualifiedIdentifier = `${using.qualifiedIdentifier}::${qualifiedIdentifier}`;
+      return this.root.get<T>(cls, fullyQualifiedIdentifier);
     }).filter((object): object is T => !!object);
     if(objects.length > 1){
-      this.error(context, `ambiguous identifier ${identifier} refers to ${objects.map((object) => object.qualifiedIdentifier).join(', ')}`);
+      this.error(context, `ambiguous identifier ${qualifiedIdentifier} refers to ${objects.map((object) => object.qualifiedIdentifier).join(', ')}`);
       return;
     }
     else if(objects.length === 1){
@@ -801,47 +847,47 @@ class NamespaceDeclaration extends NamedDeclaration {
 
     // Finally, do a recursive lookup the parent, if we have one.
     if(this.namespace){
-      return this.namespace.lookup<T>(context, cls, identifier);
+      return this.namespace.lookup<T>(context, cls, qualifiedIdentifier);
     }
 
     // Not found.
     return;
   }
 
-  private get<T extends NamedDeclaration>(cls: Function, identifier: string): T | undefined {
-    // If we have a qualified identifier, get the prefix
-    // as a namespace, and lookup the final identifier directly in that namespace.
-    const parts = identifier.split('::');
-    if(parts.length > 1){
-      const namespaceIdentifier = parts.slice(0, parts.length - 1).join('::');
-      const objectIdentifier = parts[parts.length - 1];
-
-      const namespaces = this.getNamespaces(namespaceIdentifier);
-
-      const results = namespaces.map((namespace) => {
-        return namespace.get<T>(cls, objectIdentifier);
-      }).filter((dec): dec is T => !!dec);
-
-      if(results.length > 1){
-        throw new InternalError(`multiple definitions: ${results.join(', ')}`);
-      }
-      else if(results.length === 1){
-        return results[0];
-      }
-      else {
-        return;
-      }
+  private get<T extends NamedDeclaration>(cls: Function, qualifiedIdentifier: string): T | undefined {
+    // Get all namespaces declarations that define the namespace containing the
+    // qualified identifier's final identifier. For instance, if we are in `baz::bleck`
+    // and look up `foo::bar`, we get all namespaces defining `baz::bleck::foo`.
+    const parts = qualifiedIdentifier.split('::');
+    if(NamedDeclaration.isFullyQualified(qualifiedIdentifier)){
+      parts.shift();
     }
+    const prefix = parts.slice(0, parts.length - 1).join('::');
+    const identifier = parts[parts.length - 1];
+    const namespaceIdentifier = prefix ? `${this.qualifiedIdentifier}::${prefix}` : this.qualifiedIdentifier;
+    const namespaces = this.root.getNamespaces(namespaceIdentifier);
 
-    // Otherwise we have an unqualified identifier; just look in our own declarations.
-    return this.declarations.find((declaration): declaration is T  => {
-      if(declaration instanceof cls){
-        if((declaration as T).identifier === identifier){
-          return true;
+    // Now we look up the final identifier in all of the namespace declarations.
+    const objects = namespaces.map((namespace) => {
+      return namespace.declarations.find((declaration): declaration is T => {
+        if(declaration instanceof cls){
+          if((declaration as T).identifier === identifier){
+            return true;
+          }
         }
-      }
-      return false;
-    });
+        return false;
+      });
+    }).filter((object): object is T => !!object);
+
+    if(objects.length > 1){
+      throw new InternalError(`multiple definitions: ${objects.join(', ')}`);
+    }
+    else if(objects.length === 1){
+      return objects[0];
+    }
+    else {
+      return;
+    }
   }
 
   public get allDeclarations(): Declaration[] {
@@ -874,13 +920,6 @@ class NamespaceDeclaration extends NamedDeclaration {
     return `namespace ${this.identifier} {` +
       indent('\n' + this.declarations.join('\n')) +
       '\n}';
-  }
-
-  /**
-   * The fully qualified identifier for this namespace's entrypoint.
-   */
-  public get entrypoint(){
-    return `${this.qualifiedIdentifier}::main`;
   }
 
   /**
@@ -920,7 +959,7 @@ class NamespaceDeclaration extends NamedDeclaration {
    * @param identifier a possibly qualified identifier.
    * @param declarations the declarations for the namespace.
    */
-  public static build(identifier: string, declarations: Declaration[]): NamespaceDeclaration {
+  public static build(identifier: string, declarations: Declaration[], range: IFileRange, text: string, options?: IParseOptions): NamespaceDeclaration {
     const parts = identifier.split('::');
     const final = parts.pop();
     parts.reverse();
@@ -929,10 +968,9 @@ class NamespaceDeclaration extends NamedDeclaration {
       throw new InternalError(`invalid identifier ${identifier}`);
     }
 
-
-    let ns = new NamespaceDeclaration(final, declarations);
+    let ns = new NamespaceDeclaration(final, declarations).at(range, text, options);
     parts.forEach((part) => {
-      ns = new NamespaceDeclaration(part, [ns])
+      ns = new NamespaceDeclaration(part, [ns]).at(range, text, options);
     });
 
     return ns;
@@ -945,7 +983,8 @@ class NamespaceDeclaration extends NamedDeclaration {
 }
 
 class LowLevelProgram {
-  public static DEFAULT_NAMESPACE = 'global';
+  public static GLOBAL_NAMESPACE = 'global';
+  public static ENTRYPOINT = 'global::main';
 
   private typechecked: boolean = false;
 
@@ -971,6 +1010,9 @@ class LowLevelProgram {
       if(e instanceof InternalError){
         context.error(e.message);
       }
+      else {
+        throw e;
+      }
     }
 
     // Some checks we can't perform until we are sure that we've
@@ -985,16 +1027,12 @@ class LowLevelProgram {
     return context;
   }
 
-  private livenessAnalysis(globalDeclarations: GlobalDeclaration[], functionDeclarations: FunctionDeclaration[], entrypoint: boolean): void {
+  private livenessAnalysis(globalDeclarations: GlobalDeclaration[], functionDeclarations: FunctionDeclaration[]): void {
     const liveness = new Liveness();
-
-    const entrypointIdentifier = entrypoint ?
-      this.globalNamespace.entrypoint :
-      undefined;
 
     globalDeclarations.forEach((dec) => dec.initializeLiveness(liveness));
     functionDeclarations.forEach((dec) => {
-      dec.initializeLiveness(liveness, entrypointIdentifier);
+      dec.initializeLiveness(liveness);
     });
 
     liveness.propagate();
@@ -1030,7 +1068,7 @@ class LowLevelProgram {
     });
 
     // Collect liveness information.
-    this.livenessAnalysis(globalDeclarations, functionDeclarations, entrypoint);
+    this.livenessAnalysis(globalDeclarations, functionDeclarations);
 
     const directives: Directive[] = [];
 
@@ -1063,7 +1101,7 @@ class LowLevelProgram {
     compiler.emit([
       new ConstantDirective(Compiler.SP, new ImmediateConstant(VM.DEFAULT_MEMORY_SIZE - 1)).comment('configure sp'),
       new ConstantDirective(Compiler.ONE, new ImmediateConstant(0x1)).comment('configure one'),
-      new ConstantDirective(r, new ReferenceConstant(new Reference(`${this.globalNamespace.entrypoint}`))),
+      new ConstantDirective(r, new ReferenceConstant(new Reference(LowLevelProgram.ENTRYPOINT))),
     ]);
     const ret = compiler.emitCall([], r);
     compiler.emit([
@@ -1095,8 +1133,8 @@ class LowLevelProgram {
    * @param namespace the top-level namespace to use; assumes that *all* programs
    * were compiled under the same top-level namespce.
    */
-  public static concat(programs: LowLevelProgram[], identifier: string = LowLevelProgram.DEFAULT_NAMESPACE): LowLevelProgram {
-    const declaration = NamespaceDeclaration.concat(identifier, programs.map((program) => {
+  public static concat(programs: LowLevelProgram[]): LowLevelProgram {
+    const declaration = NamespaceDeclaration.concat(LowLevelProgram.GLOBAL_NAMESPACE, programs.map((program) => {
       return program.globalNamespace;
     }));
     return new LowLevelProgram(declaration);
@@ -1109,10 +1147,10 @@ class LowLevelProgram {
    * @param filename the filename of the source of the program text.
    * @param namespace the global namespace for top-level directives.
    */
-  public static parse(programText: string, filename?: string, namespace: string = LowLevelProgram.DEFAULT_NAMESPACE): LowLevelProgram {
+  public static parse(programText: string, filename?: string): LowLevelProgram {
     // HACK: I couldn't figure out how to allow a file that is *just* a comment, no trailing
     // newline, since you can't match on EOL it seems.
-    return parseFile(parse, programText + '\n', filename, { namespace });
+    return parseFile(parse, programText + '\n', filename);
   }
 }
 

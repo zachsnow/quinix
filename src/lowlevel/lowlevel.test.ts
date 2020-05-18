@@ -80,7 +80,7 @@ describe('QLLC parsing', () => {
 
 describe('QLLC typechecking', () => {
   function expectValid(programText: string){
-    const program: LowLevelProgram = LowLevelProgram.parse(programText);
+    const program: LowLevelProgram = LowLevelProgram.concat([LowLevelProgram.parse(programText)]);
     const messages = program.typecheck();
     if(messages.errors.length){
       throw new Error(messages.toString());
@@ -100,6 +100,272 @@ describe('QLLC typechecking', () => {
       throw e;
     }
   }
+
+  describe('Namespaces', () => {
+    test('lookup global namespace', () =>{
+      return expectValid(`
+        global t: byte = 34;
+        function main(): byte {
+          return t;
+        }
+      `);
+    });
+
+    test('lookup namespace', () =>{
+      return expectValid(`
+        namespace n {
+          global t: byte = 34;
+        }
+        function main(): byte {
+          return n::t;
+        }
+      `);
+    });
+
+    test('lookup same namespace', () =>{
+      return expectValid(`
+        namespace n {
+          global t: byte = 34;
+          function fn(): byte {
+            return t;
+          }
+        }
+        function main(): byte {
+          return n::fn();
+        }
+      `);
+    });
+
+    test('lookup same namespace (nested)', () =>{
+      return expectValid(`
+        namespace outer {
+          namespace n {
+            global t: byte = 34;
+            function fn(): byte {
+              return t;
+            }
+          }
+        }
+        function main(): byte {
+          return outer::n::fn();
+        }
+      `);
+    });
+
+    test('lookup same namespace, separate namespace declarations', () =>{
+      return expectValid(`
+        namespace n {
+          function fn(): byte {
+            return t;
+          }
+        }
+        namespace n {
+          global t: byte = 34;
+        }
+        function main(): byte {
+          return n::fn();
+        }
+      `);
+    });
+
+    test('lookup shadowed global outside of namespace', () => {
+      return expectValid(`
+        function main(): byte {
+          return foo::fn();
+        }
+
+        global i: byte = 44;
+
+        namespace foo {
+          global i: byte = 22;
+
+          function fn(): byte {
+            return global::i;
+          }
+        }
+      `);
+    });
+
+    test('lookup using', () =>{
+      return expectValid(`
+        using global::n;
+        namespace n {
+          global t: byte = 34;
+          function fn(): byte {
+            return t;
+          }
+        }
+        function main(): byte {
+          return fn();
+        }
+      `);
+    });
+
+    test('lookup nested using', () =>{
+      return expectValid(`
+        using global::outer::n;
+        namespace outer {
+          namespace n {
+            global t: byte = 34;
+            function fn(): byte {
+              return t;
+            }
+          }
+        }
+        function main(): byte {
+          return fn();
+        }
+      `);
+    });
+
+    test('lookup nested using prefix', () =>{
+      return expectValid(`
+        using global::outer;
+        namespace outer {
+          namespace n {
+            global t: byte = 34;
+            function fn(): byte {
+              return t;
+            }
+          }
+        }
+        function main(): byte {
+          return n::fn();
+        }
+      `);
+    });
+
+    test('lookup parent', () =>{
+      return expectValid(`
+        global t: byte = 34;
+        namespace n {
+          function fn(): byte {
+            return t;
+          }
+        }
+        function main(): byte {
+          return n::fn();
+        }
+      `);
+    });
+
+    test('lookup parent after namespace', () =>{
+      return expectValid(`
+        global t: * byte = null;
+        namespace n {
+          global t: byte = 10;
+          function fn(): byte {
+            return t;
+          }
+        }
+        function main(): byte {
+          return n::fn();
+        }
+      `);
+    });
+
+    test('lookup parent after namespace', () =>{
+      return expectValid(`
+        namespace kernel {
+          namespace memory {
+            type page = struct {
+              virtual_address: byte;
+              physical_address: byte;
+            };
+
+            type table = struct {
+              pages: page[];
+            };
+          }
+        }
+      `);
+    });
+
+  });
+
+  describe('Template instantiation', () => {
+    test('simple instantiation', () =>{
+      return expectValid(`
+        type vector<T> = T[];
+        function reduce<T, C>(vec: vector<T>, fn: (T, C) => C, c: C): C {
+          for(var i = 0; i < len vec; i = i + 1){
+            c = fn(vec[i], c);
+          }
+          return c;
+        }
+        function add(a: byte, b: byte): byte {
+          return a + b;
+        }
+        function sum(v: vector<byte>): byte {
+          return reduce<byte, byte>(v, add, 0);
+        }
+      `);
+    });
+
+    test('simple instantiation, nominal type', () =>{
+      return expectValid(`
+        type vector<T> = T[];
+        type int = byte;
+        function reduce<T, C>(vec: vector<T>, fn: (T, C) => C, c: C): C {
+          for(var i = 0; i < len vec; i = i + 1){
+            c = fn(vec[i], c);
+          }
+          return c;
+        }
+        function add(a: int, b: int): int {
+          return a + b;
+        }
+        function sum(v: vector<int>): int {
+          return reduce<int, int>(v, add, 0);
+        }
+      `);
+    });
+
+    test('simple instantiation, in namespace, with confused instantiating type', () =>{
+      return expectValid(`
+        namespace std {
+          type vector<T> = T[];
+          function reduce<T, C>(vec: vector<T>, fn: (T, C) => C, c: C): C {
+            for(var i = 0; i < len vec; i = i + 1){
+              c = fn(vec[i], c);
+            }
+            return c;
+          }
+          type int = void;
+        }
+        type int = byte;
+        function add(a: int, b: int): int {
+          return a + b;
+        }
+        function sum(v: std::vector<int>): int {
+          return std::reduce<int, int>(v, add, 0);
+        }
+      `);
+    });
+
+    test('simple instantiation, in namespace, with confused template type', () =>{
+      return expectValid(`
+        namespace std {
+          type vector<T> = T[];
+          function reduce<T, C>(vec: vector<T>, fn: (T, C) => C, c: C): C {
+            for(var i = 0; i < len vec; i = i + 1){
+              c = fn(vec[i], c);
+            }
+            return c;
+          }
+          type int = void;
+        }
+        type vector = byte;
+        type int = byte;
+        function add(a: int, b: int): int {
+          return a + b;
+        }
+        function sum(v: std::vector<int>): int {
+          return std::reduce<int, int>(v, add, 0);
+        }
+      `);
+    });
+  })
 
   test('void does not need return', () => {
     expectValid(`
@@ -1000,24 +1266,6 @@ describe('QLLC end-to-end', () => {
     `);
   });
 
-  test('access shadowed global outside of namespace', () => {
-    return expectRunToBe(44, `
-      function main(): byte {
-        return foo::fn();
-      }
-
-      global i: byte = 44;
-
-      namespace foo {
-        global i: byte = 22;
-
-        function fn(): byte {
-          return global::i;
-        }
-      }
-    `);
-  });
-
   test('arithmetic', () => {
     const runs: [string, number][] = [
       ['-7', -7],
@@ -1621,25 +1869,4 @@ describe('QLLC end-to-end', () => {
       }
     `);
   });
-
-  test('namespace lookups', () =>{
-    return expectRunToBe(34, `
-      namespace bar {
-        using bleck;
-        function baz(): byte {
-          return frob;
-        }
-      }
-      namespace bleck {
-        global frob: byte = 12;
-      }
-      namespace oops {
-        global frob: byte = 22;
-      }
-      using global::oops;
-      function main(): byte {
-        return bar::baz() + frob;
-      }
-    `);
-  })
 });
