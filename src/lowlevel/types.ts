@@ -118,6 +118,10 @@ abstract class Type extends Syntax {
   public get size(): number {
     return 1;
   }
+
+  public get err(): boolean {
+    return false;
+  }
 }
 
 type Storage = 'global' | 'function' | 'parameter' | 'local';
@@ -217,9 +221,13 @@ class BuiltinType extends Type {
   public substitute(typeTable: TypeTable) {
     return this;
   }
+
+  public get err(): boolean {
+    return this.builtin === '<error>';
+  }
 }
 
-type Instantiator = (type: Type, kindchecker: KindChecker, bindings: TypeTable, source: Source) => void;
+type Instantiator = (context: TypeChecker, kindchecker: KindChecker, type: Type, bindings: TypeTable, source: Source) => void;
 
 class VariableType extends Type {
   private static id = 0;
@@ -382,7 +390,7 @@ class TemplateType extends Type {
     // Call the instantiators so we can typecheck the body of the function with
     // the instantiation we just developed.
     this.instantiators.forEach((instantiator) => {
-      instantiator(iType, kindchecker, typeTable, source);
+      instantiator(context, kindchecker, iType, typeTable, source);
     });
 
     return iType;
@@ -461,6 +469,11 @@ class TemplateInstantiationType extends Type {
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker){
+    if(this.instantiatedType !== undefined){
+      this.instantiatedType.kindcheck(context, kindchecker);
+      return;
+    }
+
     this.type.kindcheck(context, kindchecker);
     this.typeArguments.forEach((type) => {
       type.kindcheck(context, kindchecker);
@@ -483,7 +496,7 @@ class TemplateInstantiationType extends Type {
   }
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
-    return this.instantiatedType.isUnifiableWith(type, nominal);
+    return this.evaluate().isUnifiableWith(type, nominal);
   }
 
   public evaluate(): Type {
@@ -498,7 +511,7 @@ class TemplateInstantiationType extends Type {
     return `(${this.type})<${this.typeArguments.join(', ')}>`;
   }
 }
-writeOnce(TemplateInstantiationType, 'instantiatedType');
+writeOnce(TemplateInstantiationType, 'instantiatedType', true);
 
 type Suffix = {
   identifier?: string;
@@ -710,8 +723,13 @@ class IdentifierType extends Type {
       }
 
       // Otherwise we must pass through this type so we can verify
-      // (mutually) recursive types.
-      this.type.kindcheck(context, kindchecker.visit(this.qualifiedIdentifier));
+      // (mutually) recursive types. Make sure to reset the lookup context
+      // to the declaration's namesapce.
+      if(!declaration.namespace){
+        throw new InternalError(`no namespace`);
+      }
+      const namespaceContext = context.forNamespace(declaration.namespace);
+      this.type.kindcheck(namespaceContext, kindchecker.visit(this.qualifiedIdentifier));
     }
     else {
       debugger;
@@ -768,6 +786,10 @@ class IdentifierType extends Type {
 
     // We should only encounter elaborated identifiers because we should have
     // already kindchecked the body of any type before we instantiate it.
+    //
+    // TODO: this is not the case, we might instantiate before kindchecking,
+    // for instance type t = foo<bar>; type foo<T> = T[]. If we kindcheck
+    // `t` first we will instantiate `foo` before we've kindchecked it.
     t.qualifiedIdentifier = this.qualifiedIdentifier;
     t.type = this.type;
 
@@ -788,7 +810,7 @@ class IdentifierType extends Type {
   }
 }
 writeOnce(IdentifierType, 'qualifiedIdentifier', true);
-writeOnce(IdentifierType, 'type');
+writeOnce(IdentifierType, 'type', true);
 
 class PointerType extends Type {
   private type: Type;
@@ -811,7 +833,7 @@ class PointerType extends Type {
     }
 
     // Pointers are unifiable when the types that they point to are unifiable.
-    type = type.resolve();
+    type = nominal ? type.evaluate() : type.resolve();
     if(type instanceof PointerType){
       return this.type.isUnifiableWith(type.type, nominal);
     }
@@ -853,7 +875,7 @@ class ArrayType extends Type {
     }
 
     // Pointers are unifiable when the types that they point to are unifiable.
-    type = nominal ? type : type.resolve();
+    type = nominal ? type.evaluate() : type.resolve();
     if(type instanceof ArrayType){
       if(this.type.isUnifiableWith(type.type, nominal)){
         // We can convert from sized array to unsized array, but not the opposite.

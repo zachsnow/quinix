@@ -593,8 +593,8 @@ class ReturnStatement extends Statement {
   }
 
   public typecheck(context: TypeChecker): void {
-    const returnType = this.expression ? this.expression.typecheck(context) : Type.Void;
     const storage = context.symbolTable.get('return').value;
+    const returnType = this.expression ? this.expression.typecheck(context, storage.type) : Type.Void;
 
     if(!returnType.isEqualTo(storage.type)){
       this.error(context, `expected ${storage.type}, actual ${returnType}`);

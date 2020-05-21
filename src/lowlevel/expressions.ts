@@ -187,7 +187,7 @@ class IdentifierExpression extends Expression {
 
       // Once we instantiate this type, we need to record the mangled name
       // so we can emit it during compilation.
-      return cType.extendInstantiators((instantiatedType: Type) => {
+      return cType.extendInstantiators((ctx, k, instantiatedType: Type) => {
         this.instantiated = true;
         this.qualifiedIdentifier = `${qualifiedIdentifier}<${instantiatedType}>`;
         if(needsReference){
@@ -617,10 +617,24 @@ class NullExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    if(!contextual || !(contextual.resolve() instanceof PointerType)){
+    if(!contextual){
       this.error(context, `expected contextual pointer type for null`);
       return Type.Error;
     }
+
+    const cType = contextual.resolve();
+    if(cType instanceof PointerType){
+      return contextual;
+    }
+
+    if(cType instanceof ArrayType){
+      if(cType.length !== undefined){
+        this.error(context, `expected contextual unsized array type for null, actual ${contextual}`);
+      }
+      return contextual;
+    }
+
+    this.error(context, `expected contextual pointer or unsized array type for null, actual ${contextual}`);
     return contextual;
   }
 
@@ -1163,7 +1177,7 @@ class BinaryExpression extends Expression {
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
     const tLeft = this.left.typecheck(context);
-    const tRight = this.right.typecheck(context);
+    const tRight = this.right.typecheck(context, tLeft);
 
     switch(this.operator){
       case '+':
@@ -1412,12 +1426,17 @@ class UnaryExpression extends Expression {
 
       case '*': {
         const cType = type.resolve();
+
+        if(cType.err){
+          return cType;
+        }
+
         if(cType instanceof PointerType){
           return cType.dereference();
         }
 
         this.error(context, `expected pointer type, actual ${type}`);
-        return Type.Byte;
+        return Type.Error;
       }
       case '&': {
         // We can't take the address of void.
@@ -1590,6 +1609,10 @@ class CallExpression extends Expression {
 
     const cType = type.resolve();
 
+    if(cType.err){
+      return cType;
+    }
+
     if(cType instanceof TemplateType){
       const argumentTypes = this.argumentExpressions.map((argumentExpression) => {
         return argumentExpression.typecheck(context);
@@ -1720,7 +1743,7 @@ abstract class SuffixExpression extends Expression {
         return new DotExpression(expression, suffix.identifier).at(suffix.range, suffix.text, suffix.options);
       }
       if(suffix.index !== undefined){
-        return new IndexExpression(expression, suffix.index).at(suffix.range, suffix.text, suffix.options);
+        return new IndexExpression(expression, suffix.index, suffix.unsafe).at(suffix.range, suffix.text, suffix.options);
       }
       if(suffix.expressions !== undefined){
         return new CallExpression(expression, suffix.expressions).at(suffix.range, suffix.text, suffix.options);
@@ -1762,6 +1785,10 @@ class DotExpression extends SuffixExpression {
   public typecheck(context: TypeChecker, contextual?: Type): Type {
     const type = this.expression.typecheck(context);
     const cType = type.resolve();
+
+    if(cType.err){
+      return cType;
+    }
 
     if(cType instanceof StructType){
       const member = cType.member(this.identifier);
@@ -1820,6 +1847,10 @@ class ArrowExpression extends SuffixExpression {
   public typecheck(context: TypeChecker, contextual?: Type): Type {
     const type = this.expression.typecheck(context);
     const cType = type.resolve();
+
+    if(cType.err){
+      return cType;
+    }
 
     if(!(cType instanceof PointerType)){
       this.error(context, `expected pointer to struct type, actual ${type}`);

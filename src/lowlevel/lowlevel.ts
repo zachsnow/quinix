@@ -74,7 +74,7 @@ abstract class Declaration extends Syntax {
    * The top-level `global` namespace is the only namespace
    * that has no parent.
    */
-  protected namespace?: NamespaceDeclaration;
+  public namespace?: NamespaceDeclaration;
 
   /**
    * Sets the parent namespace of this declaration.
@@ -120,10 +120,6 @@ abstract class NamedDeclaration extends Declaration {
     public readonly identifier: string,
   ){
     super();
-
-    if(this.identifier.indexOf('::') !== -1){
-      throw new InternalError('unexpected qualified identifier');
-    }
   }
 
   /**
@@ -202,12 +198,15 @@ class TemplateTypeDeclaration extends BaseTypeDeclaration {
   }
 
   public kindcheck(context: TypeChecker): void {
-    this.context = context;
     this.type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
   }
 
-  private instantiator(type: Type, kindchecker: KindChecker, typeTable: TypeTable, source: Source): void {
-    const context = this.context.forSource(source);
+  private instantiator(context: TypeChecker, kindchecker: KindChecker, type: Type, typeTable: TypeTable, source: Source): void {
+    if(!this.namespace){
+      throw new InternalError('no namespace');
+    }
+
+    context = context.forSource(source).forNamespace(this.namespace);
 
     // Don't go too deep!
     if(context.instantiationDepth > TypeChecker.MAX_INSTANTIATION_DEPTH){
@@ -502,7 +501,6 @@ type Instantiation = {
  */
 class TemplateFunctionDeclaration extends BaseValueDeclaration {
   private readonly instantiations: Instantiation[] = [];
-  private context!: TypeChecker;
 
   public constructor(
     identifier: string,
@@ -554,10 +552,6 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
     if(duplicateParameters.length){
       this.error(context, `duplicate parameters ${duplicateParameters.join(', ')}`);
     }
-
-    // Since we want to check the instantiation in the context in which
-    // the template was defined, we save it for later use.
-    this.context = context;
   }
 
 
@@ -566,21 +560,24 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
     // instead they are typechecked when they are instantiated.
   }
 
-  private instantiator(type: Type, kindchecker: KindChecker, typeTable: TypeTable, source: Source): void {
+  private instantiator(context: TypeChecker, kindchecker: KindChecker, type: Type, typeTable: TypeTable, source: Source): void {
+    if(!this.namespace){
+      throw new InternalError('no namespace');
+    }
     if(!this.block){
       throw new InternalError(`unexpected template pre-declaration`);
-    }
-
-    if(!(type instanceof FunctionType)){
-      this.error(this.context, `expected function type, actual ${type}`);
-      return;
     }
 
     // Use the context in which the function was *defined*, not the one in
     // which it is being instantiated.
     //
     // Record references found in this function instantiation.
-    const context = this.context.forSource(source).recordReferences();
+    context = context.forNamespace(this.namespace).forSource(source).recordReferences();
+
+    if(!(type instanceof FunctionType)){
+      this.error(context, `expected function type, actual ${type}`);
+      return;
+    }
 
     // TODO: should we do this in instantiate()?
     type.kindcheck(context, new KindChecker().withTypeTable(kindchecker.typeTable));
@@ -712,6 +709,10 @@ class NamespaceDeclaration extends NamedDeclaration {
     public readonly declarations: readonly Declaration[],
   ){
     super(identifier);
+
+    if(this.identifier.indexOf('::') !== -1){
+      throw new InternalError('unexpected qualified identifier');
+    }
 
     // Push
     this.declarations.forEach((dec) => {
