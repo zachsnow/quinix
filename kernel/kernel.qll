@@ -10,13 +10,12 @@ namespace kernel {
   }
 
   type interrupt = byte;
-  namespace interrupt {
+
+  namespace interrupts {
     .constant global ERROR: interrupt = 0x1;
     .constant global TIMER: interrupt = 0x2;
     .constant global SYSCALL: interrupt = 0x80;
-  }
 
-  namespace interrupts {
     type state = struct {
       registers: byte[64];
       ip: byte;
@@ -24,14 +23,14 @@ namespace kernel {
 
     global state: * state = <unsafe * state>0x2;
 
-    global _interrupts_enabled: .notnull * bool = null; // Lives at 0x0000.
+    global _enabled: .notnull * bool = null; // Lives at 0x0000.
 
     function disable(): void {
-      *_interrupts_enabled = false;
+      *_enabled = false;
     }
 
     function enable(): void {
-      *_interrupts_enabled = true;
+      *_enabled = true;
     }
   }
 
@@ -98,13 +97,13 @@ function main(): void {
     kernel::panic('unable to read shell');
   }
 
-  if(!kernel::process::create(binary)){
+  if(!kernel::process::create_process(binary)){
     kernel::panic('unable to create shell task');
   }
 
   delete binary;
 
-  kernel::enable_interrupts();
+  kernel::interrupts::enable();
   while(true){
     kernel::support::wait();
   }

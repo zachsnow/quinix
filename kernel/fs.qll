@@ -19,8 +19,10 @@ namespace kernel {
     }
 
     function read(handle: handle, data: byte[]): bool {
+      var process = process::current_process();
+
       if(handle == handle::INPUT){
-        return std::buffered::read(debug_input->control, debug_input->buffer, data);
+        return std::buffered::read(&peripherals::debug_input->control, peripherals::debug_input->buffer, data);
       }
 
       var index = std::vector::find_by(process->files, _find_file, handle);
@@ -28,15 +30,17 @@ namespace kernel {
         return false;
       }
       var file = process->files[index];
-      if(!std::buffered::write(debug_file->control, debug_file->buffer, file->path)){
+      if(!std::buffered::write(&peripherals::debug_file->control, peripherals::debug_file->buffer, file.path)){
         return false;
       }
-      return std::buffered::read(debug_file->control, debug_file->buffer, data);
+      return std::buffered::read(&peripherals::debug_file->control, peripherals::debug_file->buffer, data);
     }
 
-    function write(handle: handle, data: byte[]): byte {
+    function write(handle: handle, data: byte[]): bool {
+      var process = process::current_process();
+
       if(handle == handle::OUTPUT){
-        return std::buffered::write(debug_output->control, debug_output->buffer, data);
+        return std::buffered::write(&peripherals::debug_output->control, peripherals::debug_output->buffer, data);
       }
 
       var index = std::vector::find_by(process->files, _find_file, handle);
@@ -44,10 +48,10 @@ namespace kernel {
         return false;
       }
       var file = process->files[index];
-      if(!std::buffered::write(debug_file->control, debug_file->buffer, file->path)){
+      if(!std::buffered::write(&peripherals::debug_file->control, peripherals::debug_file->buffer, file.path)){
         return false;
       }
-      return std::buffered::write(debug_file->control, debug_file->buffer, data);
+      return std::buffered::write(&peripherals::debug_file->control, peripherals::debug_file->buffer, data);
     }
 
     function open(path: string): handle {
@@ -56,14 +60,18 @@ namespace kernel {
       // store it with the process.
       var process = process::current_process();
 
+      // Assign the file a handle.
+      var h = handle::id;
+      handle::id = handle::id + 1;
+
       // Be sure to copy the path because it's a string that lives
       // in the memory of the calling process.
       std::vector::add(&process->files, file {
-        path = str::from_string(path),
-        handle = handle::id,
+        path = std::str::from_string(path),
+        handle = h,
       });
 
-      handle::id = handle::id + 1;
+      return h;
     }
 
     function close(handle: handle): void {
@@ -83,7 +91,7 @@ namespace kernel {
     }
 
     function create_files(): files {
-      return std::vector::create<file>(2);
+      return <files>std::vector::create<file>(2);
     }
 
     function destroy_files(files: files): void {

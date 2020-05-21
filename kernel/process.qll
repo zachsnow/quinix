@@ -33,8 +33,8 @@ namespace kernel {
       // just like the VM does.  We initialize all registers to 0x0 except
       // the QLLC stack pointer, which initialize to the top of the stack.
       var task = scheduler::create_task();
-      task->ip = executable_base;
-      task->registers[63] = table->pages[2].physical_address + table->pages[2].size;
+      task->state.ip = executable_base;
+      task->state.registers[63] = table->pages[2].physical_address + table->pages[2].size;
 
       // Create a process.
       var process = new process = process {
@@ -62,9 +62,11 @@ namespace kernel {
       if(!process){
         panic('process: invalid process');
       }
-      if(!std::vector::remove(processes, process)){
+      var i = std::vector::find(processes, process);
+      if(i == -1){
         panic('process: unknown process');
       }
+      std::vector::remove(processes, i);
 
       memory::destroy_table(process->table);
       scheduler::destroy_task(process->task);
@@ -72,7 +74,7 @@ namespace kernel {
       delete process;
     }
 
-    function _find_process(p: * process, t: task): bool {
+    function _find_process(process: * process, t: * scheduler::task): bool {
       return process->task == t;
     }
 

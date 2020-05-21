@@ -45,11 +45,22 @@ namespace kernel {
 
     //
     // Hardware timer.
+    //
     global timer_identifier: byte = 0x10;
     global timer: * byte = null;
 
     function _init_timer(entry: * peripheral_table_entry): void {
       timer = entry->address;
+    }
+
+    //
+    // MMU.
+    //
+    global mmu_identifier: byte = 0x80000002;
+    global mmu: * byte = null;
+
+    function _init_mmu(entry: * peripheral_table_entry): void {
+      mmu = entry->address;
     }
 
     //
@@ -76,7 +87,11 @@ namespace kernel {
       init_table_entry {
         identifier = debug_file_identifier,
         init = _init_debug_file,
-      }
+      },
+      init_table_entry {
+        identifier = mmu_identifier,
+        init = _init_mmu,
+      },
     ];
 
     // Find and initialize the peripheral.

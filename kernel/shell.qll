@@ -6,9 +6,10 @@ function exec(arguments: string[]): void {
     print('exec: no arguments');
     return;
   }
+
   var program = arguments[0];
 
-  lib::create(binary);
+  lib::spawn(binary);
 }
 
 function main(): void {

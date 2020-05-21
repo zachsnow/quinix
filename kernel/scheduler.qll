@@ -4,6 +4,7 @@ namespace kernel {
       id: byte;
       killed: bool;
       state: interrupts::state;
+      table: * memory::table;
       next: * task;
     };
 
@@ -11,7 +12,7 @@ namespace kernel {
     global tasks: * task = null;
 
     function _restore_current_task(): void {
-      *state = current_task->state;
+      *interrupts::state = current_task->state;
       memory::use_table(current_task->table);
     }
 
@@ -41,7 +42,7 @@ namespace kernel {
       }
 
       // Restore the next task's state.
-      restore_current_task(state);
+      _restore_current_task();
     }
 
     .interrupt function _timer_interrupt(): void {
@@ -57,7 +58,7 @@ namespace kernel {
       return task;
     }
 
-    function enqueue_task(task: * task): bool {
+    function enqueue_task(task: * task): void {
       task->next = tasks;
       tasks = task;
     }
