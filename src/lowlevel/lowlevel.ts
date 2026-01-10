@@ -16,7 +16,7 @@ import {
 } from '../assembly/assembly';
 import { VM } from '../vm/vm';
 import { Instruction, Operation } from '../vm/instructions';
-import { Type, TypedIdentifier, TypedStorage, FunctionType, TemplateType, Storage, ArrayType } from './types';
+import { Type, TypedIdentifier, TypedStorage, FunctionType, TemplateType, Storage, ArrayType, SliceType } from './types';
 import { Expression, StringLiteralExpression } from './expressions';
 import { BlockStatement } from './statements';
 import { TypeChecker, KindChecker, Source } from './typechecker';
@@ -277,13 +277,19 @@ class GlobalDeclaration extends BaseValueDeclaration {
 
     const reference = new Reference(this.qualifiedIdentifier);
 
-    // We can make a nice string in the assembly by special-casing string literals.
+    // We can make a nice string in the assembly by special-casing string literals
+    // when the global is an array type (not a slice).
     if(this.expression instanceof StringLiteralExpression){
-      const temporaryReference = new Reference(`${this.qualifiedIdentifier}_string$`);
-      return [
-        new DataDirective(temporaryReference, new TextData(this.expression.text)),
-        new DataDirective(reference, new ReferenceData(temporaryReference)),
-      ];
+      const cType = this.type.resolve();
+      // Only special-case for arrays; slices need the full compilation path.
+      if(cType instanceof ArrayType){
+        const len = this.expression.length;
+        return [
+          new DataDirective(reference, new ImmediatesData([len])).comment('length header'),
+          new DataDirective(new Reference(`${this.qualifiedIdentifier}_text$`), new TextData(this.expression.text)),
+        ];
+      }
+      // For slices, fall through to normal compilation.
     }
 
     // We can skip some moves and stores by special-casing constant values.
@@ -303,7 +309,33 @@ class GlobalDeclaration extends BaseValueDeclaration {
     compiler.emit([
       new ConstantDirective(dr, new ReferenceConstant(reference)).comment(`reference global ${this.qualifiedIdentifier}`),
     ]);
-    if(this.type.integral){
+
+    // Handle array-to-slice conversion: create a slice descriptor.
+    const cGlobalType = this.type.resolve();
+    const cExprType = this.expression.concreteType.resolve();
+    if(cGlobalType instanceof SliceType && cExprType instanceof ArrayType){
+      // Create slice descriptor: [pointer][length][capacity]
+      // sr points to array which is [length][data...]
+      // Slice pointer = sr + 1 (skip length header)
+      const ptrR = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.ADD, ptrR, sr, Compiler.ONE)).comment('slice pointer = array + 1'),
+      ]);
+      compiler.emitStaticStore(dr, ptrR, 1, 'slice.pointer');
+      compiler.deallocateRegister(ptrR);
+
+      // Load array length and store as slice length and capacity
+      const lenR = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, lenR, sr)).comment('load array length'),
+      ]);
+      compiler.emitIncrement(dr, 1);
+      compiler.emitStaticStore(dr, lenR, 1, 'slice.length');
+      compiler.emitIncrement(dr, 1);
+      compiler.emitStaticStore(dr, lenR, 1, 'slice.capacity');
+      compiler.deallocateRegister(lenR);
+    }
+    else if(this.type.integral){
       compiler.emitStaticStore(dr, sr, 1, `store to global ${this.qualifiedIdentifier}`);
     }
     else {
@@ -979,7 +1011,7 @@ class NamespaceDeclaration extends NamedDeclaration {
 
   public static builtins = [
     new TypeDeclaration('bool', Type.Byte),
-    new TypeDeclaration('string', new ArrayType(Type.Byte)),
+    new TypeDeclaration('string', new SliceType(Type.Byte)),
   ];
 }
 

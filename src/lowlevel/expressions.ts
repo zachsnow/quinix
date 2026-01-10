@@ -7,7 +7,7 @@ import {
 
   AssemblyProgram,
 } from '../assembly/assembly';
-import { Type, Storage, PointerType, TemplateType, FunctionType, StructType, ArrayType, VariableType } from './types';
+import { Type, Storage, PointerType, TemplateType, FunctionType, StructType, ArrayType, SliceType, VariableType } from './types';
 import { TypeChecker, KindChecker } from './typechecker';
 import { Compiler, StorageCompiler } from './compiler';
 import { Immediate } from '../lib/base-types';
@@ -311,7 +311,7 @@ type LiteralExpression = {
   expression?: Expression;
 }
 
-function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpressions: readonly LiteralExpression[], capacity?: number): Register {
+function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpressions: readonly LiteralExpression[], length?: number): Register {
   // We can only compile non-integral literals when our compiler supports storage.
   if(!(compiler instanceof StorageCompiler)){
     throw new InternalError(`expected storage when compiling literal expression`);
@@ -319,8 +319,9 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
 
   const identifier = compiler.generateIdentifier(hint);
 
-  // Allocate local storage; include enough space for the capacity and size, if requested.
-  let bytes = capacity === undefined ? 0 : 2;
+  // Allocate local storage; include 1 word for length header if length is specified.
+  // New layout: [length][data...]
+  let bytes = length === undefined ? 0 : 1;
   literalExpressions.forEach((literalExpression) => {
     bytes += literalExpression.type.size;
   });
@@ -332,15 +333,13 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
   compiler.emitIdentifier(identifier, 'local', r, false);
   compiler.emitMove(ri, r, 'initialize destination pointer');
 
-  // Emit the capacity and initial size, if requested.
-  if(capacity !== undefined){
+  // Emit the length header if specified.
+  if(length !== undefined){
     const sr = compiler.allocateRegister();
     compiler.emit([
-      new ConstantDirective(sr, new ImmediateConstant(capacity)).comment(`capacity ${capacity}`),
+      new ConstantDirective(sr, new ImmediateConstant(length)).comment(`length ${length}`),
     ]);
-    compiler.emitStaticStore(ri, sr, 1, `store capacity`);
-    compiler.emitIncrement(ri, 1, 'len array');
-    compiler.emitStaticStore(ri, sr, 1, `store size`);
+    compiler.emitStaticStore(ri, sr, 1, `store length`);
     compiler.emitIncrement(ri, 1, 'array[0]');
     compiler.deallocateRegister(sr);
   }
@@ -432,11 +431,14 @@ class ArrayLiteralExpression extends Expression {
     let elementType: Type | undefined;
     if(contextualType){
       const cType = contextualType.resolve();
-      if(!(cType instanceof ArrayType)){
-        this.error(context, `expected contextual array type, actual ${contextualType}`);
+      if(cType instanceof ArrayType){
+        elementType = cType.index();
+      }
+      else if(cType instanceof SliceType){
+        elementType = cType.index();
       }
       else {
-        elementType = cType.index();
+        this.error(context, `expected contextual array or slice type, actual ${contextualType}`);
       }
     }
 
@@ -446,7 +448,7 @@ class ArrayLiteralExpression extends Expression {
         this.error(context, `expected contextual array type for empty array`);
         elementType = Type.Error;
       }
-      return new ArrayType(elementType);
+      return new SliceType(elementType);
     }
 
     // Each element of an array must have the same type; note that, similarly to
@@ -888,10 +890,10 @@ class NewArrayExpression extends Expression {
   public typecheck(context: TypeChecker, contextual?: Type): Type {
     this.type.kindcheck(context, new KindChecker());
 
-    // This type must be an array.
+    // This type must be a slice (T[]).
     const cType = this.type.resolve();
-    if(!(cType instanceof ArrayType)){
-      this.error(context, `new array expected array type, actual ${this.type}`);
+    if(!(cType instanceof SliceType)){
+      this.error(context, `new array expected slice type, actual ${this.type}`);
       return Type.Error;
     }
     this.elementType = cType.index();
@@ -913,66 +915,103 @@ class NewArrayExpression extends Expression {
       }
     }
 
-    // `new` doesn't return a sized array so that initializing a local
-    // variable with `new` has the expected behavior:
+    // `new` returns a slice so that initializing a local variable with `new`
+    // has the expected behavior:
     //
     //  var bytes = new byte[10] ... 5;
     //
-    // Makes bytes have type `byte[]`, so that it is a pointer on the stack,
-    // not a stack-allocated sized array. If it were, we'd copy the bytes
-    // from the new expression to the stack, which is probably not wanted.
-    return new ArrayType(this.elementType);
+    // Makes bytes have type `byte[]` (a slice), so that it is a 3-word
+    // descriptor on the stack pointing to heap-allocated storage.
+    return new SliceType(this.elementType);
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
-    // Allocate storage for the array: the size of the element type times the count of elements,
-    // plus one for the size.
-    const cr = this.size.compile(compiler); // Count.
-    const sr = compiler.allocateRegister(); // Storage size.
+    // We need StorageCompiler to allocate the slice descriptor.
+    if(!(compiler instanceof StorageCompiler)){
+      throw new InternalError(`new[] requires StorageCompiler`);
+    }
 
-    // If we are allocating an array whose elements have size 1,
-    // we can skip a multiplication.
+    // Compute the count (number of elements).
+    const cr = this.size.compile(compiler); // Count.
+
+    // Compute heap allocation size: (count * element_size) + 1 for the length header.
+    const sr = compiler.allocateRegister(); // Storage size in words.
     if(this.elementType.size > 1){
       const mr = compiler.allocateRegister();
       compiler.emit([
-        new ConstantDirective(mr, new ImmediateConstant(this.elementType.size)).comment('new[]: array element size'),
-        new InstructionDirective(Instruction.createOperation(Operation.MUL, sr, cr, mr)).comment('new[]: all elements size'),
+        new ConstantDirective(mr, new ImmediateConstant(this.elementType.size)).comment('new[]: element size'),
+        new InstructionDirective(Instruction.createOperation(Operation.MUL, sr, cr, mr)).comment('new[]: data size'),
       ]);
       compiler.deallocateRegister(mr);
     }
     else {
-      compiler.emitMove(sr, cr, 'new[]: all elements size');
+      compiler.emitMove(sr, cr, 'new[]: data size');
     }
 
-    // Add space for the array capacity and size.
+    // Add 1 for the length header.
     const tsr = compiler.allocateRegister();
     compiler.emitMove(tsr, sr);
-    compiler.emitIncrement(tsr, 2, 'new[]: array capacity and size');
+    compiler.emitIncrement(tsr, 1, 'new[]: add length header');
 
-    // Allocate the storage; this deallocates `tsr`.
-    const dr = compiler.emitNew(tsr, 'new[]');
+    // Allocate the heap storage; this deallocates `tsr`.
+    // Heap layout: [length][data...]
+    const hr = compiler.emitNew(tsr, 'new[]');
 
-    // Verify that the return is not null; if it is, we are out of memory.
+    // Allocate stack storage for the slice descriptor (3 words: pointer, length, capacity).
+    const sliceId = compiler.generateIdentifier('slice');
+    compiler.allocateStorage(sliceId, 3);
+    const sliceR = compiler.allocateRegister();
+    compiler.emitIdentifier(sliceId, 'local', sliceR, false);
+
+    // Handle allocation failure: if hr is null, store null slice and skip initialization.
     const endRef = compiler.generateReference('new_end');
+    const initRef = compiler.generateReference('new_init');
     const endR = compiler.allocateRegister();
+    const initR = compiler.allocateRegister();
     compiler.emit([
       new ConstantDirective(endR, new ReferenceConstant(endRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, dr, endR)),
+      new ConstantDirective(initR, new ReferenceConstant(initRef)),
+      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, hr, initR)),
+      // Allocation failed: store null slice (all zeros).
+      new ConstantDirective(endR, new ImmediateConstant(0)),
+      new InstructionDirective(Instruction.createOperation(Operation.STORE, sliceR, endR)).comment('slice.pointer = null'),
     ]);
-
-    // Address of first element of destination.
-    const adr = compiler.allocateRegister();
+    compiler.emitIncrement(sliceR, 1);
     compiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.MOV, adr, dr)).comment('new[]: array address'),
+      new InstructionDirective(Instruction.createOperation(Operation.STORE, sliceR, endR)).comment('slice.length = 0'),
+    ]);
+    compiler.emitIncrement(sliceR, 1);
+    compiler.emit([
+      new InstructionDirective(Instruction.createOperation(Operation.STORE, sliceR, endR)).comment('slice.capacity = 0'),
+      new ConstantDirective(endR, new ReferenceConstant(endRef)),
+      new InstructionDirective(Instruction.createOperation(Operation.JMP, undefined, endR)),
+      new LabelDirective(initRef),
+    ]);
+    compiler.deallocateRegister(endR);
+    compiler.deallocateRegister(initR);
+
+    // Initialize heap: set length header.
+    compiler.emitStaticStore(hr, cr, 1, 'heap.length');
+
+    // Data pointer is heap address + 1 (after length header).
+    const dataR = compiler.allocateRegister();
+    compiler.emit([
+      new InstructionDirective(Instruction.createOperation(Operation.ADD, dataR, hr, Compiler.ONE)).comment('data pointer'),
     ]);
 
-    // Set capacity and size.
-    compiler.emitStaticStore(adr, cr, 1, 'new[]: store array capacity');
-    compiler.emitIncrement(adr, 1, 'new[]: array size address');
-    compiler.emitStaticStore(adr, cr, 1, 'new[]: store array size');
-    compiler.emitIncrement(adr, 1, 'new[]: array[0] address');
+    // Build the slice descriptor.
+    // Reload slice address (it may have been clobbered).
+    compiler.emitIdentifier(sliceId, 'local', sliceR, false);
+    compiler.emitStaticStore(sliceR, dataR, 1, 'slice.pointer');
+    compiler.emitIncrement(sliceR, 1);
+    compiler.emitStaticStore(sliceR, cr, 1, 'slice.length');
+    compiler.emitIncrement(sliceR, 1);
+    compiler.emitStaticStore(sliceR, cr, 1, 'slice.capacity');
 
-    // Write to destination; `dr` is a pointer to our new memory.
+    // Now initialize the data.
+    const adr = dataR; // Reuse dataR as address for initialization.
+
+    // Write to destination.
     let er;
     let isZero = false;
     if(this.expression){
@@ -989,7 +1028,6 @@ class NewArrayExpression extends Expression {
     // Ellipsis means we are using the value represented by `er` multiple times.
     if(this.ellipsis || isZero){
       if(this.elementType.integral || isZero){
-        // memset(dr, er, sr, 1);
         compiler.emitDynamicStore(adr, er, sr, 'new[]: zero initialize');
       }
       else {
@@ -999,20 +1037,26 @@ class NewArrayExpression extends Expression {
       compiler.deallocateRegister(sr);
       compiler.deallocateRegister(adr);
       compiler.deallocateRegister(er);
+      compiler.deallocateRegister(cr);
+      compiler.deallocateRegister(hr);
 
       compiler.emit([
         new LabelDirective(endRef),
       ]);
-      return dr;
+
+      // Return pointer to slice descriptor.
+      compiler.emitIdentifier(sliceId, 'local', sliceR, false);
+      return sliceR;
     }
 
-    // `er` is a pointer to an array.
+    // `er` is a pointer to an array (source for initialization).
     const esr = compiler.allocateRegister(); // Size of expression in bytes.
     const tr = compiler.allocateRegister(); // Temporary.
 
     // First load the size of the expression array in *elements*.
+    // Array layout: [length][data...] - length at offset 0
     compiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.LOAD, esr, er)).comment('new[]: source address'),
+      new InstructionDirective(Instruction.createOperation(Operation.LOAD, esr, er)).comment('new[]: source length'),
     ]);
 
     // Then multiply by element size if necessary to find the number of bytes to copy.
@@ -1023,32 +1067,28 @@ class NewArrayExpression extends Expression {
       ]);
     }
 
-    // Currently we don't allow assignment between things of mismatched sizes; otherwise,
-    // we should copy the minimum of `sr` and `esr` bytes, so set `sr` to `esr` if `esr` is
-    // less than `sr`.
-    //
-    // Finally we can copy.  First find the beginning of the expression array.
-    compiler.emitIncrement(er, 2, 'new[]: source[0]');
+    // Find the beginning of the source array data.
+    // Array layout: [length][data...] - data starts at offset 1
+    compiler.emitIncrement(er, 1, 'new[]: source data');
 
-    if(isZero){
-      compiler.emitDynamicStore(adr, er, sr, 'new[]: initialize');
-    }
-    else {
-      compiler.emitDynamicCopy(adr, er, sr, 'new[]: initialize');
-    }
+    compiler.emitDynamicCopy(adr, er, sr, 'new[]: initialize');
 
     compiler.deallocateRegister(sr);
     compiler.deallocateRegister(adr);
     compiler.deallocateRegister(er);
     compiler.deallocateRegister(esr);
     compiler.deallocateRegister(tr);
+    compiler.deallocateRegister(cr);
+    compiler.deallocateRegister(hr);
 
     // End, so we can jump here if memory allocation fails and we have nothing to initialize.
     compiler.emit([
       new LabelDirective(endRef),
     ]);
 
-    return dr;
+    // Return pointer to slice descriptor.
+    compiler.emitIdentifier(sliceId, 'local', sliceR, false);
+    return sliceR;
   }
 
   private compileStructuralEllipsis(compiler: Compiler, dr: Register, er: Register, cr: Register): void {
@@ -1076,7 +1116,7 @@ class NewArrayExpression extends Expression {
     compiler.emitIncrement(ci, 1, 'increment counter');
     compiler.emit([
       new InstructionDirective(Instruction.createOperation(Operation.EQ, tr, ci, cr)).comment('check for end of element loop'),
-      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, tr, loopR)),
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, tr, loopR)),
     ]);
 
     compiler.deallocateRegister(loopR);
@@ -1098,6 +1138,9 @@ class NewArrayExpression extends Expression {
 writeOnce(NewArrayExpression, 'elementType');
 
 class CastExpression extends Expression {
+  // Whether this cast extracts a pointer from a slice.
+  private sliceToPointer: boolean = false;
+
   public constructor(
     private readonly type: Type,
     private readonly expression: Expression,
@@ -1135,13 +1178,30 @@ class CastExpression extends Expression {
       return this.type;
     }
 
+    // We can unsafely cast a slice to an integral type (extracts the data pointer).
+    const cType = type.resolve();
+    if(this.type.integral && cType instanceof SliceType){
+      if(!this.unsafe){
+        this.error(context, `unsafe cast between ${this.type} and ${type}`);
+      }
+      this.sliceToPointer = true;
+      return this.type;
+    }
+
     // Otherwise we can't.
     this.error(context, `expected convertible to ${this.type}, actual ${type}`);
     return this.type;
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
-    return this.expression.compile(compiler, lvalue);
+    const r = this.expression.compile(compiler, lvalue);
+    // If casting a slice to an integral, extract the data pointer (first word).
+    if(this.sliceToPointer){
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, r, r)).comment('slice data pointer'),
+      ]);
+    }
+    return r;
   }
 
   public toString(){
@@ -1457,8 +1517,8 @@ class UnaryExpression extends Expression {
       case 'len':
       case 'capacity': {
         const cType = type.resolve();
-        if(!(cType instanceof ArrayType)){
-          this.error(context, `expected array type, actual ${type}`);
+        if(!(cType instanceof ArrayType) && !(cType instanceof SliceType)){
+          this.error(context, `expected array or slice type, actual ${type}`);
         }
         return Type.Byte;
       }
@@ -1534,21 +1594,39 @@ class UnaryExpression extends Expression {
       }
 
       case 'capacity': {
-        // This should be an array, so it's the address of the capacity.
+        const exprType = this.expression.concreteType.resolve();
         const er = this.expression.compile(compiler);
 
-        if(this.dereference(lvalue)){
+        if(exprType instanceof ArrayType){
+          // Array capacity is a compile-time constant (the array's declared length).
           compiler.emit([
-            new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
+            new ConstantDirective(er, new ImmediateConstant(exprType.length)).comment(`array capacity ${exprType.length}`),
           ]);
+        }
+        else if(exprType instanceof SliceType){
+          // Slice layout: [pointer][length][capacity] - capacity at offset 2
+          compiler.emitIncrement(er, 2, 'slice capacity offset');
+          if(this.dereference(lvalue)){
+            compiler.emit([
+              new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
+            ]);
+          }
         }
         return er;
       }
       case 'len': {
-        // This should be an array, so it's the address of the capacity, and the size
-        // is one byte after.
+        const exprType = this.expression.concreteType.resolve();
         const er = this.expression.compile(compiler);
-        compiler.emitIncrement(er, 1, 'len');
+
+        if(exprType instanceof ArrayType){
+          // Array layout: [length][data...] - length at offset 0
+          // No offset needed, just load
+        }
+        else if(exprType instanceof SliceType){
+          // Slice layout: [pointer][length][capacity] - length at offset 1
+          compiler.emitIncrement(er, 1, 'slice length offset');
+        }
+
         if(this.dereference(lvalue)){
           compiler.emit([
             new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
@@ -1564,14 +1642,37 @@ class UnaryExpression extends Expression {
   public compileAssignmentCheck(compiler: Compiler, lr: Register, vr: Register): void {
     switch(this.operator){
       case 'len': {
-        // HACK: we have the address of the `len` of the array, not the address of the array
-        // itself, so subtract 1.
-        const ar = compiler.allocateRegister();
-        compiler.emit([
-          new InstructionDirective(Instruction.createOperation(Operation.SUB, ar, lr, Compiler.ONE)).comment('get capacity address'),
-        ]);
-        compiler.emitCapacityCheck(ar, vr);
-        compiler.deallocateRegister(ar);
+        const exprType = this.expression.concreteType.resolve();
+
+        if(exprType instanceof ArrayType){
+          // Array capacity is a compile-time constant.
+          // Check: vr <= capacity (i.e., vr > capacity is an error)
+          const endRef = compiler.generateReference('capacity_check_end');
+          const cr = compiler.allocateRegister();
+          const er = compiler.allocateRegister();
+          compiler.emit([
+            new ConstantDirective(cr, new ImmediateConstant(exprType.length)).comment(`array capacity ${exprType.length}`),
+            new InstructionDirective(Instruction.createOperation(Operation.GT, cr, vr, cr)).comment('compare capacity with new len'),
+            new ConstantDirective(er, new ReferenceConstant(endRef)),
+            new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, er)),
+            new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.CAPACITY_ERROR)).comment('capacity error'),
+            new InstructionDirective(Instruction.createOperation(Operation.HALT)),
+            new LabelDirective(endRef),
+          ]);
+          compiler.deallocateRegister(cr);
+          compiler.deallocateRegister(er);
+        }
+        else if(exprType instanceof SliceType){
+          // Slice layout: [pointer][length][capacity]
+          // lr is the address of length (offset 1 from slice base)
+          // Capacity is at offset 2, which is lr + 1
+          const ar = compiler.allocateRegister();
+          compiler.emit([
+            new InstructionDirective(Instruction.createOperation(Operation.ADD, ar, lr, Compiler.ONE)).comment('get slice capacity address'),
+          ]);
+          compiler.emitCapacityCheck(ar, vr);
+          compiler.deallocateRegister(ar);
+        }
         break;
       }
       default:
@@ -1929,6 +2030,9 @@ class IndexExpression extends SuffixExpression {
     if(cType instanceof ArrayType){
       elementType = cType.index();
     }
+    else if(cType instanceof SliceType){
+      elementType = cType.index();
+    }
     else if(cType instanceof PointerType) {
       if(!this.unsafe){
         this.error(context, `unsafe index on ${type}`);
@@ -1940,7 +2044,7 @@ class IndexExpression extends SuffixExpression {
       elementType = Type.Error;
     }
     else {
-      this.error(context, `expected array or pointer type, actual ${type}`);
+      this.error(context, `expected array, slice, or pointer type, actual ${type}`);
       return Type.Error;
     }
 
@@ -1967,9 +2071,15 @@ class IndexExpression extends SuffixExpression {
       compiler.emitNullCheck(er);
     }
 
-    // If the expression is an array, we should insert bounds checks.
-    if(this.expression.concreteType instanceof ArrayType && !this.unsafe){
-      compiler.emitBoundsCheck(er, ir);
+    // If the expression is an array or slice, we should insert bounds checks.
+    // Array layout: [length][data...] - length at offset 0
+    // Slice layout: [pointer][length][capacity] - length at offset 1
+    const exprType = this.expression.concreteType.resolve();
+    if(exprType instanceof ArrayType && !this.unsafe){
+      compiler.emitBoundsCheck(er, ir, 0);
+    }
+    else if(exprType instanceof SliceType && !this.unsafe){
+      compiler.emitBoundsCheck(er, ir, 1);
     }
 
     // The left side is an array; we need to know the size of each element
@@ -1984,12 +2094,18 @@ class IndexExpression extends SuffixExpression {
       compiler.deallocateRegister(sr);
     }
 
-    // If we are indexing into an array, take into account the capacity and size.
-    if(this.expression.concreteType instanceof ArrayType){
-      compiler.emitIncrement(er, 2, 'array start');
+    // For arrays: skip the length header (1 word) to get to data.
+    // For slices: load the pointer (first word) which points directly to data.
+    if(exprType instanceof ArrayType){
+      compiler.emitIncrement(er, 1, 'array data start');
+    }
+    else if(exprType instanceof SliceType){
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment('slice data pointer'),
+      ]);
     }
 
-    // Then we add the actual offset to the array.
+    // Then we add the actual offset to the data pointer.
     compiler.emit([
       new InstructionDirective(Instruction.createOperation(Operation.ADD, er, er, ir)),
     ]);

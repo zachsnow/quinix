@@ -9,7 +9,7 @@ import {
 } from '../assembly/assembly';
 import { indent } from '../lib/util';
 import { TypeTable } from './tables';
-import { Type, TypedStorage, PointerType, ArrayType } from './types';
+import { Type, TypedStorage, PointerType, ArrayType, SliceType } from './types';
 import { Expression, IntLiteralExpression } from './expressions';
 import { Compiler, StorageCompiler, FunctionCompiler } from './compiler';
 import { TypeChecker, KindChecker } from './typechecker';
@@ -192,6 +192,36 @@ class VarStatement extends Statement {
     // Get the address of the local.
     const r = compiler.allocateRegister();
     compiler.emitIdentifier(this.identity, 'local', r, false);
+
+    // Handle array-to-slice conversion: create a slice descriptor.
+    const cVarType = this.inferredType.resolve();
+    const cExprType = this.expression.concreteType.resolve();
+    if(cVarType instanceof SliceType && cExprType instanceof ArrayType){
+      // Create slice descriptor: [pointer][length][capacity]
+      // er points to array which is [length][data...]
+      // Slice pointer = er + 1 (skip length header)
+      const ptrR = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.ADD, ptrR, er, Compiler.ONE)).comment('slice pointer = array + 1'),
+      ]);
+      compiler.emitStaticStore(r, ptrR, 1, 'slice.pointer');
+      compiler.deallocateRegister(ptrR);
+
+      // Load array length and store as slice length and capacity
+      const lenR = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, lenR, er)).comment('load array length'),
+      ]);
+      compiler.emitIncrement(r, 1);
+      compiler.emitStaticStore(r, lenR, 1, 'slice.length');
+      compiler.emitIncrement(r, 1);
+      compiler.emitStaticStore(r, lenR, 1, 'slice.capacity');
+      compiler.deallocateRegister(lenR);
+
+      compiler.deallocateRegister(er);
+      compiler.deallocateRegister(r);
+      return;
+    }
 
     // Store to that address.
     if(this.inferredType.integral){

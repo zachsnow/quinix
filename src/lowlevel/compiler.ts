@@ -727,18 +727,20 @@ class Compiler {
    * @param ar the register holding the address of the array.
    * @param ir the register holding the index, in elements.
    */
-  public emitBoundsCheck(ar: Register, ir: Register): void {
+  public emitBoundsCheck(ar: Register, ir: Register, lengthOffset: number = 0): void {
     const sr = this.allocateRegister();
     const er = this.allocateRegister();
     const endRef = this.generateReference('bounds_check_end');
 
-    this.emitMove(sr, ar, 'array address');
-    this.emitIncrement(sr, 1, 'array size address');
+    this.emitMove(sr, ar, 'array/slice address');
+    if(lengthOffset > 0){
+      this.emitIncrement(sr, lengthOffset, 'length offset');
+    }
     this.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.LOAD, sr, sr)).comment('array size'),
+      new InstructionDirective(Instruction.createOperation(Operation.LOAD, sr, sr)).comment('length'),
       new InstructionDirective(Instruction.createOperation(Operation.LT, sr, ir, sr)),
       new ConstantDirective(er, new ReferenceConstant(endRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, sr, er)),
+      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, sr, er)),
       new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.BOUNDS_ERROR)).comment('bounds error'),
       new InstructionDirective(Instruction.createOperation(Operation.HALT)),
       new LabelDirective(endRef),

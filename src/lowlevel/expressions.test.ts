@@ -148,9 +148,11 @@ describe('Expressions', () => {
   });
 
   test('new byte [0x8000]', () => {
+    // With slice semantics, all new T[n] returns a slice
     const n = parse('new byte[0x8000]');
-    expect(n).toBeInstanceOf(NewExpression);
-    expect((n as any).type.toString()).toBe('byte[0x8000]');
+    expect(n).toBeInstanceOf(NewArrayExpression);
+    expect((n as any).type.toString()).toBe('byte[]');
+    expect((n as any).size.constant()).toBe(0x8000);
     expect((n as any).expression).toBeUndefined();
   });
 

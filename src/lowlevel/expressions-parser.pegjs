@@ -39,16 +39,16 @@ PrefixExpression
 
 NewArrayExpression
     // Initializer and ellipsis expressions.
-    = NewToken _ t:Type _ "[" _ s:Expression _ "]" _ el:("="/"...") _ e:Expression {
+    = NewToken _ t:ElementType _ "[" _ s:Expression _ "]" _ el:("="/"...") _ e:Expression {
         return new NewArrayExpression(
-            new ArrayType(t).at(t.location), s, e, el === "..."
+            new SliceType(t).at(t.location), s, e, el === "..."
         ).at(location(), text(), options);
     }
 
     // Zero.
-    / NewToken _ t:Type _ "[" _ s:Expression _ "]" {
+    / NewToken _ t:ElementType _ "[" _ s:Expression _ "]" {
         return new NewArrayExpression(
-            new ArrayType(t).at(t.location), s, undefined, false
+            new SliceType(t).at(t.location), s, undefined, false
         ).at(location(), text(), options);
     }
 

@@ -527,8 +527,11 @@ class SuffixType {
       if(suffix.identifier !== undefined){
         return new DotType(type, suffix.identifier).at(suffix.range, suffix.text, suffix.options);
       }
-      else {
+      else if(suffix.size !== undefined){
         return new ArrayType(type, suffix.size).at(suffix.range, suffix.text, suffix.options);
+      }
+      else {
+        return new SliceType(type).at(suffix.range, suffix.text, suffix.options);
       }
     }, type);
   }
@@ -858,14 +861,14 @@ class PointerType extends Type {
 class ArrayType extends Type {
   public constructor(
     private type: Type,
-    public readonly length?: number,
+    public readonly length: number,
   ){
     super();
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker){
-    // Passing through a pointer makes a recursive reference valid.
-    this.type.kindcheck(context, kindchecker.pointer());
+    // Arrays do not allow recursive references (unlike pointers/slices).
+    this.type.kindcheck(context, kindchecker);
   }
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
@@ -874,13 +877,18 @@ class ArrayType extends Type {
       type = type.unify(this);
     }
 
-    // Pointers are unifiable when the types that they point to are unifiable.
     type = nominal ? type.evaluate() : type.resolve();
+
+    // Arrays unify with arrays of same element type and exact same length.
     if(type instanceof ArrayType){
       if(this.type.isUnifiableWith(type.type, nominal)){
-        // We can convert from sized array to unsized array, but not the opposite.
-        return this.length === type.length || type.length === undefined;
+        return this.length === type.length;
       }
+    }
+
+    // Arrays also unify with slices of the same element type (implicit conversion).
+    if(type instanceof SliceType){
+      return this.type.isUnifiableWith(type.index(), nominal);
     }
 
     return false;
@@ -891,11 +899,8 @@ class ArrayType extends Type {
   }
 
   public get size(): number {
-    // Include space for capacity and size for stack-allocated arrays.
-    if(this.length !== undefined){
-      return this.length + 2;
-    }
-    return 1;
+    // Layout: [length][elem0][elem1]...[elemN-1]
+    return this.length + 1;
   }
 
   public substitute(typeTable: TypeTable): Type {
@@ -906,7 +911,55 @@ class ArrayType extends Type {
   }
 
   public toString(){
-    return `${this.type}[${this.length === undefined ? '' : Immediate.toString(this.length, 1)}]`;
+    return `${this.type}[${Immediate.toString(this.length, 1)}]`;
+  }
+}
+
+class SliceType extends Type {
+  public constructor(
+    private type: Type,
+  ){
+    super();
+  }
+
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
+    // Slices contain a pointer, so recursive references are valid.
+    this.type.kindcheck(context, kindchecker.pointer());
+  }
+
+  public isUnifiableWith(type: Type, nominal: boolean): boolean {
+    // Bind type variables.
+    if(type instanceof VariableType){
+      type = type.unify(this);
+    }
+
+    type = nominal ? type.evaluate() : type.resolve();
+
+    // Slices unify with slices of the same element type.
+    if(type instanceof SliceType){
+      return this.type.isUnifiableWith(type.type, nominal);
+    }
+
+    return false;
+  }
+
+  public index(): Type {
+    return this.type;
+  }
+
+  public get size(): number {
+    // Layout: [pointer][length][capacity]
+    return 3;
+  }
+
+  public substitute(typeTable: TypeTable): Type {
+    return new SliceType(
+      this.type.substitute(typeTable),
+    ).at(this.location).tag(this.tags);
+  }
+
+  public toString(){
+    return `${this.type}[]`;
   }
 }
 
@@ -1020,7 +1073,7 @@ namespace Type {
 export {
   Type, TypedIdentifier,
   Storage, TypedStorage,
-  BuiltinType, IdentifierType, TemplateType, PointerType, ArrayType, StructType, FunctionType,
+  BuiltinType, IdentifierType, TemplateType, PointerType, ArrayType, SliceType, StructType, FunctionType,
   VariableType,
   TemplateInstantiationType, DotType, SuffixType,
 }

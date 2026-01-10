@@ -1,6 +1,6 @@
 import { parse as _parse } from './types-parser';
 import {
-  Type, ArrayType, PointerType, StructType,
+  Type, ArrayType, SliceType, PointerType, StructType,
   IdentifierType, BuiltinType, FunctionType, TemplateType,
   TemplateInstantiationType, DotType,
   SuffixType,
@@ -319,14 +319,18 @@ describe('Types', () => {
     const t1 = new IdentifierType('t1');
     expect(SuffixType.build(t1, [])).toBe(t1);
 
-    expect(SuffixType.build(t1, [{ size: undefined, range, text }])).toBeInstanceOf(ArrayType);
+    // T[] now creates a SliceType
+    expect(SuffixType.build(t1, [{ size: undefined, range, text }])).toBeInstanceOf(SliceType);
 
+    // T[7] creates an ArrayType
+    expect(SuffixType.build(t1, [{ size: 7, range, text }])).toBeInstanceOf(ArrayType);
+
+    // T[7][] creates a SliceType containing ArrayType[7]
     let parsed = SuffixType.build(t1, [{ size: 7, range, text }, {size: undefined, range, text }]);
-    expect(parsed).toBeInstanceOf(ArrayType);
+    expect(parsed).toBeInstanceOf(SliceType);
 
-    let t = parsed as ArrayType;
+    let t = parsed as SliceType;
     expect(t.index()).toBeInstanceOf(ArrayType);
-    expect(t.length === undefined);
 
     const nested = t.index() as ArrayType;
     expect(nested.index()).toBe(t1);

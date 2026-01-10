@@ -29,6 +29,6 @@ import {
 
 import {
   Type, TypedIdentifier, BuiltinType,  PointerType, StructType,
-  FunctionType, IdentifierType, ArrayType, DotType,
+  FunctionType, IdentifierType, ArrayType, SliceType, DotType,
   TemplateType, TemplateInstantiationType, SuffixType
 } from './types';
