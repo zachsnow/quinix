@@ -4,7 +4,7 @@ import {
 } from './types';
 import { Expression, BinaryExpression,
   IntLiteralExpression, BoolLiteralExpression, StringLiteralExpression,
-  SuffixExpression, DotExpression, ArrowExpression, IndexExpression,
+  SuffixExpression, DotExpression, ArrowExpression, IndexExpression, SliceExpression,
   NewExpression, NewArrayExpression, IdentifierExpression, CallExpression,
 } from './expressions';
 
@@ -95,6 +95,30 @@ describe('Expressions', () => {
 
     exp = exp.expression as IndexExpression;
     expect(exp.index).toBe(one);
+    expect(exp.expression).toBe(zero);
+  });
+
+  test('build slice', () => {
+    const parsed = SuffixExpression.build(zero, [
+      { isSlice: true, lo: one, hi: two, range, text },
+    ]);
+    expect(parsed).toBeInstanceOf(SliceExpression);
+
+    const exp = parsed as SliceExpression;
+    expect(exp.lo).toBe(one);
+    expect(exp.hi).toBe(two);
+    expect(exp.expression).toBe(zero);
+  });
+
+  test('build slice no bounds', () => {
+    const parsed = SuffixExpression.build(zero, [
+      { isSlice: true, lo: undefined, hi: undefined, range, text },
+    ]);
+    expect(parsed).toBeInstanceOf(SliceExpression);
+
+    const exp = parsed as SliceExpression;
+    expect(exp.lo).toBeUndefined();
+    expect(exp.hi).toBeUndefined();
     expect(exp.expression).toBe(zero);
   });
 
@@ -206,5 +230,46 @@ describe('Expressions', () => {
     expect((exp as any).operator).toBe('|');
     expect((exp as any).left).toBeInstanceOf(BinaryExpression);
     expect((exp as any).left.operator).toBe('&');
+  });
+
+  test('slice expression with both bounds', () => {
+    const exp = parse('arr[1:3]');
+    expect(exp).toBeInstanceOf(SliceExpression);
+    expect((exp as any).expression).toBeInstanceOf(IdentifierExpression);
+    expect((exp as any).lo.toString()).toBe('1');
+    expect((exp as any).hi.toString()).toBe('3');
+  });
+
+  test('slice expression with lo only', () => {
+    const exp = parse('arr[1:]');
+    expect(exp).toBeInstanceOf(SliceExpression);
+    expect((exp as any).lo.toString()).toBe('1');
+    expect((exp as any).hi).toBeUndefined();
+  });
+
+  test('slice expression with hi only', () => {
+    const exp = parse('arr[:3]');
+    expect(exp).toBeInstanceOf(SliceExpression);
+    expect((exp as any).lo).toBeUndefined();
+    expect((exp as any).hi.toString()).toBe('3');
+  });
+
+  test('slice expression with no bounds', () => {
+    const exp = parse('arr[:]');
+    expect(exp).toBeInstanceOf(SliceExpression);
+    expect((exp as any).lo).toBeUndefined();
+    expect((exp as any).hi).toBeUndefined();
+  });
+
+  test('index expression still works', () => {
+    const exp = parse('arr[1]');
+    expect(exp).toBeInstanceOf(IndexExpression);
+    expect((exp as any).index.toString()).toBe('1');
+  });
+
+  test('chained slice and index', () => {
+    const exp = parse('arr[1:3][0]');
+    expect(exp).toBeInstanceOf(IndexExpression);
+    expect((exp as any).expression).toBeInstanceOf(SliceExpression);
   });
 });
