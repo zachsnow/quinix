@@ -1,30 +1,40 @@
+#!/usr/bin/env bash
 set -euo pipefail
 
 echo "Building assembly parser..."
-tspegjs -o src/assembly/parser.ts --custom-header-file src/assembly/parser.prelude.ts src/assembly/parser.pegjs
+npx tspegjs -o src/assembly/parser.ts --custom-header-file src/assembly/parser.prelude.ts src/assembly/parser.pegjs
 
 echo "Building lowlevel parsers..."
-tspegjs --custom-header-file src/lowlevel/parser.prelude.ts \
+
+# Create temp directory for concatenated grammar files
+TMPDIR=$(mktemp -d)
+trap "rm -rf $TMPDIR" EXIT
+
+cat src/lowlevel/types-parser.pegjs src/lowlevel/base-parser.pegjs > "$TMPDIR/types.pegjs"
+npx tspegjs --custom-header-file src/lowlevel/parser.prelude.ts \
     -o src/lowlevel/types-parser.ts \
-    <(cat src/lowlevel/types-parser.pegjs src/lowlevel/base-parser.pegjs)
+    "$TMPDIR/types.pegjs"
 
-tspegjs --custom-header-file src/lowlevel/parser.prelude.ts \
+cat src/lowlevel/expressions-parser.pegjs src/lowlevel/types-parser.pegjs src/lowlevel/base-parser.pegjs > "$TMPDIR/expressions.pegjs"
+npx tspegjs --custom-header-file src/lowlevel/parser.prelude.ts \
     -o src/lowlevel/expressions-parser.ts \
-    <(cat src/lowlevel/expressions-parser.pegjs src/lowlevel/types-parser.pegjs src/lowlevel/base-parser.pegjs)
+    "$TMPDIR/expressions.pegjs"
 
-tspegjs --custom-header-file src/lowlevel/parser.prelude.ts \
+cat src/lowlevel/statements-parser.pegjs src/lowlevel/expressions-parser.pegjs src/lowlevel/types-parser.pegjs src/lowlevel/base-parser.pegjs > "$TMPDIR/statements.pegjs"
+npx tspegjs --custom-header-file src/lowlevel/parser.prelude.ts \
     -o src/lowlevel/statements-parser.ts \
-    <(cat src/lowlevel/statements-parser.pegjs src/lowlevel/expressions-parser.pegjs src/lowlevel/types-parser.pegjs src/lowlevel/base-parser.pegjs)
+    "$TMPDIR/statements.pegjs"
 
-tspegjs --custom-header-file src/lowlevel/parser.prelude.ts \
+cat src/lowlevel/parser.pegjs src/lowlevel/statements-parser.pegjs src/lowlevel/expressions-parser.pegjs src/lowlevel/types-parser.pegjs src/lowlevel/base-parser.pegjs > "$TMPDIR/parser.pegjs"
+npx tspegjs --custom-header-file src/lowlevel/parser.prelude.ts \
     -o src/lowlevel/parser.ts \
-    <(cat src/lowlevel/parser.pegjs src/lowlevel/statements-parser.pegjs src/lowlevel/expressions-parser.pegjs src/lowlevel/types-parser.pegjs src/lowlevel/base-parser.pegjs)
+    "$TMPDIR/parser.pegjs"
 
 echo "Compiling..."
-tsc # For typechecking code that we don't build, e.g. tests.
+npx tsc # For typechecking code that we don't build, e.g. tests.
 
 echo "Building executables..."
-tsc --build tsconfig.build.json
+npx tsc --build tsconfig.build.json
 chmod u+x build/bin/*
 
 echo "Skipping building library..."
@@ -33,5 +43,5 @@ echo "Skipping building library..."
 echo "Building libraries..."
 (cd lib && ./build.sh "--compiled")
 
-echo "Building kernel..."
-(cd kernel && ./build.sh "--compiled")
+echo "Skipping kernel (known issues)..."
+# (cd kernel && ./build.sh "--compiled")

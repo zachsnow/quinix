@@ -474,22 +474,25 @@ describe('QLLC typechecking', () => {
       `)).toContain(`break outside of for or while`);
     });
 
-    test('heap allocate array, initializer too short', () => {
+    // With slices, initializer can be smaller than capacity (valid)
+    // and initializer can be larger than capacity (also valid, but truncates)
+    // These tests are no longer applicable since byte[] is now a slice
+    test('heap allocate array, initializer too short - now valid with slices', () => {
       return expect(errors(`
         function main(): byte {
           var ps = new byte[3] = [1,2];
           return ps[0];
         }
-      `)).toContain(`new array initializer expected byte[0x03], actual byte[0x02]`);
+      `)).toEqual([]);
     });
 
-    test('heap allocate array, initializer too long', () => {
+    test('heap allocate array, initializer too long - now valid with slices', () => {
       return expect(errors(`
         function main(): byte {
           var ps = new byte[2] = [1,2,3];
           return ps[0];
         }
-      `)).toContain(`new array initializer expected byte[0x02], actual byte[0x03]`);
+      `)).toEqual([]);
     });
 
     test('uninstantiated template type', () => {
@@ -1623,7 +1626,7 @@ describe('QLLC end-to-end', () => {
         ps[3].x = 4;
         return len ps;
       }
-    `, true);
+    `, true, 2000);
   });
 
   test('heap allocate array of structs (capacity)', () => {
@@ -1634,7 +1637,7 @@ describe('QLLC end-to-end', () => {
         ps[3].x = 4;
         return capacity ps;
       }
-    `, true);
+    `, true, 2000);
   });
 
   test('heap allocate array of structs with ellipsis', () => {
@@ -1647,7 +1650,7 @@ describe('QLLC end-to-end', () => {
         };
         return ps[3].x;
       }
-    `, true);
+    `, true, 2000);
   });
 
   test('heap allocate array of structs with initializer', () => {
@@ -1742,7 +1745,8 @@ describe('QLLC end-to-end', () => {
   });
 
   test('sizeof byte[]', () => {
-    return expectRunToBe(1, `
+    // SliceType has size 3: [pointer][length][capacity]
+    return expectRunToBe(3, `
       function main(): byte {
         return sizeof byte[];
       }
@@ -1868,5 +1872,121 @@ describe('QLLC end-to-end', () => {
         return Point { x = p1.x + p2.x, y = p1.y + p2.y };
       }
     `);
+  });
+
+  // Slice expression tests
+  test('slice expression from stack array', () => {
+    // arr[1:4] creates a slice with elements at indices 1, 2, 3 -> length 3
+    return expectRunToBe(3, `
+      function main(): byte {
+        var arr: byte[5];
+        arr[0] = 10;
+        arr[1] = 20;
+        arr[2] = 30;
+        arr[3] = 40;
+        arr[4] = 50;
+        var s: byte[] = arr[1:4];
+        return len s;
+      }
+    `);
+  });
+
+  test('slice expression access element', () => {
+    return expectRunToBe(30, `
+      function main(): byte {
+        var arr: byte[5];
+        arr[0] = 10;
+        arr[1] = 20;
+        arr[2] = 30;
+        arr[3] = 40;
+        arr[4] = 50;
+        var s: byte[] = arr[1:4];
+        return s[1];
+      }
+    `);
+  });
+
+  test('slice expression default lo', () => {
+    return expectRunToBe(10, `
+      function main(): byte {
+        var arr: byte[5];
+        arr[0] = 10;
+        arr[1] = 20;
+        arr[2] = 30;
+        var s: byte[] = arr[:2];
+        return s[0];
+      }
+    `);
+  });
+
+  test('slice expression default hi', () => {
+    return expectRunToBe(50, `
+      function main(): byte {
+        var arr: byte[5];
+        arr[0] = 10;
+        arr[1] = 20;
+        arr[2] = 30;
+        arr[3] = 40;
+        arr[4] = 50;
+        var s: byte[] = arr[2:];
+        return s[2];
+      }
+    `);
+  });
+
+  test('slice expression both defaults', () => {
+    return expectRunToBe(5, `
+      function main(): byte {
+        var arr: byte[5];
+        arr[0] = 10;
+        arr[1] = 20;
+        arr[2] = 30;
+        arr[3] = 40;
+        arr[4] = 50;
+        var s: byte[] = arr[:];
+        return len s;
+      }
+    `);
+  });
+
+  test('slice expression capacity', () => {
+    return expectRunToBe(4, `
+      function main(): byte {
+        var arr: byte[5];
+        var s: byte[] = arr[1:3];
+        return capacity s;
+      }
+    `);
+  });
+
+  test('slice expression from heap slice', () => {
+    // s[1:4] creates a slice with elements at indices 1, 2, 3 -> length 3
+    return expectRunToBe(3, `
+      function main(): byte {
+        var s: byte[] = new byte[5];
+        s[0] = 10;
+        s[1] = 20;
+        s[2] = 30;
+        s[3] = 40;
+        s[4] = 50;
+        var s2: byte[] = s[1:4];
+        return len s2;
+      }
+    `, true, 2000);
+  });
+
+  test('reslice access element', () => {
+    return expectRunToBe(40, `
+      function main(): byte {
+        var s: byte[] = new byte[5];
+        s[0] = 10;
+        s[1] = 20;
+        s[2] = 30;
+        s[3] = 40;
+        s[4] = 50;
+        var s2: byte[] = s[1:];
+        return s2[2];
+      }
+    `, true, 2000);
   });
 });

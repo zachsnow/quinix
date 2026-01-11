@@ -16,7 +16,7 @@ import {
 } from '../assembly/assembly';
 import { VM } from '../vm/vm';
 import { Instruction, Operation } from '../vm/instructions';
-import { Type, TypedIdentifier, TypedStorage, FunctionType, TemplateType, Storage, ArrayType } from './types';
+import { Type, TypedIdentifier, TypedStorage, FunctionType, TemplateType, Storage, ArrayType, SliceType } from './types';
 import { Expression, StringLiteralExpression } from './expressions';
 import { BlockStatement } from './statements';
 import { TypeChecker, KindChecker, Source } from './typechecker';
@@ -168,7 +168,7 @@ class TypeDeclaration extends BaseTypeDeclaration {
 
   public kindcheck(context: TypeChecker): void {
     log(`kindchecking ${this}`);
-    this.type.kindcheck(context, new KindChecker());
+    this.type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
   }
 
   public typecheck(context: TypeChecker): void {}
@@ -269,7 +269,10 @@ class GlobalDeclaration extends BaseValueDeclaration {
     this.references = expressionContext.references;
   }
 
-  public compile(): Directive[] {
+  /**
+   * Returns the data directives for this global (static storage).
+   */
+  public compileData(): Directive[] {
     // Global pre-declarations aren't compiled.
     if(!this.expression){
       return [];
@@ -277,13 +280,19 @@ class GlobalDeclaration extends BaseValueDeclaration {
 
     const reference = new Reference(this.qualifiedIdentifier);
 
-    // We can make a nice string in the assembly by special-casing string literals.
+    // We can make a nice string in the assembly by special-casing string literals
+    // when the global is an array type (not a slice).
     if(this.expression instanceof StringLiteralExpression){
-      const temporaryReference = new Reference(`${this.qualifiedIdentifier}_string$`);
-      return [
-        new DataDirective(temporaryReference, new TextData(this.expression.text)),
-        new DataDirective(reference, new ReferenceData(temporaryReference)),
-      ];
+      const cType = this.type.resolve();
+      // Only special-case for arrays; slices need the full compilation path.
+      if(cType instanceof ArrayType){
+        const len = this.expression.length;
+        return [
+          new DataDirective(reference, new ImmediatesData([len])).comment('length header'),
+          new DataDirective(new Reference(`${this.qualifiedIdentifier}_text$`), new TextData(this.expression.text)),
+        ];
+      }
+      // For slices, fall through to normal compilation - reserve space for slice descriptor.
     }
 
     // We can skip some moves and stores by special-casing constant values.
@@ -294,8 +303,37 @@ class GlobalDeclaration extends BaseValueDeclaration {
       ];
     }
 
-    // Otherwise, we make a global destination to compile this expression to and
-    // populate it.
+    // Reserve space for this global. Initialization happens in compileInit().
+    return [
+      new DataDirective(reference, new ImmediatesData(new Array(this.type.size).fill(0))).comment(`global ${this.qualifiedIdentifier}`),
+    ];
+  }
+
+  /**
+   * Returns the initialization code for this global (runs at startup).
+   */
+  public compileInit(): Directive[] {
+    // Global pre-declarations don't need initialization.
+    if(!this.expression){
+      return [];
+    }
+
+    // String literals in arrays are handled statically in compileData().
+    if(this.expression instanceof StringLiteralExpression){
+      const cType = this.type.resolve();
+      if(cType instanceof ArrayType){
+        return [];
+      }
+    }
+
+    // Constants are handled statically in compileData().
+    const constant = this.expression.constant();
+    if(constant !== undefined){
+      return [];
+    }
+
+    // Otherwise, we need to compile initialization code.
+    const reference = new Reference(this.qualifiedIdentifier);
     const compiler = new GlobalCompiler(this.qualifiedIdentifier);
     const sr = this.expression.compile(compiler);
     const dr = compiler.allocateRegister();
@@ -303,17 +341,47 @@ class GlobalDeclaration extends BaseValueDeclaration {
     compiler.emit([
       new ConstantDirective(dr, new ReferenceConstant(reference)).comment(`reference global ${this.qualifiedIdentifier}`),
     ]);
-    if(this.type.integral){
+
+    // Handle array-to-slice conversion: create a slice descriptor.
+    const cGlobalType = this.type.resolve();
+    const cExprType = this.expression.concreteType.resolve();
+    if(cGlobalType instanceof SliceType && cExprType instanceof ArrayType){
+      // Create slice descriptor: [pointer][length][capacity]
+      // sr points to array which is [length][data...]
+      // Slice pointer = sr + 1 (skip length header)
+      const ptrR = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.ADD, ptrR, sr, Compiler.ONE)).comment('slice pointer = array + 1'),
+      ]);
+      compiler.emitStaticStore(dr, ptrR, 1, 'slice.pointer');
+      compiler.deallocateRegister(ptrR);
+
+      // Load array length and store as slice length and capacity
+      const lenR = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, lenR, sr)).comment('load array length'),
+      ]);
+      compiler.emitIncrement(dr, 1);
+      compiler.emitStaticStore(dr, lenR, 1, 'slice.length');
+      compiler.emitIncrement(dr, 1);
+      compiler.emitStaticStore(dr, lenR, 1, 'slice.capacity');
+      compiler.deallocateRegister(lenR);
+    }
+    else if(this.type.integral){
       compiler.emitStaticStore(dr, sr, 1, `store to global ${this.qualifiedIdentifier}`);
     }
     else {
       compiler.emitStaticCopy(dr, sr, this.type.size, `store to global ${this.qualifiedIdentifier}`);
     }
 
-    return [
-      new DataDirective(reference, new ImmediatesData(new Array(this.type.size).fill(0))).comment(`global ${this.qualifiedIdentifier}`),
-      ...compiler.compile(),
-    ];
+    return compiler.compile();
+  }
+
+  /**
+   * Compiles both data and initialization code for backwards compatibility.
+   */
+  public compile(): Directive[] {
+    return [...this.compileData(), ...this.compileInit()];
   }
 
   public toString(){
@@ -979,7 +1047,7 @@ class NamespaceDeclaration extends NamedDeclaration {
 
   public static builtins = [
     new TypeDeclaration('bool', Type.Byte),
-    new TypeDeclaration('string', new ArrayType(Type.Byte)),
+    new TypeDeclaration('string', new SliceType(Type.Byte)),
   ];
 }
 
@@ -1077,7 +1145,8 @@ class LowLevelProgram {
 
     directives.push(new LabelDirective(compiler.generateReference('program')));
     if(entrypoint){
-      directives.push(...this.entrypoint(compiler));
+      // Emit entrypoint: setup, global init, call main, halt
+      directives.push(...this.entrypoint(compiler, globalDeclarations));
     }
     functionDeclarations.forEach((declaration) => {
       directives.push(...declaration.compile());
@@ -1085,32 +1154,52 @@ class LowLevelProgram {
 
     directives.push(new LabelDirective(compiler.generateReference('data')));
     globalDeclarations.forEach((declaration) => {
-      directives.push(...declaration.compile());
+      directives.push(...declaration.compileData());
     });
 
     return new AssemblyProgram(directives);
   }
 
   /**
-   * Emits the "whole program" entrypoint, which calls `global::main` and then
-   * halts the machine. In the future, we'll emit a call to `lib::exit()`.
+   * Emits the "whole program" entrypoint, which:
+   * 1. Sets up SP and ONE
+   * 2. Runs global initialization code
+   * 3. Calls `global::main`
+   * 4. Halts the machine
    *
    * @param compiler the compiler to use to emit code.
+   * @param globalDeclarations the global declarations that need initialization.
    */
-  private entrypoint(compiler: Compiler): Directive[] {
+  private entrypoint(compiler: Compiler, globalDeclarations: GlobalDeclaration[]): Directive[] {
+    const directives: Directive[] = [];
+
+    // Setup SP and ONE
     const r = compiler.allocateRegister();
     compiler.emit([
       new ConstantDirective(Compiler.SP, new ImmediateConstant(VM.DEFAULT_MEMORY_SIZE - 1)).comment('configure sp'),
       new ConstantDirective(Compiler.ONE, new ImmediateConstant(0x1)).comment('configure one'),
-      new ConstantDirective(r, new ReferenceConstant(new Reference(LowLevelProgram.ENTRYPOINT))),
     ]);
-    const ret = compiler.emitCall([], r);
-    compiler.emit([
+    directives.push(...compiler.compile());
+
+    // Emit global initialization code
+    globalDeclarations.forEach((declaration) => {
+      directives.push(...declaration.compileInit());
+    });
+
+    // Call main (use a fresh compiler since we already compiled the setup)
+    const mainCompiler = new Compiler('entrypoint');
+    const mr = mainCompiler.allocateRegister();
+    mainCompiler.emit([
+      new ConstantDirective(mr, new ReferenceConstant(new Reference(LowLevelProgram.ENTRYPOINT))),
+    ]);
+    const ret = mainCompiler.emitCall([], mr);
+    mainCompiler.emit([
       new InstructionDirective(Instruction.createOperation(Operation.MOV, Compiler.RET, ret)),
       new InstructionDirective(Instruction.createOperation(Operation.HALT)),
     ]);
+    directives.push(...mainCompiler.compile());
 
-    return compiler.compile();
+    return directives;
   }
 
   public toString(){

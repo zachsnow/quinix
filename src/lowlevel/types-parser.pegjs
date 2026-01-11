@@ -28,6 +28,28 @@ PostfixTypeSuffix
         return { size: i !== null ? i : undefined, range: location(), text: text(), options };
     }
 
+// ElementType is a type without trailing array/slice brackets.
+// Used in `new T[n]` where T is the element type and n is the count.
+ElementType
+    = tags:TagList? type:ElementPrefixType { return type.tag(tags); }
+
+ElementPostfixType
+    = t:PrimaryType _ "<" _ ts:TypeList _ ">" {
+        return new TemplateInstantiationType(t, ts).at(location(), text(), options);
+    }
+    / t:PrimaryType tail:(ElementPostfixTypeSuffix*) {
+        return SuffixType.build(t, tail).at(location(), text(), options);
+    }
+
+ElementPostfixTypeSuffix
+    = _ "." _ id:Identifier {
+        return { identifier: id, range: location(), text: text(), options };
+    }
+
+ElementPrefixType
+    = "*" _ t:ElementPrefixType { return new PointerType(t).at(location(), text(), options); }
+    / ElementPostfixType
+
 PrefixType
     = "*" _ t:PrefixType { return new PointerType(t).at(location(), text(), options); }
     / PostfixType

@@ -25,7 +25,8 @@ PostfixExpression
     = e:PrimaryExpression tail:(PostfixExpressionSuffix)* { return SuffixExpression.build(e, tail).at(location(), text(), options); }
 
 PostfixExpressionSuffix
-    = _ "[" _ u:UnsafeToken? _ e:Expression _ "]" { return SuffixExpression.createIndex(e, !!u, location(), text(), options); }
+    = _ "[" _ lo:Expression? _ ":" _ hi:Expression? _ "]" { return SuffixExpression.createSlice(lo || undefined, hi || undefined, location(), text(), options); }
+    / _ "[" _ u:UnsafeToken? _ e:Expression _ "]" { return SuffixExpression.createIndex(e, !!u, location(), text(), options); }
     / _ "." _ id:Identifier { return SuffixExpression.createMember(id, false, location(), text(), options); }
     / _ "->" _ id:Identifier { return SuffixExpression.createMember(id, true, location(), text(), options); }
     / _ "(" _ args:ExpressionList? _ ")" { return SuffixExpression.createCall(args || [], location(), text(), options); }
@@ -39,16 +40,16 @@ PrefixExpression
 
 NewArrayExpression
     // Initializer and ellipsis expressions.
-    = NewToken _ t:Type _ "[" _ s:Expression _ "]" _ el:("="/"...") _ e:Expression {
+    = NewToken _ t:ElementType _ "[" _ s:Expression _ "]" _ el:("="/"...") _ e:Expression {
         return new NewArrayExpression(
-            new ArrayType(t).at(t.location), s, e, el === "..."
+            new SliceType(t).at(t.location), s, e, el === "..."
         ).at(location(), text(), options);
     }
 
     // Zero.
-    / NewToken _ t:Type _ "[" _ s:Expression _ "]" {
+    / NewToken _ t:ElementType _ "[" _ s:Expression _ "]" {
         return new NewArrayExpression(
-            new ArrayType(t).at(t.location), s, undefined, false
+            new SliceType(t).at(t.location), s, undefined, false
         ).at(location(), text(), options);
     }
 
