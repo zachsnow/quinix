@@ -900,7 +900,7 @@ class ArrayType extends Type {
 
   public get size(): number {
     // Layout: [length][elem0][elem1]...[elemN-1]
-    return this.length + 1;
+    return 1 + this.length * this.type.size;
   }
 
   public substitute(typeTable: TypeTable): Type {

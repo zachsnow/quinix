@@ -736,11 +736,14 @@ class Compiler {
     if(lengthOffset > 0){
       this.emitIncrement(sr, lengthOffset, 'length offset');
     }
+    // VM comparison ops return 0 for true, 1 for false (inverted from C semantics)
+    // LT(index, length) returns 0 if index < length
+    // JZ jumps if condition is 0, so it jumps when index < length (skip bounds error)
     this.emit([
       new InstructionDirective(Instruction.createOperation(Operation.LOAD, sr, sr)).comment('length'),
       new InstructionDirective(Instruction.createOperation(Operation.LT, sr, ir, sr)),
       new ConstantDirective(er, new ReferenceConstant(endRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, sr, er)),
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, sr, er)),
       new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.BOUNDS_ERROR)).comment('bounds error'),
       new InstructionDirective(Instruction.createOperation(Operation.HALT)),
       new LabelDirective(endRef),

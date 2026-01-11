@@ -1114,9 +1114,12 @@ class NewArrayExpression extends Expression {
 
     compiler.emitIncrement(di, this.elementType.size, 'increment index');
     compiler.emitIncrement(ci, 1, 'increment counter');
+    // VM comparison ops return 0 for true (equal), 1 for false (not equal)
+    // EQ(ci, cr) returns 0 when ci == cr (done), 1 when ci != cr (continue)
+    // JNZ jumps when condition is non-zero, so it jumps when ci != cr (continue looping)
     compiler.emit([
       new InstructionDirective(Instruction.createOperation(Operation.EQ, tr, ci, cr)).comment('check for end of element loop'),
-      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, tr, loopR)),
+      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, tr, loopR)),
     ]);
 
     compiler.deallocateRegister(loopR);
@@ -1819,6 +1822,9 @@ type Suffix = {
   identifier?: string;
   pointer?: boolean;
   expressions?: readonly Expression[];
+  isSlice?: boolean;
+  lo?: Expression;
+  hi?: Expression;
   range: IFileRange;
   text: string;
   options?: IParseOptions
@@ -1843,6 +1849,9 @@ abstract class SuffixExpression extends Expression {
       if(suffix.identifier !== undefined && !suffix.pointer){
         return new DotExpression(expression, suffix.identifier).at(suffix.range, suffix.text, suffix.options);
       }
+      if(suffix.isSlice){
+        return new SliceExpression(expression, suffix.lo, suffix.hi).at(suffix.range, suffix.text, suffix.options);
+      }
       if(suffix.index !== undefined){
         return new IndexExpression(expression, suffix.index, suffix.unsafe).at(suffix.range, suffix.text, suffix.options);
       }
@@ -1863,6 +1872,10 @@ abstract class SuffixExpression extends Expression {
 
   public static createCall(expressions: readonly Expression[], range: IFileRange, text: string, options?: IParseOptions): Suffix {
     return { expressions, range, text, options };
+  }
+
+  public static createSlice(lo: Expression | undefined, hi: Expression | undefined, range: IFileRange, text: string, options?: IParseOptions): Suffix {
+    return { isSlice: true, lo, hi, range, text, options };
   }
 }
 
@@ -2126,6 +2139,241 @@ class IndexExpression extends SuffixExpression {
   }
 }
 
+/**
+ * Slice expression: x[lo:hi] creates a new slice from an array or slice.
+ * - lo defaults to 0 if omitted
+ * - hi defaults to len(x) if omitted
+ */
+class SliceExpression extends SuffixExpression {
+  private stride!: number;
+
+  public constructor(
+    expression: Expression,
+    public readonly lo: Expression | undefined,
+    public readonly hi: Expression | undefined,
+  ){
+    super(expression);
+  }
+
+  public substitute(typeTable: TypeTable): Expression {
+    return new SliceExpression(
+      this.expression.substitute(typeTable),
+      this.lo?.substitute(typeTable),
+      this.hi?.substitute(typeTable),
+    ).at(this.location).tag(this.tags);
+  }
+
+  public typecheck(context: TypeChecker, contextual?: Type): Type {
+    const type = this.expression.typecheck(context);
+    const cType = type.resolve();
+
+    let elementType: Type;
+    if(cType instanceof ArrayType){
+      elementType = cType.index();
+    }
+    else if(cType instanceof SliceType){
+      elementType = cType.index();
+    }
+    else if(cType === Type.Error){
+      elementType = Type.Error;
+    }
+    else {
+      this.error(context, `expected array or slice type, actual ${type}`);
+      return Type.Error;
+    }
+
+    // Typecheck lo and hi if present.
+    if(this.lo){
+      const loType = this.lo.typecheck(context);
+      if(!loType.numeric){
+        this.error(context, `slice lo index expected numeric type, actual ${loType}`);
+      }
+    }
+    if(this.hi){
+      const hiType = this.hi.typecheck(context);
+      if(!hiType.numeric){
+        this.error(context, `slice hi index expected numeric type, actual ${hiType}`);
+      }
+    }
+
+    try {
+      this.stride = elementType.size;
+    }
+    catch(e){}
+
+    // Result is always a slice.
+    return new SliceType(elementType).at(this.location);
+  }
+
+  public get assignable() {
+    return false;
+  }
+
+  public compile(compiler: Compiler, lvalue?: boolean): Register {
+    // We need StorageCompiler to allocate the slice descriptor.
+    if(!(compiler instanceof StorageCompiler)){
+      throw new InternalError(`slice expression requires StorageCompiler`);
+    }
+
+    const exprType = this.expression.concreteType.resolve();
+
+    // Allocate result registers for the slice: [pointer][length][capacity]
+    const pr = compiler.allocateRegister(); // pointer
+    const lr = compiler.allocateRegister(); // length
+    const cr = compiler.allocateRegister(); // capacity
+
+    // Compile lo (default to 0)
+    let loR: Register;
+    if(this.lo){
+      loR = this.lo.compile(compiler);
+    }
+    else {
+      loR = compiler.allocateRegister();
+      compiler.emit([
+        new ConstantDirective(loR, new ImmediateConstant(0)).comment('slice lo default 0'),
+      ]);
+    }
+
+    // Compile hi (or defer to use length)
+    let hiR: Register | undefined;
+    if(this.hi){
+      hiR = this.hi.compile(compiler);
+    }
+
+    const er = this.expression.compile(compiler);
+
+    if(exprType instanceof ArrayType){
+      // Array layout: [length][data...]
+      // Load original length for bounds/capacity calculation.
+      const origLenR = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, origLenR, er)).comment('array length'),
+      ]);
+
+      // If hi is not provided, use original length.
+      if(!hiR){
+        hiR = compiler.allocateRegister();
+        compiler.emit([
+          new InstructionDirective(Instruction.createOperation(Operation.MOV, hiR, origLenR)).comment('slice hi default len'),
+        ]);
+      }
+
+      // Compute length = hi - lo.
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.SUB, lr, hiR, loR)).comment('slice length = hi - lo'),
+      ]);
+
+      // Compute capacity = origLen - lo.
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.SUB, cr, origLenR, loR)).comment('slice capacity = len - lo'),
+      ]);
+
+      // Compute pointer = er + 1 + lo * stride (pointing to data[lo]).
+      compiler.emitIncrement(er, 1, 'skip array length header');
+      if(this.stride > 1){
+        const sr = compiler.allocateRegister();
+        compiler.emit([
+          new ConstantDirective(sr, new ImmediateConstant(this.stride)).comment(`stride ${this.stride}`),
+          new InstructionDirective(Instruction.createOperation(Operation.MUL, loR, loR, sr)).comment('lo offset'),
+        ]);
+        compiler.deallocateRegister(sr);
+      }
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.ADD, pr, er, loR)).comment('slice pointer'),
+      ]);
+
+      compiler.deallocateRegister(origLenR);
+    }
+    else if(exprType instanceof SliceType){
+      // Slice layout: [pointer][length][capacity]
+      const origPtrR = compiler.allocateRegister();
+      const origCapR = compiler.allocateRegister();
+
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, origPtrR, er)).comment('slice pointer'),
+      ]);
+      compiler.emitIncrement(er, 1, 'slice length offset');
+      const origLenR = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, origLenR, er)).comment('slice length'),
+      ]);
+      compiler.emitIncrement(er, 1, 'slice capacity offset');
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, origCapR, er)).comment('slice capacity'),
+      ]);
+
+      // If hi is not provided, use original length.
+      if(!hiR){
+        hiR = compiler.allocateRegister();
+        compiler.emit([
+          new InstructionDirective(Instruction.createOperation(Operation.MOV, hiR, origLenR)).comment('slice hi default len'),
+        ]);
+      }
+
+      // Compute length = hi - lo.
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.SUB, lr, hiR, loR)).comment('slice length = hi - lo'),
+      ]);
+
+      // Compute capacity = origCap - lo.
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.SUB, cr, origCapR, loR)).comment('slice capacity = cap - lo'),
+      ]);
+
+      // Compute pointer = origPtr + lo * stride.
+      if(this.stride > 1){
+        const sr = compiler.allocateRegister();
+        compiler.emit([
+          new ConstantDirective(sr, new ImmediateConstant(this.stride)).comment(`stride ${this.stride}`),
+          new InstructionDirective(Instruction.createOperation(Operation.MUL, loR, loR, sr)).comment('lo offset'),
+        ]);
+        compiler.deallocateRegister(sr);
+      }
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.ADD, pr, origPtrR, loR)).comment('slice pointer'),
+      ]);
+
+      compiler.deallocateRegister(origPtrR);
+      compiler.deallocateRegister(origCapR);
+      compiler.deallocateRegister(origLenR);
+    }
+
+    compiler.deallocateRegister(loR);
+    if(hiR){
+      compiler.deallocateRegister(hiR);
+    }
+    compiler.deallocateRegister(er);
+
+    // Allocate stack storage for the slice descriptor (3 words: pointer, length, capacity).
+    const sliceId = compiler.generateIdentifier('slice');
+    compiler.allocateStorage(sliceId, 3);
+    const sliceR = compiler.allocateRegister();
+    compiler.emitIdentifier(sliceId, 'local', sliceR, false);
+
+    // Store the slice values.
+    compiler.emitStaticStore(sliceR, pr, 1, 'slice.pointer');
+    compiler.emitIncrement(sliceR, 1);
+    compiler.emitStaticStore(sliceR, lr, 1, 'slice.length');
+    compiler.emitIncrement(sliceR, 1);
+    compiler.emitStaticStore(sliceR, cr, 1, 'slice.capacity');
+
+    compiler.deallocateRegister(pr);
+    compiler.deallocateRegister(lr);
+    compiler.deallocateRegister(cr);
+
+    // Return the address of the slice descriptor.
+    compiler.emitIdentifier(sliceId, 'local', sliceR, false);
+    return sliceR;
+  }
+
+  public toString(){
+    const lo = this.lo?.toString() ?? '';
+    const hi = this.hi?.toString() ?? '';
+    return `(${this.expression})[${lo}:${hi}]`;
+  }
+}
+writeOnce(SliceExpression, 'stride');
+
 class ConditionalExpression extends Expression {
   public constructor(
     private readonly condition: Expression,
@@ -2212,7 +2460,7 @@ class ConditionalExpression extends Expression {
   IntLiteralExpression, StringLiteralExpression, BoolLiteralExpression,
   BinaryExpression, UnaryExpression,
   CallExpression,
-  DotExpression, ArrowExpression, IndexExpression, SuffixExpression,
+  DotExpression, ArrowExpression, IndexExpression, SliceExpression, SuffixExpression,
   ConditionalExpression,
   CastExpression, NewExpression, NewArrayExpression,
   NullExpression, VoidExpression,
@@ -2233,7 +2481,7 @@ export {
   IntLiteralExpression, StringLiteralExpression, BoolLiteralExpression,
   BinaryExpression, UnaryExpression,
   CallExpression,
-  DotExpression, ArrowExpression, IndexExpression, SuffixExpression,
+  DotExpression, ArrowExpression, IndexExpression, SliceExpression, SuffixExpression,
   ConditionalExpression,
   CastExpression, NewExpression, NewArrayExpression,
   NullExpression, VoidExpression,

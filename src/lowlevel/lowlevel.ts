@@ -168,7 +168,7 @@ class TypeDeclaration extends BaseTypeDeclaration {
 
   public kindcheck(context: TypeChecker): void {
     log(`kindchecking ${this}`);
-    this.type.kindcheck(context, new KindChecker());
+    this.type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
   }
 
   public typecheck(context: TypeChecker): void {}
@@ -269,7 +269,10 @@ class GlobalDeclaration extends BaseValueDeclaration {
     this.references = expressionContext.references;
   }
 
-  public compile(): Directive[] {
+  /**
+   * Returns the data directives for this global (static storage).
+   */
+  public compileData(): Directive[] {
     // Global pre-declarations aren't compiled.
     if(!this.expression){
       return [];
@@ -289,7 +292,7 @@ class GlobalDeclaration extends BaseValueDeclaration {
           new DataDirective(new Reference(`${this.qualifiedIdentifier}_text$`), new TextData(this.expression.text)),
         ];
       }
-      // For slices, fall through to normal compilation.
+      // For slices, fall through to normal compilation - reserve space for slice descriptor.
     }
 
     // We can skip some moves and stores by special-casing constant values.
@@ -300,8 +303,37 @@ class GlobalDeclaration extends BaseValueDeclaration {
       ];
     }
 
-    // Otherwise, we make a global destination to compile this expression to and
-    // populate it.
+    // Reserve space for this global. Initialization happens in compileInit().
+    return [
+      new DataDirective(reference, new ImmediatesData(new Array(this.type.size).fill(0))).comment(`global ${this.qualifiedIdentifier}`),
+    ];
+  }
+
+  /**
+   * Returns the initialization code for this global (runs at startup).
+   */
+  public compileInit(): Directive[] {
+    // Global pre-declarations don't need initialization.
+    if(!this.expression){
+      return [];
+    }
+
+    // String literals in arrays are handled statically in compileData().
+    if(this.expression instanceof StringLiteralExpression){
+      const cType = this.type.resolve();
+      if(cType instanceof ArrayType){
+        return [];
+      }
+    }
+
+    // Constants are handled statically in compileData().
+    const constant = this.expression.constant();
+    if(constant !== undefined){
+      return [];
+    }
+
+    // Otherwise, we need to compile initialization code.
+    const reference = new Reference(this.qualifiedIdentifier);
     const compiler = new GlobalCompiler(this.qualifiedIdentifier);
     const sr = this.expression.compile(compiler);
     const dr = compiler.allocateRegister();
@@ -342,10 +374,14 @@ class GlobalDeclaration extends BaseValueDeclaration {
       compiler.emitStaticCopy(dr, sr, this.type.size, `store to global ${this.qualifiedIdentifier}`);
     }
 
-    return [
-      new DataDirective(reference, new ImmediatesData(new Array(this.type.size).fill(0))).comment(`global ${this.qualifiedIdentifier}`),
-      ...compiler.compile(),
-    ];
+    return compiler.compile();
+  }
+
+  /**
+   * Compiles both data and initialization code for backwards compatibility.
+   */
+  public compile(): Directive[] {
+    return [...this.compileData(), ...this.compileInit()];
   }
 
   public toString(){
@@ -1109,7 +1145,8 @@ class LowLevelProgram {
 
     directives.push(new LabelDirective(compiler.generateReference('program')));
     if(entrypoint){
-      directives.push(...this.entrypoint(compiler));
+      // Emit entrypoint: setup, global init, call main, halt
+      directives.push(...this.entrypoint(compiler, globalDeclarations));
     }
     functionDeclarations.forEach((declaration) => {
       directives.push(...declaration.compile());
@@ -1117,32 +1154,52 @@ class LowLevelProgram {
 
     directives.push(new LabelDirective(compiler.generateReference('data')));
     globalDeclarations.forEach((declaration) => {
-      directives.push(...declaration.compile());
+      directives.push(...declaration.compileData());
     });
 
     return new AssemblyProgram(directives);
   }
 
   /**
-   * Emits the "whole program" entrypoint, which calls `global::main` and then
-   * halts the machine. In the future, we'll emit a call to `lib::exit()`.
+   * Emits the "whole program" entrypoint, which:
+   * 1. Sets up SP and ONE
+   * 2. Runs global initialization code
+   * 3. Calls `global::main`
+   * 4. Halts the machine
    *
    * @param compiler the compiler to use to emit code.
+   * @param globalDeclarations the global declarations that need initialization.
    */
-  private entrypoint(compiler: Compiler): Directive[] {
+  private entrypoint(compiler: Compiler, globalDeclarations: GlobalDeclaration[]): Directive[] {
+    const directives: Directive[] = [];
+
+    // Setup SP and ONE
     const r = compiler.allocateRegister();
     compiler.emit([
       new ConstantDirective(Compiler.SP, new ImmediateConstant(VM.DEFAULT_MEMORY_SIZE - 1)).comment('configure sp'),
       new ConstantDirective(Compiler.ONE, new ImmediateConstant(0x1)).comment('configure one'),
-      new ConstantDirective(r, new ReferenceConstant(new Reference(LowLevelProgram.ENTRYPOINT))),
     ]);
-    const ret = compiler.emitCall([], r);
-    compiler.emit([
+    directives.push(...compiler.compile());
+
+    // Emit global initialization code
+    globalDeclarations.forEach((declaration) => {
+      directives.push(...declaration.compileInit());
+    });
+
+    // Call main (use a fresh compiler since we already compiled the setup)
+    const mainCompiler = new Compiler('entrypoint');
+    const mr = mainCompiler.allocateRegister();
+    mainCompiler.emit([
+      new ConstantDirective(mr, new ReferenceConstant(new Reference(LowLevelProgram.ENTRYPOINT))),
+    ]);
+    const ret = mainCompiler.emitCall([], mr);
+    mainCompiler.emit([
       new InstructionDirective(Instruction.createOperation(Operation.MOV, Compiler.RET, ret)),
       new InstructionDirective(Instruction.createOperation(Operation.HALT)),
     ]);
+    directives.push(...mainCompiler.compile());
 
-    return compiler.compile();
+    return directives;
   }
 
   public toString(){

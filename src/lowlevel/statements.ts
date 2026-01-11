@@ -176,10 +176,11 @@ class VarStatement extends Statement {
       compiler.emitStaticStore(vr, r, this.inferredType.size, 'zero out');
 
       if(this.inferredType instanceof ArrayType && this.inferredType.length !== undefined){
+        // New array layout: [length][data...]
         compiler.emit([
-          new ConstantDirective(r, new ImmediateConstant(this.inferredType.length)).comment('array size'),
+          new ConstantDirective(r, new ImmediateConstant(this.inferredType.length)).comment('array length'),
         ]);
-        compiler.emitStaticStore(vr, r, 2, 'initialize array capacity and size');
+        compiler.emitStaticStore(vr, r, 1, 'initialize array length');
       }
 
       compiler.deallocateRegister(vr);
