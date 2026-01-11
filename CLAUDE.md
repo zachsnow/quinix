@@ -1,6 +1,7 @@
 # Quinix
 
-Quinix is an educational project implementing a complete virtual computing stack: a 32-bit RISC virtual machine, an assembly language, and a C-like high-level language.
+Quinix is an educational project implementing a complete virtual computing stack: a 32-bit RISC virtual machine, an assembly language, and a C-like high-level language. It is intended to additionally include an operating system for
+the VM written in the high-level language.
 
 ## Architecture
 
