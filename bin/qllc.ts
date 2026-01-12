@@ -2,7 +2,8 @@
 import fs from 'fs';
 import path from 'path';
 
-import { logger, readFiles, InternalError } from '../src/lib/util';
+import { readFiles, InternalError } from '../src/lib/util';
+import { logger } from '../src/lib/logger';
 import { parseArguments } from '../src/lib/cli';
 import { LowLevelProgram } from '../src/lowlevel/lowlevel';
 
@@ -55,7 +56,6 @@ const argv = parseArguments<Options>(
       array: true,
       demandOption: true,
     },
-    loggers: ['qllc', 'lowlevel'],
   },
 );
 
@@ -85,7 +85,7 @@ async function main(): Promise<number | undefined>{
   // Compile.
   const module = argv.module || path.basename(argv.output, path.extname(argv.output));
   const assemblyProgram = program.compile(module, !argv.library);
-  log(`compiled:\n${assemblyProgram}\n`);
+  log.debug(`compiled:\n${assemblyProgram}\n`);
 
   // Emit compiled code.
   fs.writeFileSync(argv.output, assemblyProgram.toString(true));

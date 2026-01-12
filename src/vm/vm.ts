@@ -1,4 +1,5 @@
-import { logger, release, ResolvablePromise } from '../lib/util';
+import { release, ResolvablePromise } from '../lib/util';
+import { logger } from '../lib/logger';
 import { Debugger } from './debugger';
 import { Memory, Address, Immediate } from '../lib/base-types';
 import { AccessFlags, IdentityMMU, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
@@ -223,7 +224,7 @@ class VM {
   }
 
   public fault(message: string): void {
-    log(`fault: ${message}`);
+    log.debug(`fault: ${message}`);
 
     if(this.state.faulting){
       throw new Error(`fault: double fault: ${message}`);
@@ -292,15 +293,15 @@ class VM {
   }
 
   private showPeripherals(){
-    log(`peripheral table:`);
+    log.debug(`peripheral table:`);
 
     const countAddress = this.PERIPHERAL_TABLE_COUNT_ADDR;
-    log(`${Immediate.toString(countAddress)}: ${Immediate.toString(this.memory[countAddress])}`);
+    log.debug(`${Immediate.toString(countAddress)}: ${Immediate.toString(this.memory[countAddress])}`);
 
     this.peripherals.forEach((peripheral, i) => {
       const tableAddress = this.PERIPHERAL_TABLE_ENTRIES_ADDR + 2 * i;
-      log(`${Immediate.toString(tableAddress)}: ${Immediate.toString(this.memory[tableAddress])} (${peripheral.name})`);
-      log(`${Immediate.toString(tableAddress + 1)}: ${Immediate.toString(this.memory[tableAddress + 1])}`);
+      log.debug(`${Immediate.toString(tableAddress)}: ${Immediate.toString(this.memory[tableAddress])} (${peripheral.name})`);
+      log.debug(`${Immediate.toString(tableAddress + 1)}: ${Immediate.toString(this.memory[tableAddress + 1])}`);
     });
   }
 
@@ -356,22 +357,22 @@ class VM {
   }
 
   private showInterrupts(handlerCode: Memory){
-    log(`interrupt table:`);
+    log.debug(`interrupt table:`);
 
     const enabledAddr = this.INTERRUPT_TABLE_ENABLED_ADDR;
     const enabled = this.memory[enabledAddr];
-    log(`${Immediate.toString(enabledAddr)}: ${Immediate.toString(enabled)}`);
+    log.debug(`${Immediate.toString(enabledAddr)}: ${Immediate.toString(enabled)}`);
 
     const countAddress = this.INTERRUPT_TABLE_COUNT_ADDR;
     var handlerCount = this.memory[countAddress];
 
-    log(`${Immediate.toString(countAddress)}: ${Immediate.toString(handlerCount)}`);
+    log.debug(`${Immediate.toString(countAddress)}: ${Immediate.toString(handlerCount)}`);
     for(let i = 0; i <= handlerCount; i++){
-      log(`${Immediate.toString(this.INTERRUPT_TABLE_ENTRIES_ADDR + i)}: ${Immediate.toString(this.memory[this.INTERRUPT_TABLE_ENTRIES_ADDR + i])}`);
+      log.debug(`${Immediate.toString(this.INTERRUPT_TABLE_ENTRIES_ADDR + i)}: ${Immediate.toString(this.memory[this.INTERRUPT_TABLE_ENTRIES_ADDR + i])}`);
     }
 
     const program = Program.decode(handlerCode);
-    log(`interrupt code:\n${program.toString(this.INTERRUPT_HANDLERS_ADDR)}\n`);
+    log.debug(`interrupt code:\n${program.toString(this.INTERRUPT_HANDLERS_ADDR)}\n`);
   }
 
   private loadProgram(program: Uint32Array){
@@ -441,10 +442,10 @@ class VM {
       if(this.resumeInterrupt){
         this.resumeInterrupt.resolve();
         this.resumeInterrupt = undefined;
-        log(`resuming due to interrupt ${Immediate.toString(interrupt, 1)}...`);
+        log.debug(`resuming due to interrupt ${Immediate.toString(interrupt, 1)}...`);
       }
       else {
-        log(`not waiting`);
+        log.debug(`not waiting`);
       }
 
       // In any event, since we've already prepared
@@ -491,7 +492,7 @@ class VM {
           // it resolves to a number that we should treat as the machine halting with.
           const debugResult = await this.breakpoint(this.state.registers[Register.IP]);
           if(debugResult !== undefined){
-            log(`quit: ${Immediate.toString(debugResult)}`);
+            log.debug(`quit: ${Immediate.toString(debugResult)}`);
             return debugResult;
           }
           break;
@@ -499,7 +500,7 @@ class VM {
         case 'wait':
           // Wait for the next interrupt to begin trigger.  This will resume
           // execution.
-          log('wait');
+          log.debug('wait');
           this.stats.waited = true;
           this.state.waiting = true;
           await this.nextInterrupt();
@@ -507,12 +508,12 @@ class VM {
 
         case 'halt':
           const r = this.state.registers[Register.R0];
-          log(`halt: ${Immediate.toString(r)}`);
+          log.debug(`halt: ${Immediate.toString(r)}`);
           return r;
       }
 
       if(this.state.killed){
-        log(`killed`);
+        log.debug(`killed`);
         return -1;
       }
     }
@@ -545,7 +546,7 @@ class VM {
   private prepareInterrupt(interrupt: Interrupt): boolean {
     // Special cases.
     if(interrupt === Interrupt.RETURN){
-      log(`interrupt 0x0: return`);
+      log.debug(`interrupt 0x0: return`);
 
       // Restore registers, including `ip`.
       this.interruptRestore();
@@ -577,7 +578,7 @@ class VM {
     const isMasked = !this.memory[this.INTERRUPT_TABLE_ENABLED_ADDR];
     if(!this.state.faulting && isMasked){
       this.stats.interruptsIgnored++;
-      log(`interrupt ${Immediate.toString(interrupt)}: interrupts disabled`);
+      log.debug(`interrupt ${Immediate.toString(interrupt)}: interrupts disabled`);
       return false;
     }
 
@@ -592,7 +593,7 @@ class VM {
     // is not currently mapped and should be ignored.
     const handler = this.memory[this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt];
     if(handler === 0x0){
-      log(`interrupt ${Immediate.toString(interrupt)}: handler not mapped at address ${Immediate.toString(this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt)}`);
+      log.debug(`interrupt ${Immediate.toString(interrupt)}: handler not mapped at address ${Immediate.toString(this.INTERRUPT_TABLE_ENTRIES_ADDR + interrupt)}`);
       return false;
     }
 
@@ -634,10 +635,10 @@ class VM {
       return;
     }
 
-    log(`breakpoint ${Immediate.toString(virtualAddress)}`);
+    log.debug(`breakpoint ${Immediate.toString(virtualAddress)}`);
     this.debugger = new Debugger(this, this.state, this.memory);
     try {
-      log('starting debuger')
+      log.debug('starting debuger')
       return await this.debugger.start();
     }
     finally {
@@ -695,7 +696,7 @@ class VM {
         return 'continue';
       }
 
-      log(`${state}: ${Immediate.toString(encoded)}: ${decoded}`);
+      log.debug(`${state}: ${Immediate.toString(encoded)}: ${decoded}`);
 
       // By default we advance by 1; constants, jumps, and interrupts change this.
       let ipOffset = 1;
@@ -767,7 +768,7 @@ class VM {
           // Check peripheral mapping for a method.
           const peripheralMapping = peripheralAddresses[physicalAddress];
           if(peripheralMapping){
-            log(`notifying peripheral ${peripheralMapping.peripheral.name}...`)
+            log.debug(`notifying peripheral ${peripheralMapping.peripheral.name}...`)
             peripheralMapping.peripheral.notify(physicalAddress - peripheralMapping.base);
           }
           break;
@@ -790,7 +791,7 @@ class VM {
 
           const value = memory[physicalAddress];
           registers[decoded.dr!] = value;
-          log(`${state.toString()}: ${Immediate.toString(value)}: ${Immediate.toString(value)}`);
+          log.debug(`${state.toString()}: ${Immediate.toString(value)}: ${Immediate.toString(value)}`);
 
           ipOffset = 2;
           break;

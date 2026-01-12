@@ -1,5 +1,6 @@
 import readline from 'readline';
-import { logger, stringToCodePoints, ResolvablePromise, codePointsToString, release } from '../lib/util';
+import { stringToCodePoints, ResolvablePromise, codePointsToString, release } from '../lib/util';
+import { logger } from '../lib/logger';
 import { VM } from './vm';
 import type { Interrupt } from './vm';
 import { Memory, Address, Offset } from '../lib/base-types';
@@ -103,7 +104,7 @@ class TimerPeripheral extends Peripheral {
 
   public unmap(){
     if(this.interval){
-      log(`${this.name}: unmapping and clearing interval`);
+      log.debug(`${this.name}: unmapping and clearing interval`);
       clearInterval(this.interval);
     }
   }
@@ -122,14 +123,14 @@ class TimerPeripheral extends Peripheral {
 
     // Clear current interval.
     if(this.interval){
-      log(`${this.name}: clearing interval`);
+      log.debug(`${this.name}: clearing interval`);
       clearInterval(this.interval);
       this.interval = undefined;
     }
 
     // Allow disabling the timer entirely.
     if(this.milliseconds){
-      log(`${this.name}: configuring interval ${this.milliseconds}`);
+      log.debug(`${this.name}: configuring interval ${this.milliseconds}`);
       this.interval = setInterval(() => {
         this.intervalHandler();
       }, this.milliseconds);
@@ -140,7 +141,7 @@ class TimerPeripheral extends Peripheral {
     if(!this.vm){
       this.unmapped();
     }
-    log(`${this.name}: interrupting`);
+    log.debug(`${this.name}: interrupting`);
     this.vm.interrupt(this.interrupt);
   }
 }
@@ -192,7 +193,7 @@ abstract class BufferedPeripheral extends Peripheral {
 
     const control = this.mapping.view[this.CONTROL_ADDR];
 
-    log(`${this.name}: notified buffered peripheral: ${Immediate.toString(control, 1)}`);
+    log.debug(`${this.name}: notified buffered peripheral: ${Immediate.toString(control, 1)}`);
 
     if(control === this.WRITE){
       this.mapping.view[this.CONTROL_ADDR] = this.PENDING;
@@ -319,7 +320,7 @@ abstract class BufferedPeripheral extends Peripheral {
    * @param message optional message to log.
    */
   protected ready(message: string = 'complete'){
-    log(`${this.name}: ${message}`);
+    log.debug(`${this.name}: ${message}`);
     if(!this.mapping){
       this.unmapped();
     }
@@ -332,7 +333,7 @@ abstract class BufferedPeripheral extends Peripheral {
    * @param message optional error to log.
    */
   protected error(message: string = 'error'){
-    log(`${this.name}: ${message}`);
+    log.debug(`${this.name}: ${message}`);
     if(!this.mapping){
       this.unmapped();
     }
@@ -406,7 +407,7 @@ class DebugInputPeripheral extends BufferedPeripheral {
     const text = data.toString("utf8");
     const i = text.indexOf('\n');
     if(i === -1){
-      log(`${this.name}: no newline, bufferring...`);
+      log.debug(`${this.name}: no newline, bufferring...`);
       this.buffer.push(...stringToCodePoints(text));
       return;
     }
@@ -418,7 +419,7 @@ class DebugInputPeripheral extends BufferedPeripheral {
     const buffer = this.buffer;
     this.buffer = stringToCodePoints(right);
 
-    log(`${this.name}: newline, resolving`, buffer);
+    log.debug(`${this.name}: newline, resolving`, buffer);
 
     this.resolvablePromise.resolve(buffer);
 
@@ -459,7 +460,7 @@ class DebugBreakPeripheral extends Peripheral {
     // Verify we are attempting to write.
     const control = this.mapping.view[this.CONTROL_ADDR];
     if(control !== this.BREAK){
-      log(`${this.name}: invalid control ${Immediate.toString(control)}`);
+      log.debug(`${this.name}: invalid control ${Immediate.toString(control)}`);
       this.mapping.view[this.CONTROL_ADDR] = this.ERROR;
       return;
     }
@@ -566,18 +567,18 @@ class DebugFilePeripheral extends BufferedPeripheral {
       return;
     }
 
-    log(`${this.name}: writing path ${this.path}`);
+    log.debug(`${this.name}: writing path ${this.path}`);
     await fs.promises.writeFile(this.path, codePointsToString(data), 'utf-8');
-    log(`${this.name}: write complete`);
+    log.debug(`${this.name}: write complete`);
   }
 
   protected async onRead(): Promise<number[]> {
     if(!this.path){
       throw new Error('no path');
     }
-    log(`${this.name}: reading path ${this.path}`);
+    log.debug(`${this.name}: reading path ${this.path}`);
     const text = await fs.promises.readFile(this.path, 'utf-8');
-    log(`${this.name}: read complete`);
+    log.debug(`${this.name}: read complete`);
     return stringToCodePoints(text);
   }
 }

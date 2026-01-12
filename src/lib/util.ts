@@ -1,6 +1,4 @@
 import fs from 'fs';
-import debug from 'debug';
-import { parse } from 'src/lowlevel/parser';
 
 class InternalError extends Error {
   public constructor(message?: string){
@@ -127,10 +125,6 @@ function unique<T>(array: T[]): T[] {
     }
   });
   return uniques;
-}
-
-function logger(name: string): debug.Debugger {
-  return debug(name);
 }
 
 async function readFiles(filenames: string[]): Promise<string[]> {
@@ -378,7 +372,6 @@ export {
   indent,
   duplicates, unique, flatten,
   SymbolTable,
-  logger,
   readFiles,
   parseFile,
   Syntax,

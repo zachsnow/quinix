@@ -1,7 +1,8 @@
 import {
-  InternalError, logger, Messages, indent, parseFile, writeOnce, duplicates, flatten,
+  InternalError, Messages, indent, parseFile, writeOnce, duplicates, flatten,
   IFileRange, IParseOptions,
 } from '../lib/util';
+import { logger } from '../lib/logger';
 import {
   Directive,
 
@@ -167,7 +168,7 @@ class TypeDeclaration extends BaseTypeDeclaration {
   }
 
   public kindcheck(context: TypeChecker): void {
-    log(`kindchecking ${this}`);
+    log.debug(`kindchecking ${this}`);
     this.type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
   }
 
@@ -1106,7 +1107,7 @@ class LowLevelProgram {
 
     liveness.propagate();
 
-    log(`liveness analysis:\n${liveness}`);
+    log.debug(`liveness analysis:\n${liveness}`);
 
     functionDeclarations.forEach((dec) => {
       dec.updateLiveness(liveness);

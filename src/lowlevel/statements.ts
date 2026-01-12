@@ -1,4 +1,5 @@
-import { InternalError, logger, Syntax, writeOnce } from '../lib/util';
+import { InternalError, Syntax, writeOnce } from '../lib/util';
+import { logger } from '../lib/logger';
 import {
   ConstantDirective, ReferenceConstant,
   InstructionDirective,

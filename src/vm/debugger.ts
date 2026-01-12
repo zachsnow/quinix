@@ -1,7 +1,6 @@
 import readline from 'readline';
 
-import { logger } from '../lib/util';
-
+import { logger } from '../lib/logger';
 import { ResolvablePromise } from '../lib/util';
 import { Memory, Immediate, Address } from "../lib/base-types";
 import { VM, State } from './vm';
@@ -83,7 +82,7 @@ class Debugger {
       this.stop();
     });
 
-    log('initialized debugger');
+    log.debug('initialized debugger');
   }
 
   public start(): Promise<VMResult | undefined> {
@@ -102,7 +101,7 @@ class Debugger {
 
     this.onLine('i');
 
-    log('started debugger');
+    log.debug('started debugger');
 
     return this.resolvable.promise;
   }

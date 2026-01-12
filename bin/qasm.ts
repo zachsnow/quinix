@@ -2,7 +2,8 @@
 import fs from 'fs';
 import path from 'path';
 
-import { logger, readFiles, parseFile, InternalError } from '../src/lib/util';
+import { readFiles, InternalError } from '../src/lib/util';
+import { logger } from '../src/lib/logger';
 import { parseArguments } from '../src/lib/cli';
 import { AssemblyProgram } from '../src/assembly/assembly';
 import { parse, SyntaxError } from '../src/assembly/parser';
@@ -101,7 +102,7 @@ async function main(): Promise<number | undefined> {
 
   // Build.
   const assemblyProgram = AssemblyProgram.concat(assemblyPrograms);
-  log(`assembly program:\n${assemblyProgram}\n`);
+  log.debug(`assembly program:\n${assemblyProgram}\n`);
 
   // Assemble.
   const [messages, program] = assemblyProgram.assemble();
@@ -110,7 +111,7 @@ async function main(): Promise<number | undefined> {
     return -1;
   }
 
-  log(`assembled program:\n${program}\n`);
+  log.debug(`assembled program:\n${program}\n`);
 
   // Output.
   if(!argv.assemble){

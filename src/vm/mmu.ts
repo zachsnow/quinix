@@ -1,4 +1,4 @@
-import { logger } from '../lib/util';
+import { logger } from '../lib/logger';
 
 import { Memory, Address, Immediate, Offset } from '../lib/base-types';
 import { Peripheral } from './peripherals';
@@ -98,7 +98,7 @@ class IdentityMMU implements MMU {
   public disable(){}
 
   public translate(virtualAddress: Address, flags: AccessFlags){
-    log(`IdentityMMU: translating ${Immediate.toString(virtualAddress)} ${AccessFlags.toString(flags)}`);
+    log.debug(`IdentityMMU: translating ${Immediate.toString(virtualAddress)} ${AccessFlags.toString(flags)}`);
     return virtualAddress;
   }
 

@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { logger } from '../src/lib/util';
+import { logger } from '../src/lib/logger';
 import { parseArguments } from '../src/lib/cli';
 import { VM, Breakpoint } from '../src/vm/vm';
 import { Memory, Address } from '../src/lib/base-types';
@@ -58,7 +58,6 @@ const argv = parseArguments<Options>(
       type: 'string',
       demandOption: false,
     },
-    loggers: ['qvm', 'vm', 'vm:debugger'],
   },
 );
 
@@ -91,11 +90,11 @@ else {
   const buffer = fs.readFileSync(filename);
   programData = Memory.fromBuffer(buffer);
 }
-log(`loaded binary:\n${programData}\n`);
+log.debug(`loaded binary:\n${programData}\n`);
 
 // 2. Print decoded program.
 const program = Program.decode(programData);
-log(`decoded program:\n${program}\n`);
+log.debug(`decoded program:\n${program}\n`);
 
 // 3. Run program.
 const vm = new VM({
@@ -105,7 +104,7 @@ const vm = new VM({
 });
 
 vm.run(programData).then((r) => {
-  log(`terminated: ${r}`);
+  log.debug(`terminated: ${r}`);
   switch(r){
     case Compiler.NULL_ERROR:
       console.error('error: NULL_ERROR');
@@ -119,9 +118,9 @@ vm.run(programData).then((r) => {
   }
   return Promise.resolve(r);
 }, (e) => {
-  log(`error: ${e}`);
+  log.debug(`error: ${e}`);
   if(argv.verbose){
-    log(`${e.stack}`);
+    log.debug(`${e.stack}`);
   }
   return Promise.resolve(-1);
 }).then((r) => {

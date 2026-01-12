@@ -1,12 +1,11 @@
 #! /usr/bin/env bun
 import { parseArgs } from 'util';
 import inspector from 'inspector';
-import debug from 'debug';
+import { setVerbose } from './logger';
 
 interface DefaultOptions {
   verbose: boolean;
   inspect: boolean;
-  loggers?: string;
   help: boolean;
 }
 
@@ -34,7 +33,6 @@ interface PositionalConfig {
 interface ParseOptions {
   options?: OptionsConfig;
   positional: PositionalConfig;
-  loggers?: string[];
 }
 
 function printHelp(scriptName: string, usage: string, description: string, parseOptions: ParseOptions): void {
@@ -45,7 +43,6 @@ function printHelp(scriptName: string, usage: string, description: string, parse
   const allOptions: OptionsConfig = {
     ...parseOptions.options,
     verbose: { alias: 'v', describe: 'enable verbose output', type: 'boolean', default: false },
-    loggers: { describe: 'comma-separated list of loggers', type: 'string' },
     inspect: { alias: 'i', describe: 'run inspector', type: 'boolean', default: false },
     help: { alias: 'h', describe: 'show help', type: 'boolean', default: false },
   };
@@ -94,7 +91,6 @@ function parseArguments<Options>(
 
   // Add default options
   options.verbose = { type: 'boolean', short: 'v', default: false };
-  options.loggers = { type: 'string' };
   options.inspect = { type: 'boolean', short: 'i', default: false };
   options.help = { type: 'boolean', short: 'h', default: false };
 
@@ -146,12 +142,7 @@ function parseArguments<Options>(
 
   // Handle verbose logging
   if (values.verbose) {
-    if (parseOptions.loggers) {
-      const loggers = values.loggers as string | undefined;
-      debug.enable(loggers ? loggers : parseOptions.loggers.join(','));
-    } else {
-      debug.enable(scriptName);
-    }
+    setVerbose(true);
   }
 
   // Handle inspector

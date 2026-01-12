@@ -26,7 +26,6 @@ const argv = parseArguments<Options>(
       describe: 'the source file to run',
       demandOption: true,
     },
-    loggers: [],
   },
 );
 
