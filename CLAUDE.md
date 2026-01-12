@@ -18,18 +18,20 @@ Execution
 ## Build & Test
 
 ```bash
-./build.sh        # Generate parsers, compile TypeScript, build lib/kernel
-npm test          # Run Jest test suite
+bun install       # Install dependencies
+./build.sh        # Generate parsers, type check, build lib/kernel
+bun test          # Run test suite
 ```
 
 ## CLI Tools
 
-All tools are in `bin/` and run via ts-node:
+All tools are in `bin/` and run via bun:
 
 ```bash
-npx ts-node bin/qllc.ts <file.qll>     # Compile QLL to QASM
-npx ts-node bin/qasm.ts <file.qasm>    # Assemble QASM to binary
-npx ts-node bin/qvm.ts <file.qbin>     # Execute binary
+bun run bin/qllc.ts <file.qll>     # Compile QLL to QASM
+bun run bin/qasm.ts <file.qasm>    # Assemble QASM to binary
+bun run bin/qvm.ts <file.qbin>     # Execute binary
+bun run bin/qrun.ts <file.qll>     # Compile, assemble, and run
 ```
 
 ## Project Structure

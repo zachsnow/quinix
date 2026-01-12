@@ -1,4 +1,3 @@
-#! /usr/bin/env bun
 import { parseArgs } from 'util';
 import inspector from 'inspector';
 import { setVerbose } from './logger';
@@ -71,7 +70,6 @@ function parseArguments<Options>(
 
   // Build parseArgs config
   const options: { [key: string]: { type: 'string' | 'boolean'; short?: string; multiple?: boolean; default?: string | boolean } } = {};
-  const aliases: { [short: string]: string } = {};
 
   // Add user options
   for (const [name, config] of Object.entries(userOptions)) {
@@ -79,7 +77,6 @@ function parseArguments<Options>(
     options[name] = { type };
     if (config.alias) {
       options[name].short = config.alias;
-      aliases[config.alias] = name;
     }
     if (config.array) {
       options[name].multiple = true;

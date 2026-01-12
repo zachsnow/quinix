@@ -63,9 +63,7 @@ const argv = parseArguments<Options>('qasm',
 let libraryPath: string | undefined = undefined;
 function resolveLibrary(filename: string){
   if(!libraryPath){
-    // We are either in `./bin/`, because we are running the Typescript
-    // file directly with ts-node, or we are in `./build/bin/`, because
-    // we are running a build.
+    // We are in `./bin/`, running the TypeScript file directly with bun.
     libraryPath = path.resolve(__dirname, '..');
     if(!fs.existsSync(path.join(libraryPath, 'package.json'))){
       libraryPath = path.resolve(__dirname, '..', '..');

@@ -44,27 +44,31 @@ Finally, we have the tools we need... [Let's build an operating system!](./docs/
 
 ## Local development
 
-First, the install prerequisites and build the various parsers, executables, and runtimes:
+Install prerequisites and build the parsers and libraries:
 
 ```bash
-$ npm i
-$ ./build.sh
+bun install
+./build.sh
 ```
 
-The executables are located at `./bin/` and by default run via `ts-node`.
-Due to the slow startup time, you may prefer to run the built executables, which
-are located at `./build/bin/`. To compile, assemble, and run a QLL program:
+To compile, assemble, and run a QLL program:
 
 ```bash
-$ ./bin/qllc.ts -o file.qasm file.qll
-$ ./bin/qasm.ts -o file.qbin file.qasm
-$ ./bin/qvm.ts file.qbin
+bun run bin/qllc.ts -o file.qasm file.qll
+bun run bin/qasm.ts -o file.qbin file.qasm
+bun run bin/qvm.ts file.qbin
+```
+
+Or use the combined runner:
+
+```bash
+bun run bin/qrun.ts file.qll
 ```
 
 Run tests:
 
 ```bash
-$ npm t
+bun test
 ```
 
 ## Installing
