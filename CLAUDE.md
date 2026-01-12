@@ -87,15 +87,12 @@ Keywords: `function`, `var`, `global`, `struct`, `type`, `namespace`, `using`, `
 
 ## Parser Generation
 
-Parsers are generated from PEG grammars using tspegjs:
+Parsers are generated from PEG grammars using [peggy](https://peggyjs.org/) with the ts-pegjs plugin:
 
 - `src/assembly/parser.pegjs` → QASM parser
 - `src/lowlevel/*.pegjs` → QLL parser (layered: base → types → expressions → statements)
 
-Regenerate with `./build.sh` or manually:
-```bash
-npx tspegjs src/assembly/parser.pegjs
-```
+Regenerate with `./build.sh`.
 
 ## Related Projects
 

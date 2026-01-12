@@ -17,7 +17,7 @@ unit (or MMU), to assist in the implementation of virtual memory.
 Now that we have in mind a simple architecture, [let's build a virtual machine!](./docs/qvm.md)
 
 The Quinix virtual machine, or QVM, implements the QPU. It is implemented
-in Typescript and runs both on node and in the browser. It models the memory of the system as a
+in TypeScript and runs on [bun](https://bun.sh). It models the memory of the system as a
 `Uint32Array`. It supports just a few peripherals for now, including console input and output.
 
 ### QASM
