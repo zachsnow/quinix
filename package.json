@@ -13,8 +13,8 @@
   },
   "author": "Zach Snow",
   "dependencies": {
-    "peggy": "^2.0.1",
-    "ts-pegjs": "^3.1.0"
+    "peggy": "^4.2.0",
+    "ts-pegjs": "^4.2.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

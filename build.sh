@@ -13,8 +13,8 @@ run_peggy() {
     local header_json
     header_json=$(echo "$header" | jq -Rs .)
 
-    bunx peggy --plugin ts-pegjs \
-        --extra-options "{\"tspegjs\": {\"customHeader\": $header_json}}" \
+    bun node_modules/.bin/peggy --plugin ts-pegjs \
+        --extra-options "{\"tspegjs\": {\"customHeader\": $header_json, \"skipTypeComputation\": true}}" \
         -o "$output" "${inputs[@]}"
 }
 
