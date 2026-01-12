@@ -307,7 +307,7 @@ function release(): Promise<void> {
 }
 
 /**
- * Parse a file with the given parser; attaches filename information to any thrown `SyntaxError`.
+ * Parse a file with the given parser; attaches filename information to any thrown `PeggySyntaxError`.
  *
  * @param parser a PEGjs parse function.
  * @param text the text to parse.
@@ -321,7 +321,7 @@ function parseFile<T>(parser: (text: string, options: IParseOptions) => T, text:
     return parser(text, options);
   }
   catch(e: any){
-    if(e.name === 'SyntaxError'){
+    if(e.name === 'PeggySyntaxError'){
       e.location.filename = filename;
     }
     throw e;

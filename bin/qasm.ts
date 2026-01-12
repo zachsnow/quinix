@@ -6,7 +6,7 @@ import { readFiles, InternalError } from '../src/lib/util';
 import { logger } from '../src/lib/logger';
 import { parseArguments } from '../src/lib/cli';
 import { AssemblyProgram } from '../src/assembly/assembly';
-import { parse, SyntaxError } from '../src/assembly/parser';
+import { parse } from '../src/assembly/parser';
 
 const log = logger('qasm');
 

@@ -94,7 +94,7 @@ describe('QLLC typechecking', () => {
       return program.typecheck().errors.map((error) => error.text);
     }
     catch(e){
-      if(e.name === 'SyntaxError'){
+      if(e.name === 'PeggySyntaxError'){
         return [e.message];
       }
       throw e;
@@ -593,7 +593,7 @@ describe('QLLC end-to-end', () => {
       return await vm.run(memory);
     }
     catch(e){
-      if(e.name === 'SyntaxError'){
+      if(e.name === 'PeggySyntaxError'){
         return `${e.location.filename}(${e.location.start.line}): ${e.message}`;
       }
       return `${e}`;
