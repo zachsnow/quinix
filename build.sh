@@ -45,4 +45,8 @@ bunx tsc --noEmit
 echo "Building libraries..."
 (cd lib && ./build.sh)
 
+echo "Building browser bundle..."
+mkdir -p build
+bun build src/browser.ts --target=browser --format=iife --external=readline --outfile=build/quinix.js
+
 echo "Done."
