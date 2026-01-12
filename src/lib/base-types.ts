@@ -107,7 +107,7 @@ class Memory extends Uint32Array {
    * @param buffer the buffer to convert to memory.
    */
   public static fromBuffer(buffer: Buffer): Memory {
-    return new Memory(buffer.buffer, buffer.byteOffset, buffer.byteLength / Memory.BYTES_PER_ELEMENT);
+    return new Memory(buffer.buffer as ArrayBuffer, buffer.byteOffset, buffer.byteLength / Memory.BYTES_PER_ELEMENT);
   }
 
   /**

@@ -2,7 +2,7 @@ import { Reference, Assembler, AssemblyProgram, TextData } from './assembly';
 import { parse } from './parser';
 import { VM, } from '../vm/vm';
 import { Operation, Instruction } from '../vm/instructions';
-​
+
 describe('Reference', () => {
   test('uses @', () => {
     expect(new Reference('ref').toString()).toBe('@ref');

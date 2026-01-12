@@ -2,7 +2,7 @@ import { Reference, AddressTable, AssemblyProgram, DataDirective, ConstantDirect
 import { parse } from './parser';
 import { VM, } from '../vm/vm';
 import { Operation } from '../vm/instructions';
-​
+
 describe('Parser', () => {
   test('Data directives', () => {
     let assemblyProgram = AssemblyProgram.parse(`data @foo 0x0`);

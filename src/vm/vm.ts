@@ -1,15 +1,16 @@
 import { logger, release, ResolvablePromise } from '../lib/util';
 import { Debugger } from './debugger';
 import { Memory, Address, Immediate } from '../lib/base-types';
-import { MMU, AccessFlags, IdentityMMU, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
+import { AccessFlags, IdentityMMU, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
+import type { MMU } from './mmu';
 import { Program, Operation, Instruction, Register } from './instructions';
 import {
-  Peripheral, PeripheralMapping,
+  Peripheral,
   TimerPeripheral,
   DebugOutputPeripheral, DebugInputPeripheral, DebugBreakPeripheral,
   DebugFilePeripheral,
-
 } from './peripherals';
+import type { PeripheralMapping } from './peripherals';
 import { Compiler } from '../lowlevel/compiler';
 
 const log = logger('vm');
@@ -882,4 +883,5 @@ class VM {
 }
 
 
-export { VM, VMResult, VMStepResult, Breakpoint, State, Interrupt, PeripheralMapping };
+export { VM, State };
+export type { VMResult, VMStepResult, Breakpoint, Interrupt, PeripheralMapping };

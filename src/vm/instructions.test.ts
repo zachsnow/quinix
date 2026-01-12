@@ -1,5 +1,5 @@
 import { Instruction, Operation, Register } from './instructions';
-​
+
 describe('Instructions', () => {
   test('instructions encode correctly', () => {
     const r1 = 0x1;

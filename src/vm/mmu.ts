@@ -326,9 +326,9 @@ class ListPageTablePeripheral extends Peripheral implements MMU {
 }
 
 export {
-  MMU,
   AccessFlags,
   IdentityMMU,
   TwoLevelPageTablePeripheral,
   ListPageTablePeripheral,
-}
+};
+export type { MMU };

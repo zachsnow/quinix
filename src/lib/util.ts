@@ -326,7 +326,7 @@ function parseFile<T>(parser: (text: string, options: IParseOptions) => T, text:
   try {
     return parser(text, options);
   }
-  catch(e){
+  catch(e: any){
     if(e.name === 'SyntaxError'){
       e.location.filename = filename;
     }
@@ -381,7 +381,6 @@ export {
   logger,
   readFiles,
   parseFile,
-  IParseOptions, IFileRange,
   Syntax,
   Messages,
   ResolvablePromise,
@@ -391,4 +390,5 @@ export {
   range,
   writeOnce,
   Location,
-}
+};
+export type { IParseOptions, IFileRange };

@@ -4,7 +4,8 @@ import { logger } from '../lib/util';
 
 import { ResolvablePromise } from '../lib/util';
 import { Memory, Immediate, Address } from "../lib/base-types";
-import { VM, VMResult, State } from './vm';
+import { VM, State } from './vm';
+import type { VMResult } from './vm';
 import { Register, Instruction, Program } from './instructions';
 import { Compiler } from '../lowlevel/compiler';
 

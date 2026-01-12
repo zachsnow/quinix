@@ -1,6 +1,7 @@
 import readline from 'readline';
 import { logger, stringToCodePoints, ResolvablePromise, codePointsToString, release } from '../lib/util';
-import { VM, Interrupt } from './vm';
+import { VM } from './vm';
+import type { Interrupt } from './vm';
 import { Memory, Address, Offset } from '../lib/base-types';
 import { Instruction, Operation, Register, Immediate } from './instructions';
 import fs from 'fs';
@@ -582,7 +583,7 @@ class DebugFilePeripheral extends BufferedPeripheral {
 }
 
 export {
-  Peripheral, PeripheralMapping,
+  Peripheral,
   DebugBreakPeripheral,
   DebugOutputPeripheral,
   DebugInputPeripheral,
@@ -590,3 +591,4 @@ export {
   TimerPeripheral,
   KeypressPeripheral,
 };
+export type { PeripheralMapping };

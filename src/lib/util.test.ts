@@ -2,14 +2,11 @@ import { ResolvablePromise } from './util';
 
 describe('Utilities', () => {
   describe('ResolvablePromise', () => {
-    test('resolve', () => {
-      expect.assertions(1);
-
+    test('resolve', async () => {
       const resolvable = new ResolvablePromise<number>();
-      const e = expect(resolvable.promise).resolves.toBe(10);
-      resolvable.resolve(10);
-
-      return e;
+      setTimeout(() => resolvable.resolve(10), 1);
+      const result = await resolvable.promise;
+      expect(result).toBe(10);
     });
   });
 });

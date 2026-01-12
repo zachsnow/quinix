@@ -1072,8 +1072,9 @@ namespace Type {
 
 export {
   Type, TypedIdentifier,
-  Storage, TypedStorage,
+  TypedStorage,
   BuiltinType, IdentifierType, TemplateType, PointerType, ArrayType, SliceType, StructType, FunctionType,
   VariableType,
   TemplateInstantiationType, DotType, SuffixType,
-}
+};
+export type { Storage };

@@ -1,6 +1,6 @@
 import { Register } from '../vm/instructions';
 import { RegisterAllocator, Compiler } from './compiler';
-​
+
 describe('Register allocation', () => {
   test('allocates and deallocates', () => {
     const allocator = new RegisterAllocator();

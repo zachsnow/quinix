@@ -1,4 +1,5 @@
-import yargs from 'yargs';
+import yargs, { Argv, Arguments, Options, PositionalOptions } from 'yargs';
+import { hideBin } from 'yargs/helpers';
 import inspector from 'inspector';
 import debug from 'debug';
 
@@ -8,7 +9,7 @@ interface DefaultOptions {
   loggers?: string,
 }
 
-type MultipleOptions = { [key: string]: yargs.Options };
+type MultipleOptions = { [key: string]: Options };
 const defaultOptions: MultipleOptions = {
   verbose: {
     alias: 'v',
@@ -30,15 +31,15 @@ const defaultOptions: MultipleOptions = {
 
 type ParseOptions = {
   options?: MultipleOptions,
-  positional: yargs.PositionalOptions & { name: string },
+  positional: PositionalOptions & { name: string },
   loggers?: string[],
 }
 
-function parseArguments<Options>(scriptName: string, usage: string, description: string, parseOptions: ParseOptions): yargs.Arguments<Options & DefaultOptions> {
+function parseArguments<Options>(scriptName: string, usage: string, description: string, parseOptions: ParseOptions): Arguments<Options & DefaultOptions> {
   const options = parseOptions.options || {};
   const positional = parseOptions.positional;
-  const argv = (yargs as yargs.Argv<Options & DefaultOptions>).scriptName(scriptName)
-    .usage(usage, description, (yargs) => {
+  const argv = (yargs(hideBin(process.argv)) as Argv<Options & DefaultOptions>).scriptName(scriptName)
+    .usage(usage, description, (yargs: Argv<Options & DefaultOptions>) => {
       return yargs
         .options(options)
         .options(defaultOptions)
@@ -46,7 +47,7 @@ function parseArguments<Options>(scriptName: string, usage: string, description:
     })
     .help()
     .strict(true)
-    .argv;
+    .parseSync();
 
   if(argv.verbose){
     if(parseOptions.loggers){
@@ -62,7 +63,7 @@ function parseArguments<Options>(scriptName: string, usage: string, description:
     inspector.open(9999, undefined, true);
   }
 
-  return argv;
+  return argv as Arguments<Options & DefaultOptions>;
 }
 
 export {
