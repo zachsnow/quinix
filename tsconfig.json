@@ -13,13 +13,10 @@
     "baseUrl": ".",
     "rootDir": ".",
     "lib": ["ES2022"],
-    "types": ["bun-types", "node"]
+    "types": ["bun-types", "bun-types/test-globals", "node"]
   },
   "include": [
     "./src/**/*.ts",
     "./bin/**/*.ts"
-  ],
-  "exclude": [
-    "./src/**/*.test.ts"
   ]
 }

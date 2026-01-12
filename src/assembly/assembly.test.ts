@@ -92,7 +92,7 @@ describe('Assembler', () => {
         args.push('r3');
       }
       return args.join(' ');
-    }).filter((i) => !!i);
+    }).filter((i): i is string => !!i);
     const programText = instructionTexts.join('\n');
 
     const assemblyProgram: AssemblyProgram = parse(programText);
