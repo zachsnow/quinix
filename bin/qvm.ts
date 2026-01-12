@@ -16,7 +16,7 @@ const log = logger('qvm');
 ///////////////////////////////////////////////////////////////////////
 interface Options {
   binary: string;
-  cycles?: number;
+  cycles?: string;
   break: string;
   'break-write': string;
   stats: boolean;
@@ -31,7 +31,7 @@ const argv = parseArguments<Options>(
       cycles: {
         alias: 'c',
         describe: 'halt after number of cycles',
-        type: 'number',
+        type: 'string',
       },
       break: {
         alias: 'b',
@@ -101,7 +101,7 @@ log(`decoded program:\n${program}\n`);
 const vm = new VM({
   debug: argv.verbose,
   breakpoints: breakpoints,
-  cycles: argv.cycles,
+  cycles: argv.cycles ? parseInt(argv.cycles, 10) : undefined,
 });
 
 vm.run(programData).then((r) => {

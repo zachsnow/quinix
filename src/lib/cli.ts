@@ -1,71 +1,165 @@
-import yargs, { Argv, Arguments, Options, PositionalOptions } from 'yargs';
-import { hideBin } from 'yargs/helpers';
+#! /usr/bin/env bun
+import { parseArgs } from 'util';
 import inspector from 'inspector';
 import debug from 'debug';
 
 interface DefaultOptions {
-  verbose: boolean,
-  inspect: boolean,
-  loggers?: string,
+  verbose: boolean;
+  inspect: boolean;
+  loggers?: string;
+  help: boolean;
 }
 
-type MultipleOptions = { [key: string]: Options };
-const defaultOptions: MultipleOptions = {
-  verbose: {
-    alias: 'v',
-    describe: 'enable verbose output',
-    type: 'boolean',
-    default: false,
-  },
-  loggers: {
-    description: 'comma-separated list of loggers to include in verbose output',
-    type: 'string',
-  },
-  inspect: {
-    alias: 'i',
-    describe: 'run inspector',
-    type: 'boolean',
-    default: false,
-  },
-};
+type OptionType = 'string' | 'boolean';
 
-type ParseOptions = {
-  options?: MultipleOptions,
-  positional: PositionalOptions & { name: string },
-  loggers?: string[],
+interface OptionConfig {
+  alias?: string;
+  describe?: string;
+  type: OptionType;
+  default?: string | boolean | number;
+  array?: boolean;
+  demandOption?: boolean;
 }
 
-function parseArguments<Options>(scriptName: string, usage: string, description: string, parseOptions: ParseOptions): Arguments<Options & DefaultOptions> {
-  const options = parseOptions.options || {};
-  const positional = parseOptions.positional;
-  const argv = (yargs(hideBin(process.argv)) as Argv<Options & DefaultOptions>).scriptName(scriptName)
-    .usage(usage, description, (yargs: Argv<Options & DefaultOptions>) => {
-      return yargs
-        .options(options)
-        .options(defaultOptions)
-        .positional(positional.name, positional)
-    })
-    .help()
-    .strict(true)
-    .parseSync();
+type OptionsConfig = { [key: string]: OptionConfig };
 
-  if(argv.verbose){
-    if(parseOptions.loggers){
-      const loggers: string | undefined = argv.loggers;
-      debug.enable(loggers ? loggers : parseOptions.loggers.join(','));
+interface PositionalConfig {
+  name: string;
+  describe?: string;
+  type?: 'string';
+  array?: boolean;
+  demandOption?: boolean;
+}
+
+interface ParseOptions {
+  options?: OptionsConfig;
+  positional: PositionalConfig;
+  loggers?: string[];
+}
+
+function printHelp(scriptName: string, usage: string, description: string, parseOptions: ParseOptions): void {
+  console.log(`${scriptName} - ${description}\n`);
+  console.log(`Usage: ${usage.replace('$0', scriptName)}\n`);
+  console.log('Options:');
+
+  const allOptions: OptionsConfig = {
+    ...parseOptions.options,
+    verbose: { alias: 'v', describe: 'enable verbose output', type: 'boolean', default: false },
+    loggers: { describe: 'comma-separated list of loggers', type: 'string' },
+    inspect: { alias: 'i', describe: 'run inspector', type: 'boolean', default: false },
+    help: { alias: 'h', describe: 'show help', type: 'boolean', default: false },
+  };
+
+  for (const [name, config] of Object.entries(allOptions)) {
+    const alias = config.alias ? `-${config.alias}, ` : '    ';
+    const defaultStr = config.default !== undefined ? ` [default: ${config.default}]` : '';
+    console.log(`  ${alias}--${name.padEnd(16)} ${config.describe || ''}${defaultStr}`);
+  }
+
+  if (parseOptions.positional) {
+    console.log(`\nPositional arguments:`);
+    const p = parseOptions.positional;
+    const required = p.demandOption ? ' (required)' : '';
+    console.log(`  ${p.name.padEnd(20)} ${p.describe || ''}${required}`);
+  }
+}
+
+function parseArguments<Options>(
+  scriptName: string,
+  usage: string,
+  description: string,
+  parseOptions: ParseOptions
+): Options & DefaultOptions {
+  const userOptions = parseOptions.options || {};
+
+  // Build parseArgs config
+  const options: { [key: string]: { type: 'string' | 'boolean'; short?: string; multiple?: boolean; default?: string | boolean } } = {};
+  const aliases: { [short: string]: string } = {};
+
+  // Add user options
+  for (const [name, config] of Object.entries(userOptions)) {
+    const type = config.type === 'boolean' ? 'boolean' : 'string';
+    options[name] = { type };
+    if (config.alias) {
+      options[name].short = config.alias;
+      aliases[config.alias] = name;
     }
-    else {
+    if (config.array) {
+      options[name].multiple = true;
+    }
+    if (config.default !== undefined && type === 'boolean') {
+      options[name].default = config.default as boolean;
+    }
+  }
+
+  // Add default options
+  options.verbose = { type: 'boolean', short: 'v', default: false };
+  options.loggers = { type: 'string' };
+  options.inspect = { type: 'boolean', short: 'i', default: false };
+  options.help = { type: 'boolean', short: 'h', default: false };
+
+  let parsed;
+  try {
+    parsed = parseArgs({
+      options,
+      allowPositionals: true,
+      strict: true,
+    });
+  } catch (e: any) {
+    console.error(`Error: ${e.message}`);
+    printHelp(scriptName, usage, description, parseOptions);
+    process.exit(1);
+  }
+
+  const { values, positionals } = parsed;
+
+  // Handle help
+  if (values.help) {
+    printHelp(scriptName, usage, description, parseOptions);
+    process.exit(0);
+  }
+
+  // Apply defaults for string/number options
+  for (const [name, config] of Object.entries(userOptions)) {
+    if (values[name] === undefined && config.default !== undefined) {
+      (values as any)[name] = config.default;
+    }
+  }
+
+  // Handle positional
+  const positionalConfig = parseOptions.positional;
+  if (positionalConfig.array) {
+    (values as any)[positionalConfig.name] = positionals;
+  } else {
+    (values as any)[positionalConfig.name] = positionals[0];
+  }
+
+  // Check required positional
+  if (positionalConfig.demandOption) {
+    const val = (values as any)[positionalConfig.name];
+    if (val === undefined || (Array.isArray(val) && val.length === 0)) {
+      console.error(`Error: Missing required positional argument: ${positionalConfig.name}`);
+      printHelp(scriptName, usage, description, parseOptions);
+      process.exit(1);
+    }
+  }
+
+  // Handle verbose logging
+  if (values.verbose) {
+    if (parseOptions.loggers) {
+      const loggers = values.loggers as string | undefined;
+      debug.enable(loggers ? loggers : parseOptions.loggers.join(','));
+    } else {
       debug.enable(scriptName);
     }
   }
 
-  if(argv.inspect){
+  // Handle inspector
+  if (values.inspect) {
     inspector.open(9999, undefined, true);
   }
 
-  return argv as Arguments<Options & DefaultOptions>;
+  return values as Options & DefaultOptions;
 }
 
-export {
-  parseArguments,
-}
+export { parseArguments };

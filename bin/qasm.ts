@@ -31,7 +31,7 @@ const argv = parseArguments<Options>('qasm',
         type: 'string',
         default: 'out.qbin',
       },
-      assembly: {
+      assemble: {
         alias: 'a',
         describe: 'output assembly, not binary',
         type: 'boolean',
@@ -113,7 +113,7 @@ async function main(): Promise<number | undefined> {
   log(`assembled program:\n${program}\n`);
 
   // Output.
-  if(!argv.assembly){
+  if(!argv.assemble){
     await fs.promises.writeFile(argv.output, program.encode().toBuffer());
     return;
   }
