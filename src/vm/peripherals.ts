@@ -383,13 +383,23 @@ class DebugInputPeripheral extends BufferedPeripheral {
     this.listener = this.listener.bind(this);
   }
 
+  private get isBrowser(): boolean {
+    return typeof process === 'undefined' || !process.stdin;
+  }
+
   public unmap(){
     super.unmap();
-    process.stdin.off('data', this.listener);
-    process.stdin.off('end', this.listener);
+    if (!this.isBrowser) {
+      process.stdin.off('data', this.listener);
+      process.stdin.off('end', this.listener);
+    }
   }
 
   protected onRead(): Promise<number[]> {
+    if (this.isBrowser) {
+      return Promise.reject('input not supported in browser');
+    }
+
     if(this.resolvablePromise){
       this.resolvablePromise.reject('read while pending');
     }
@@ -604,6 +614,7 @@ class DebugFilePeripheral extends BufferedPeripheral {
 
 export {
   Peripheral,
+  BufferedPeripheral,
   DebugBreakPeripheral,
   DebugOutputPeripheral,
   DebugInputPeripheral,
