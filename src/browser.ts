@@ -6,61 +6,9 @@
 import { LowLevelProgram } from './lowlevel/lowlevel';
 import { VM } from './vm/vm';
 
-// Bare-metal standard library for programs running directly on QVM.
-// Uses memory-mapped I/O to communicate with debug peripherals.
-const stdlib = `
-namespace std {
-  namespace console {
-    function print(s: string): bool {
-      var control: *byte = <unsafe * byte> 0x303;
-      var buffer: string = <unsafe string> 0x304;
-      return buffered::write(control, buffer, s);
-    }
-
-    function input(s: string): bool {
-      var control = <unsafe * byte> 0x403;
-      var buffer = <unsafe string> 0x404;
-      return buffered::read(control, buffer, s);
-    }
-  }
-
-  namespace buffered {
-    .constant global READY: byte = 0x0;
-    .constant global WRITE: byte = 0x1;
-    .constant global READ: byte = 0x2;
-    .constant global PENDING: byte = 0x3;
-    .constant global ERROR: byte = 0x4;
-
-    function write(control: * byte, buffer: string, data: string): bool {
-      len buffer = len data;
-      for(var i = 0; i < len data; i = i + 1){
-        buffer[i] = data[i];
-      }
-
-      *control = WRITE;
-
-      while(*control == PENDING){}
-
-      return *control == READY;
-    }
-
-    function read(control: * byte, buffer: string, data: string): bool {
-      *control = READ;
-
-      while(*control == PENDING){}
-      if(*control != READY){
-        return false;
-      }
-
-      len data = len buffer;
-      for(var i = 0; i < len buffer; i = i + 1){
-        data[i] = buffer[i];
-      }
-      return true;
-    }
-  }
-}
-`;
+// Import the bare-metal standard library from the source file.
+// This is embedded at build time by bun.
+import stdlib from '../lib/std.bare.qll' with { type: 'text' };
 
 // Export to globalThis for browser use
 declare const globalThis: Record<string, unknown>;
