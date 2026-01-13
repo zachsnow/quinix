@@ -10,3 +10,4 @@ out.qasm
 /*.qasm
 *.qbin
 /lib/bin/*.qasm
+tsconfig.build.tsbuildinfo
