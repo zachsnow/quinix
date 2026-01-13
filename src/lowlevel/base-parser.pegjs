@@ -20,17 +20,26 @@ IntLiteral
   / digits:[0-9]+ { return parseInt(digits.join(''), 10); }
 
 StringLiteral
-  = "'" characters:Char* "'" { return characters.join(''); }
+  = "'" characters:SingleQuoteChar* "'" { return characters.join(''); }
+  / "\"" characters:DoubleQuoteChar* "\"" { return characters.join(''); }
 
 BoolLiteral
   = "true" { return true; }
   / "false" { return false; }
 
-Char
+SingleQuoteChar
+  = EscapedChar
+  / [^\\\n']
+
+DoubleQuoteChar
+  = EscapedChar
+  / [^\\\n"]
+
+EscapedChar
   = "\\\\" { return "\\"; }
   / "\\'" { return "'"; }
+  / "\\\"" { return "\""; }
   / "\\n" { return "\n"; }
-  / [^\\\n']
 
 _ "commented whitespace"
   = Whitespace (Comment Whitespace)* { return; }

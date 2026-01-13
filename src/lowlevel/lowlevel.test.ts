@@ -26,7 +26,7 @@ describe('QLLC parsing', () => {
 
     test('parse error includes filename and location', () => {
       try {
-        LowLevelProgram.parse('function main(): byte { return ""; }', 'test.qll');
+        LowLevelProgram.parse('function main(): byte { return @; }', 'test.qll');
         expect(true).toBe(false); // Should not reach here
       } catch (e: any) {
         expect(e.location).toBeDefined();
