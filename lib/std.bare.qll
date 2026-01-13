@@ -9,21 +9,18 @@
 //
 // DebugOutputPeripheral (0x3) is at base 0x300.
 // DebugInputPeripheral (0x4) is at base 0x400.
+//
+// NOTE: We use fixed-size arrays instead of slices because the compiler
+// doesn't properly convert arrays to slices when passing as arguments.
 namespace std {
   // Console IO; hardcoded to use the debug input and output peripherals.
   namespace console {
-    function print(s: string): bool {
+    // Print a fixed-size array. The array layout is [length][data...].
+    function print<N>(s: byte[N]): bool {
       var control: *byte = <unsafe *byte> 0x300;
       var size: *byte = <unsafe *byte> 0x302;
       var buffer: *byte = <unsafe *byte> 0x303;
-      return buffered::write(control, size, buffer, s);
-    }
-
-    function input(s: string): bool {
-      var control: *byte = <unsafe *byte> 0x400;
-      var size: *byte = <unsafe *byte> 0x402;
-      var buffer: *byte = <unsafe *byte> 0x403;
-      return buffered::read(control, size, buffer, s);
+      return buffered::write<N>(control, size, buffer, s);
     }
   }
 
@@ -35,7 +32,7 @@ namespace std {
     .constant global PENDING: byte = 0x3;
     .constant global ERROR: byte = 0x4;
 
-    function write(control: *byte, size: *byte, buffer: *byte, data: string): bool {
+    function write<N>(control: *byte, size: *byte, buffer: *byte, data: byte[N]): bool {
       *size = len data;
       for(var i = 0; i < len data; i = i + 1){
         buffer[unsafe i] = data[i];
@@ -46,21 +43,6 @@ namespace std {
       while(*control == PENDING){}
 
       return *control == READY;
-    }
-
-    function read(control: *byte, size: *byte, buffer: *byte, data: string): bool {
-      *control = READ;
-
-      while(*control == PENDING){}
-      if(*control != READY){
-        return false;
-      }
-
-      len data = *size;
-      for(var i = 0; i < *size; i = i + 1){
-        data[i] = buffer[unsafe i];
-      }
-      return true;
     }
   }
 }
