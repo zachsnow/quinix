@@ -47,6 +47,8 @@ echo "Building libraries..."
 
 echo "Building browser bundle..."
 mkdir -p build
-bun build src/browser.ts --target=browser --format=iife --external=readline --outfile=build/quinix.js
+# Mark readline and fs as external since they're Node.js-only modules used by
+# the debugger and file peripherals, which don't work in browser environments.
+bun build src/browser.ts --target=browser --format=iife --external=readline --external=fs --outfile=build/quinix.js
 
 echo "Done."

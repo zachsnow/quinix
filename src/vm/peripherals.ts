@@ -1,4 +1,3 @@
-import readline from 'readline';
 import { stringToCodePoints, ResolvablePromise, codePointsToString, release } from '../lib/util';
 import { logger } from '../lib/logger';
 import { VM } from './vm';
@@ -504,7 +503,7 @@ class DebugBreakPeripheral extends Peripheral {
  * Listens for keypresses and triggers int 0x10.
  *
  * @remarks this will hang listening on stdin (even with `off()`) so it shouldn't
- * be included in the test suite for now.
+ * be included in the test suite for now. Only works in Node.js environments.
  */
 class KeypressPeripheral extends Peripheral {
   public readonly name = 'keypress';
@@ -515,22 +514,33 @@ class KeypressPeripheral extends Peripheral {
   public readonly io = 0x0;
   public readonly shared = 0x2;
 
+  private initialized = false;
+
   public constructor(){
     super();
 
     // Bind for easier listener removal.
     this.onKeypress = this.onKeypress.bind(this);
+  }
 
+  // Dynamically import readline to avoid loading it in the browser.
+  private async initReadline() {
+    if (this.initialized) {
+      return;
+    }
+    const readline = await import('readline');
     readline.emitKeypressEvents(process.stdin);
     if(process.stdin.setRawMode instanceof Function){
       process.stdin.setRawMode(true);
     }
+    this.initialized = true;
   }
 
   public notify(address: Address) {}
 
   public map(vm: VM, mapping: PeripheralMapping){
     super.map(vm, mapping);
+    this.initReadline();
     process.stdin.on('keypress', this.onKeypress);
   }
 
