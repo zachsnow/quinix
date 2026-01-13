@@ -347,12 +347,21 @@ class DebugOutputPeripheral extends BufferedPeripheral {
   public readonly name = "debug-output";
   public readonly identifier = 0x00000003;
 
+  // Optional callback for output (used in browser environments).
+  public onOutput?: (s: string) => void;
+
   public async onWrite(data: number[]): Promise<void> {
     // Release for "realism".
     await release();
 
     const s = codePointsToString(data);
-    process.stdout.write(s);
+    if (this.onOutput) {
+      this.onOutput(s);
+    } else if (typeof process !== 'undefined' && process.stdout) {
+      process.stdout.write(s);
+    } else {
+      console.log(s);
+    }
   }
 }
 
