@@ -1,7 +1,26 @@
 {
   "name": "quinix",
   "version": "0.0.1",
-  "description": "Quinix",
+  "description": "A 32-bit RISC virtual machine, assembly language, and C-like high-level language",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": "Zach Snow",
+  "homepage": "https://quinix.vein.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zachsnow/quinix.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zachsnow/quinix/issues"
+  },
+  "keywords": [
+    "virtual-machine",
+    "compiler",
+    "assembler",
+    "programming-language",
+    "educational"
+  ],
   "scripts": {
     "build": "./build.sh",
     "test": "bun test",
@@ -11,7 +30,6 @@
     "qvm": "bun run bin/qvm.ts",
     "qrun": "bun run bin/qrun.ts"
   },
-  "author": "Zach Snow",
   "dependencies": {
     "peggy": "^4.2.0",
     "ts-pegjs": "^4.2.1"
