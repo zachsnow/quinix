@@ -208,6 +208,10 @@ describe('Types', () => {
       expect(kindcheck('byte[]').isConvertibleTo(kindcheck('bool[]'))).toBe(true);
       expect(kindcheck('bool[]').isEqualTo(kindcheck('byte[]'))).toBe(false);
       expect(kindcheck('bool[]').isConvertibleTo(kindcheck('byte[]'))).toBe(true);
+
+      // String literal (sized array) converts to string (slice)
+      expect(kindcheck('byte[5]').isConvertibleTo(kindcheck('string'))).toBe(true);
+      expect(kindcheck('string').isConvertibleTo(kindcheck('byte[5]'))).toBe(false);
     });
 
     test('functions', () => {

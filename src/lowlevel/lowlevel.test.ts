@@ -1989,4 +1989,116 @@ describe('QLLC end-to-end', () => {
       }
     `, true, 2000);
   });
+
+  // Slice function argument tests
+  test('pass slice to function', () => {
+    return expectRunToBe(3, `
+      function getLen(s: byte[]): byte {
+        return len s;
+      }
+      function main(): byte {
+        var arr: byte[5];
+        var s: byte[] = arr[:3];
+        return getLen(s);
+      }
+    `);
+  });
+
+  test('pass string literal to slice parameter', () => {
+    return expectRunToBe(5, `
+      function getLen(s: string): byte {
+        return len s;
+      }
+      function main(): byte {
+        return getLen('hello');
+      }
+    `);
+  });
+
+  test('pass array to slice parameter', () => {
+    return expectRunToBe(5, `
+      function getLen(s: byte[]): byte {
+        return len s;
+      }
+      function main(): byte {
+        var arr: byte[5];
+        arr[0] = 1;
+        arr[1] = 2;
+        arr[2] = 3;
+        arr[3] = 4;
+        arr[4] = 5;
+        return getLen(arr);
+      }
+    `);
+  });
+
+  test('access array element via slice parameter', () => {
+    return expectRunToBe(30, `
+      function getSecond(s: byte[]): byte {
+        return s[1];
+      }
+      function main(): byte {
+        var arr: byte[3];
+        arr[0] = 10;
+        arr[1] = 30;
+        arr[2] = 50;
+        return getSecond(arr);
+      }
+    `);
+  });
+
+  test('multiple slice parameters', () => {
+    return expectRunToBe(8, `
+      function sumLens(a: byte[], b: byte[]): byte {
+        return len a + len b;
+      }
+      function main(): byte {
+        var arr1: byte[3];
+        var arr2: byte[5];
+        return sumLens(arr1, arr2);
+      }
+    `);
+  });
+
+  test('mixed integral and slice parameters', () => {
+    return expectRunToBe(13, `
+      function compute(x: byte, s: byte[], y: byte): byte {
+        return x + len s + y;
+      }
+      function main(): byte {
+        var arr: byte[3];
+        return compute(5, arr, 5);
+      }
+    `);
+  });
+
+  test('return slice from function', () => {
+    return expectRunToBe(20, `
+      function makeSlice(): byte[] {
+        var arr: byte[3];
+        arr[0] = 10;
+        arr[1] = 20;
+        arr[2] = 30;
+        return arr[:];
+      }
+      function main(): byte {
+        var s: byte[] = makeSlice();
+        return s[1];
+      }
+    `);
+  });
+
+  test('nested calls with slice conversion', () => {
+    return expectRunToBe(5, `
+      function inner(s: byte[]): byte {
+        return len s;
+      }
+      function outer(s: byte[]): byte {
+        return inner(s);
+      }
+      function main(): byte {
+        return outer('hello');
+      }
+    `);
+  });
 });
