@@ -2,88 +2,14 @@ import { stringToCodePoints, ResolvablePromise, codePointsToString, release } fr
 import { logger } from '../lib/logger';
 import { VM } from './vm';
 import type { Interrupt } from './vm';
-import { Memory, Address, Offset } from '../lib/base-types';
+import { Address } from '../lib/base-types';
 import { Instruction, Operation, Register, Immediate } from './instructions';
+import { Peripheral, BufferedPeripheral } from './peripheral-base';
+import type { PeripheralMapping } from './peripheral-base';
 import fs from 'fs';
+import readline from 'readline';
 
 const log = logger('vm:peripherals');
-
-abstract class Peripheral {
-  /**
-   * The peripheral's display name.
-   */
-  public abstract readonly name: string;
-
-  /**
-   * The peripheral's unique identifier. No two loaded
-   * peripherals should share an identifier.
-   */
-  public abstract readonly identifier: Immediate;
-
-  /**
-   * The number of bytes to map for IO.
-   */
-  public abstract readonly io: Offset;
-
-  /**
-   * The number of bytes to map for shared use.
-   */
-  public readonly shared: Offset = 0;
-
-  protected vm?: VM;
-  protected mapping?: PeripheralMapping;
-
-  protected unmapped(): never {
-    const message = `unmapped peripheral ${this.name}`;
-    if(this.vm){
-      this.vm.fault(message);
-    }
-    throw new Error(message);
-  }
-
-  /**
-   * Called by the VM after the peripheral has been mapped.
-   *
-   * @param vm the VM to which this peripheral is mapped
-   * @param view the view of the VM's memory to which this peripheral is mapped
-   */
-  public map(vm: VM, mapping: PeripheralMapping): void {
-    this.vm = vm;
-    this.mapping = mapping;
-  }
-
-  /**
-   * Called by the VM after the peripheral has been unmapped.
-   */
-  public unmap(): void {}
-
-  /**
-   * Notifies the peripheral of a write to its "io" memory.
-   *
-   * @param address the address in the view that was written.
-   */
-  public abstract notify(address: Address): void;
-
-  /**
-   * The interrupt that this peripheral will use to communicate
-   * with the VM; `0x0` means that the peripheral does not need
-   * to map an interrupt.
-   */
-  public interrupt: Interrupt = 0x0;
-
-  /**
-   * The peripheral's interrupt handler.
-   */
-  public get interruptHandler(): Instruction[] {
-    return [];
-  }
-}
-
-type PeripheralMapping = {
-  peripheral: Peripheral,
-  base: Address,
-  view: Memory,
-};
 
 /**
  * A peripheral implementing a "hardware" timer.
@@ -145,201 +71,6 @@ class TimerPeripheral extends Peripheral {
   }
 }
 
-abstract class BufferedPeripheral extends Peripheral {
-  public readonly io = 0x1;
-  public readonly shared: Offset;
-
-  protected readonly CONTROL_ADDR = 0x0;
-  private readonly CAPACITY_ADDR = 0x1;
-  private readonly SIZE_ADDR = 0x2;
-  private readonly BUFFER_ADDR = 0x3;
-
-  private readonly DEFAULT_BUFFER_SIZE = 0x100 - this.BUFFER_ADDR;
-
-  private readonly READY = 0x0;
-  private readonly WRITE = 0x1;
-  private readonly READ = 0x2;
-  private readonly PENDING = 0x3;
-  private readonly ERROR = 0xffffffff;
-
-  private readonly bufferSize: number;
-
-  private inputBuffer?: number[];
-  private outputBuffer: number[] = [];
-
-  public constructor(bufferSize?: Offset){
-    super();
-
-    this.bufferSize = bufferSize ?? this.DEFAULT_BUFFER_SIZE;
-    this.shared = 0x2 + this.bufferSize;
-  }
-
-  public map(vm: VM, mapping: PeripheralMapping): void {
-    super.map(vm, mapping);
-
-    if(!this.mapping){
-      this.unmapped();
-    }
-
-    this.mapping.view[this.CAPACITY_ADDR] = this.bufferSize;
-    this.mapping.view[this.SIZE_ADDR] = 0x0;
-  }
-
-  public notify(address: Address): void {
-    if(!this.mapping){
-      this.unmapped();
-    }
-
-    const control = this.mapping.view[this.CONTROL_ADDR];
-
-    log.debug(`${this.name}: notified buffered peripheral: ${Immediate.toString(control, 1)}`);
-
-    if(control === this.WRITE){
-      this.mapping.view[this.CONTROL_ADDR] = this.PENDING;
-      const isComplete = this.readShared();
-      if(!isComplete){
-        this.ready();
-        return;
-      }
-      const outputBuffer = this.outputBuffer;
-      this.outputBuffer = [];
-      this.onWrite(outputBuffer).then(() => {
-        this.ready();
-      }).catch((e) => {
-        this.error(e);
-      });
-      return;
-    }
-
-    if(control === this.READ){
-      this.mapping.view[this.CONTROL_ADDR] = this.PENDING;
-      if(this.inputBuffer){
-        this.writeShared();
-        this.ready();
-        return;
-      }
-      this.onRead().then((data) => {
-        this.inputBuffer = data;
-        this.writeShared();
-        this.ready();
-      }).catch((e) => {
-        this.error(e);
-      });
-      return;
-    }
-
-    this.error(`unsupported operation ${Immediate.toString(control)}`);
-  }
-
-  /**
-   * Called when the client program triggers a `WRITE` control.
-   * Derived classes implementing output peripherals should implement
-   * this.
-   *
-   * @param data the data that was written by the client program
-   * to the shared buffer.
-   */
-  protected async onWrite(data: number[]): Promise<void> {
-    return Promise.reject('write not supported');
-  }
-
-  /**
-   * Called when the client program triggers a `READ` control.
-   * Derived classes implementing input peripherals should implement
-   * this.
-   *
-   * @returns a promise that resolves to the data that should
-   * be returned to the client program.
-   */
-  protected async onRead(): Promise<number[]> {
-    return Promise.reject('read not supported.')
-  }
-
-  /**
-   * Returns the data in the buffer. Supports buffered writes by the
-   * client, where the client writes a size value larger than the actual
-   * buffer, triggers `WRITE` with a full buffer, and repeats with
-   * smaller sizes until a write fits within the buffer.
-   *
-   * @returns whether the client program has finished writing to
-   * the shared memory.
-   */
-  private readShared(): boolean {
-    if(!this.mapping){
-      this.unmapped();
-    }
-
-    // Get shared data.
-    const sourceSize = this.mapping.view[this.SIZE_ADDR];
-    const size = Math.min(sourceSize, this.bufferSize);
-    for(var i = 0; i < size; i++){
-      this.outputBuffer.push(this.mapping.view[this.BUFFER_ADDR + i]);
-    }
-
-    return sourceSize <= this.bufferSize;
-  }
-
-  /**
-   * Writes data to the shared buffer. Supports buffered reads
-   * by the client, where the client reads a buffer, sees that
-   * the peripheral has indicated it has more than a full buffer
-   * of data, and continues to call read until it reads a size
-   * that fits within the buffer.
-   *
-   * @returns whether the client has consumed the entire
-   * input buffer.
-   */
-  protected writeShared(): boolean {
-    if(!this.mapping){
-      this.unmapped();
-    }
-    if(!this.inputBuffer){
-      throw new Error();
-    }
-
-    const dataSize = this.inputBuffer.length;
-    const size = Math.min(this.bufferSize, dataSize);
-
-    this.mapping.view[this.SIZE_ADDR] = size;
-
-    for(var i = 0; i < size; i++){
-      this.mapping.view[this.BUFFER_ADDR + i] = this.inputBuffer[i];
-    }
-    this.inputBuffer.splice(0, size);
-
-    if(dataSize <= this.bufferSize){
-      this.inputBuffer = undefined;
-    }
-    return !!this.inputBuffer;
-  }
-
-  /**
-   * Mark the peripheral as ready.
-   *
-   * @param message optional message to log.
-   */
-  protected ready(message: string = 'complete'){
-    log.debug(`${this.name}: ${message}`);
-    if(!this.mapping){
-      this.unmapped();
-    }
-    this.mapping.view[this.CONTROL_ADDR] = this.READY;
-  }
-
-  /**
-   * Mark the peripheral as in an error state.
-   *
-   * @param message optional error to log.
-   */
-  protected error(message: string = 'error'){
-    log.debug(`${this.name}: ${message}`);
-    if(!this.mapping){
-      this.unmapped();
-    }
-    this.mapping.view[this.CONTROL_ADDR] = this.ERROR;
-  }
-}
-
 /**
  * A peripheral to write zero-terminated unicode strings to stdout.
  */
@@ -347,21 +78,12 @@ class DebugOutputPeripheral extends BufferedPeripheral {
   public readonly name = "debug-output";
   public readonly identifier = 0x00000003;
 
-  // Optional callback for output (used in browser environments).
-  public onOutput?: (s: string) => void;
-
   public async onWrite(data: number[]): Promise<void> {
     // Release for "realism".
     await release();
 
     const s = codePointsToString(data);
-    if (this.onOutput) {
-      this.onOutput(s);
-    } else if (typeof process !== 'undefined' && process.stdout) {
-      process.stdout.write(s);
-    } else {
-      console.log(s);
-    }
+    process.stdout.write(s);
   }
 }
 
@@ -383,23 +105,13 @@ class DebugInputPeripheral extends BufferedPeripheral {
     this.listener = this.listener.bind(this);
   }
 
-  private get isBrowser(): boolean {
-    return typeof process === 'undefined' || !process.stdin;
-  }
-
   public unmap(){
     super.unmap();
-    if (!this.isBrowser) {
-      process.stdin.off('data', this.listener);
-      process.stdin.off('end', this.listener);
-    }
+    process.stdin.off('data', this.listener);
+    process.stdin.off('end', this.listener);
   }
 
   protected onRead(): Promise<number[]> {
-    if (this.isBrowser) {
-      return Promise.reject('input not supported in browser');
-    }
-
     if(this.resolvablePromise){
       this.resolvablePromise.reject('read while pending');
     }
@@ -542,12 +254,10 @@ class KeypressPeripheral extends Peripheral {
     this.onKeypress = this.onKeypress.bind(this);
   }
 
-  // Dynamically import readline to avoid loading it in the browser.
-  private async initReadline() {
+  private initReadline() {
     if (this.initialized) {
       return;
     }
-    const readline = await import('readline');
     readline.emitKeypressEvents(process.stdin);
     if(process.stdin.setRawMode instanceof Function){
       process.stdin.setRawMode(true);

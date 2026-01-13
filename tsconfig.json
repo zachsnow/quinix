@@ -12,7 +12,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "rootDir": ".",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "types": ["bun-types", "bun-types/test-globals", "node"]
   },
   "include": [
