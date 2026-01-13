@@ -23,6 +23,28 @@ describe('QLLC parsing', () => {
         }
       `)).toThrowError();
     });
+
+    test('parse error includes filename and location', () => {
+      try {
+        LowLevelProgram.parse('function main(): byte { return ""; }', 'test.qll');
+        expect(true).toBe(false); // Should not reach here
+      } catch (e: any) {
+        expect(e.location).toBeDefined();
+        expect(e.location.filename).toBe('test.qll');
+        expect(e.location.start.line).toBe(1);
+        expect(e.location.start.column).toBeGreaterThan(0);
+      }
+    });
+
+    test('parse error message is reasonable', () => {
+      try {
+        LowLevelProgram.parse('function f(): byte { return @; }', 'test.qll');
+        expect(true).toBe(false);
+      } catch (e: any) {
+        // Should mention what was found
+        expect(e.message).toContain('@');
+      }
+    });
   });
 
   describe('Comments and whitespace', () => {
@@ -94,7 +116,7 @@ describe('QLLC typechecking', () => {
       return program.typecheck().errors.map((error) => error.text);
     }
     catch(e: any){
-      if(e.name === 'PeggySyntaxError'){
+      if(e.location){
         return [e.message];
       }
       throw e;
@@ -593,7 +615,7 @@ describe('QLLC end-to-end', () => {
       return await vm.run(memory);
     }
     catch(e: any){
-      if(e.name === 'PeggySyntaxError'){
+      if(e.location){
         return `${e.location.filename}(${e.location.start.line}): ${e.message}`;
       }
       return `${e}`;

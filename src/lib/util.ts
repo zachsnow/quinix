@@ -321,7 +321,8 @@ function parseFile<T>(parser: (text: string, options: IParseOptions) => T, text:
     return parser(text, options);
   }
   catch(e: any){
-    if(e.name === 'PeggySyntaxError'){
+    // Attach filename to any error with a location (syntax errors from Peggy).
+    if(e.location){
       e.location.filename = filename;
     }
     throw e;
