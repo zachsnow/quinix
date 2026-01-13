@@ -22,7 +22,7 @@ import { Expression, StringLiteralExpression } from './expressions';
 import { BlockStatement } from './statements';
 import { TypeChecker, KindChecker, Source } from './typechecker';
 import { Syntax } from '../lib/util';
-import { Compiler, FunctionCompiler, InterruptCompiler, GlobalCompiler } from './compiler';
+import { Compiler, FunctionCompiler, InterruptCompiler, GlobalCompiler, StorageCompiler } from './compiler';
 import { parse } from './parser';
 import { TypeTable } from './tables';
 
@@ -343,30 +343,13 @@ class GlobalDeclaration extends BaseValueDeclaration {
       new ConstantDirective(dr, new ReferenceConstant(reference)).comment(`reference global ${this.qualifiedIdentifier}`),
     ]);
 
-    // Handle array-to-slice conversion: create a slice descriptor.
+    // Handle array-to-slice conversion.
     const cGlobalType = this.type.resolve();
     const cExprType = this.expression.concreteType.resolve();
     if(cGlobalType instanceof SliceType && cExprType instanceof ArrayType){
-      // Create slice descriptor: [pointer][length][capacity]
-      // sr points to array which is [length][data...]
-      // Slice pointer = sr + 1 (skip length header)
-      const ptrR = compiler.allocateRegister();
-      compiler.emit([
-        new InstructionDirective(Instruction.createOperation(Operation.ADD, ptrR, sr, Compiler.ONE)).comment('slice pointer = array + 1'),
-      ]);
-      compiler.emitStaticStore(dr, ptrR, 1, 'slice.pointer');
-      compiler.deallocateRegister(ptrR);
-
-      // Load array length and store as slice length and capacity
-      const lenR = compiler.allocateRegister();
-      compiler.emit([
-        new InstructionDirective(Instruction.createOperation(Operation.LOAD, lenR, sr)).comment('load array length'),
-      ]);
-      compiler.emitIncrement(dr, 1);
-      compiler.emitStaticStore(dr, lenR, 1, 'slice.length');
-      compiler.emitIncrement(dr, 1);
-      compiler.emitStaticStore(dr, lenR, 1, 'slice.capacity');
-      compiler.deallocateRegister(lenR);
+      const sliceReg = compiler.emitArrayToSlice(sr);
+      compiler.emitStaticCopy(dr, sliceReg, 3, 'copy slice descriptor');
+      compiler.deallocateRegister(sliceReg);
     }
     else if(this.type.integral){
       compiler.emitStaticStore(dr, sr, 1, `store to global ${this.qualifiedIdentifier}`);

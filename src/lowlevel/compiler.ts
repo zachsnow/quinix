@@ -783,6 +783,55 @@ class Compiler {
 
 abstract class StorageCompiler extends Compiler {
   public abstract allocateStorage(identifier: string, size: number): void;
+
+  /**
+   * Emits code to convert an array to a slice descriptor.
+   * Array layout: [length][data...]
+   * Slice layout: [pointer][length][capacity]
+   *
+   * @param arrayReg Register containing the array address. Deallocated after use.
+   * @returns Register containing the address of a new slice descriptor.
+   */
+  public emitArrayToSlice(arrayReg: Register): Register {
+    // Allocate temporary storage for slice descriptor (3 words).
+    const tempId = this.generateIdentifier('slice_temp');
+    this.allocateStorage(tempId, 3);
+
+    const sliceReg = this.allocateRegister();
+    this.emitIdentifier(tempId, 'local', sliceReg, false);
+
+    // Store pointer: array address + 1 (skip length header).
+    const ptrReg = this.allocateRegister();
+    this.emit([
+      new InstructionDirective(
+        Instruction.createOperation(Operation.ADD, ptrReg, arrayReg, Compiler.ONE)
+      ).comment('slice.pointer = array + 1'),
+    ]);
+    this.emitStaticStore(sliceReg, ptrReg, 1, 'slice.pointer');
+    this.deallocateRegister(ptrReg);
+
+    // Load array length and store as slice length and capacity.
+    const lenReg = this.allocateRegister();
+    this.emit([
+      new InstructionDirective(
+        Instruction.createOperation(Operation.LOAD, lenReg, arrayReg)
+      ).comment('load array length'),
+    ]);
+
+    this.emitIncrement(sliceReg, 1);
+    this.emitStaticStore(sliceReg, lenReg, 1, 'slice.length');
+    this.emitIncrement(sliceReg, 1);
+    this.emitStaticStore(sliceReg, lenReg, 1, 'slice.capacity');
+    this.deallocateRegister(lenReg);
+
+    // Reset slice register to point to start of descriptor.
+    this.emitIdentifier(tempId, 'local', sliceReg, false);
+
+    // Deallocate the original array register.
+    this.deallocateRegister(arrayReg);
+
+    return sliceReg;
+  }
 }
 
 /**

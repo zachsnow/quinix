@@ -195,32 +195,16 @@ class VarStatement extends Statement {
     const r = compiler.allocateRegister();
     compiler.emitIdentifier(this.identity, 'local', r, false);
 
-    // Handle array-to-slice conversion: create a slice descriptor.
+    // Handle array-to-slice conversion.
     const cVarType = this.inferredType.resolve();
     const cExprType = this.expression.concreteType.resolve();
     if(cVarType instanceof SliceType && cExprType instanceof ArrayType){
-      // Create slice descriptor: [pointer][length][capacity]
-      // er points to array which is [length][data...]
-      // Slice pointer = er + 1 (skip length header)
-      const ptrR = compiler.allocateRegister();
-      compiler.emit([
-        new InstructionDirective(Instruction.createOperation(Operation.ADD, ptrR, er, Compiler.ONE)).comment('slice pointer = array + 1'),
-      ]);
-      compiler.emitStaticStore(r, ptrR, 1, 'slice.pointer');
-      compiler.deallocateRegister(ptrR);
-
-      // Load array length and store as slice length and capacity
-      const lenR = compiler.allocateRegister();
-      compiler.emit([
-        new InstructionDirective(Instruction.createOperation(Operation.LOAD, lenR, er)).comment('load array length'),
-      ]);
-      compiler.emitIncrement(r, 1);
-      compiler.emitStaticStore(r, lenR, 1, 'slice.length');
-      compiler.emitIncrement(r, 1);
-      compiler.emitStaticStore(r, lenR, 1, 'slice.capacity');
-      compiler.deallocateRegister(lenR);
-
-      compiler.deallocateRegister(er);
+      if(!(compiler instanceof StorageCompiler)){
+        throw new InternalError('expected storage compiler for slice conversion');
+      }
+      const sliceReg = compiler.emitArrayToSlice(er);
+      compiler.emitStaticCopy(r, sliceReg, 3, 'copy slice descriptor');
+      compiler.deallocateRegister(sliceReg);
       compiler.deallocateRegister(r);
       return;
     }
@@ -644,7 +628,16 @@ class ReturnStatement extends Statement {
     // If we have an expression, evaluate it, otherwise just evaluate 0. Then move the evaluation
     // to the return register.
     const expression = this.expression || new IntLiteralExpression(0);
-    const r = expression.compile(compiler);
+    let r = expression.compile(compiler);
+
+    // Handle array-to-slice conversion.
+    if (this.expression) {
+      const cReturnType = this.returnType.resolve();
+      const cExprType = this.expression.concreteType.resolve();
+      if (cReturnType instanceof SliceType && cExprType instanceof ArrayType) {
+        r = compiler.emitArrayToSlice(r);
+      }
+    }
 
     if(!this.returnType.integral && !this.returnType.isConvertibleTo(Type.Void)){
       // We need to copy the value pointed to by `r` into the first function parameter called `$return`.

@@ -1782,7 +1782,10 @@ class CallExpression extends Expression {
 
       // Handle array-to-slice conversion.
       if (expectedType instanceof SliceType && actualType instanceof ArrayType) {
-        r = this.compileArrayToSliceConversion(compiler, r);
+        if (!(compiler instanceof StorageCompiler)) {
+          throw new InternalError('expected storage compiler for slice conversion');
+        }
+        r = compiler.emitArrayToSlice(r);
       }
 
       return {
@@ -1814,56 +1817,6 @@ class CallExpression extends Expression {
 
     // Compile the call; this deallocates the argument and target registers.
     return compiler.emitCall(args, tr);
-  }
-
-  /**
-   * Converts an array address to a slice descriptor.
-   * Array layout: [length][data...]
-   * Slice layout: [pointer][length][capacity]
-   */
-  private compileArrayToSliceConversion(compiler: Compiler, arrayReg: Register): Register {
-    if (!(compiler instanceof StorageCompiler)) {
-      throw new InternalError('expected storage compiler for slice conversion');
-    }
-
-    // Allocate temporary storage for slice descriptor (3 words).
-    const tempId = compiler.generateIdentifier('slice_temp');
-    compiler.allocateStorage(tempId, 3);
-
-    const sliceReg = compiler.allocateRegister();
-    compiler.emitIdentifier(tempId, 'local', sliceReg, false);
-
-    // Store pointer: array address + 1 (skip length header).
-    const ptrReg = compiler.allocateRegister();
-    compiler.emit([
-      new InstructionDirective(
-        Instruction.createOperation(Operation.ADD, ptrReg, arrayReg, Compiler.ONE)
-      ).comment('slice.pointer = array + 1'),
-    ]);
-    compiler.emitStaticStore(sliceReg, ptrReg, 1, 'slice.pointer');
-    compiler.deallocateRegister(ptrReg);
-
-    // Load array length and store as slice length and capacity.
-    const lenReg = compiler.allocateRegister();
-    compiler.emit([
-      new InstructionDirective(
-        Instruction.createOperation(Operation.LOAD, lenReg, arrayReg)
-      ).comment('load array length'),
-    ]);
-
-    compiler.emitIncrement(sliceReg, 1);
-    compiler.emitStaticStore(sliceReg, lenReg, 1, 'slice.length');
-    compiler.emitIncrement(sliceReg, 1);
-    compiler.emitStaticStore(sliceReg, lenReg, 1, 'slice.capacity');
-    compiler.deallocateRegister(lenReg);
-
-    // Reset slice register to point to start of descriptor.
-    compiler.emitIdentifier(tempId, 'local', sliceReg, false);
-
-    // Deallocate the original array register.
-    compiler.deallocateRegister(arrayReg);
-
-    return sliceReg;
   }
 
   public toString(){
