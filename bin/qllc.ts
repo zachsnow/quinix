@@ -1,14 +1,14 @@
 #! /usr/bin/env bun
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
-import { readFiles } from '../src/lib/fs-util';
-import { InternalError } from '../src/lib/util';
-import { logger } from '../src/lib/logger';
-import { parseArguments } from '../src/lib/cli';
-import { LowLevelProgram } from '../src/lowlevel/lowlevel';
+import { logger } from "../src/lib/logger";
+import { InternalError } from "../src/lib/util";
+import { LowLevelProgram } from "../src/lowlevel/lowlevel";
+import { parseArguments } from "../src/platform/server/cli";
+import { readFiles } from "../src/platform/server/fs";
 
-const log = logger('qllc');
+const log = logger("qllc");
 
 ///////////////////////////////////////////////////////////////////////
 // Configure CLI.
@@ -22,47 +22,47 @@ interface Options {
 }
 
 const argv = parseArguments<Options>(
-  'qllc',
-  '$0 <files..>',
-  'compile the given files',
+  "qllc",
+  "$0 <files..>",
+  "compile the given files",
   {
     options: {
       output: {
-        alias: 'o',
-        describe: 'output path',
-        type: 'string',
-        default: 'out.qasm',
+        alias: "o",
+        describe: "output path",
+        type: "string",
+        default: "out.qasm",
         demandOption: false,
       },
       library: {
-        describe: 'compile as a library; exclude entrypoint',
-        type: 'boolean',
+        describe: "compile as a library; exclude entrypoint",
+        type: "boolean",
         default: false,
       },
       module: {
-        describe: 'module name',
-        type: 'string',
-        default: '',
+        describe: "module name",
+        type: "string",
+        default: "",
       },
       strict: {
-        describe: 'treat warnings as errors',
-        type: 'boolean',
+        describe: "treat warnings as errors",
+        type: "boolean",
         default: false,
       },
     },
     positional: {
-      name: 'files',
-      type: 'string',
-      describe: 'the source files to compile',
+      name: "files",
+      type: "string",
+      describe: "the source files to compile",
       array: true,
       demandOption: true,
     },
-  },
+  }
 );
 
 ///////////////////////////////////////////////////////////////////////
 
-async function main(): Promise<number | undefined>{
+async function main(): Promise<number | undefined> {
   // Parse programs and combine.
   const filenames = argv.files;
   const programTexts = await readFiles(filenames);
@@ -73,18 +73,19 @@ async function main(): Promise<number | undefined>{
 
   // Typecheck.
   const messages = program.typecheck();
-  if(messages.length){
+  if (messages.length) {
     process.stderr.write(`${messages}\n`);
   }
-  if(messages.errors.length){
+  if (messages.errors.length) {
     return -1;
   }
-  if(argv.strict && messages.warnings.length){
+  if (argv.strict && messages.warnings.length) {
     return -1;
   }
 
   // Compile.
-  const module = argv.module || path.basename(argv.output, path.extname(argv.output));
+  const module =
+    argv.module || path.basename(argv.output, path.extname(argv.output));
   const assemblyProgram = program.compile(module, !argv.library);
   log.debug(`compiled:\n${assemblyProgram}\n`);
 
@@ -92,20 +93,22 @@ async function main(): Promise<number | undefined>{
   fs.writeFileSync(argv.output, assemblyProgram.toString(true));
 }
 
-main().then((r) => {
-  process.exit(r || 0);
-}).catch((e) => {
-  if(e instanceof InternalError){
-    // Compiler error.
-    console.error(`error: ${e.message}\n${e.stack}`);
-  }
-  else if(e.location){
-    // Syntax error.
-    console.error(`error: ${e.location.filename}(${e.location.start.line})[${e.location.start.column}]: ${e.message}`);
-  }
-  else {
-    // Uknown error.
-    console.error(`error: unknown: ${e}\n${e.stack}`);
-  }
-  process.exit(-1);
-});
+main()
+  .then((r) => {
+    process.exit(r || 0);
+  })
+  .catch((e) => {
+    if (e instanceof InternalError) {
+      // Compiler error.
+      console.error(`error: ${e.message}\n${e.stack}`);
+    } else if (e.location) {
+      // Syntax error.
+      console.error(
+        `error: ${e.location.filename}(${e.location.start.line})[${e.location.start.column}]: ${e.message}`
+      );
+    } else {
+      // Uknown error.
+      console.error(`error: unknown: ${e}\n${e.stack}`);
+    }
+    process.exit(-1);
+  });

@@ -1,11 +1,11 @@
 import { release, ResolvablePromise } from '../lib/util';
 import { logger } from '../lib/logger';
-import { Memory, Address, Immediate } from '../lib/base-types';
+import { Memory, Address, Immediate } from '../lib/types';
 import { AccessFlags, IdentityMMU, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
 import type { MMU } from './mmu';
 import { Program, Operation, Instruction, Register } from './instructions';
-import { Peripheral } from './peripheral-base';
-import type { PeripheralMapping } from './peripheral-base';
+import { Peripheral } from './peripherals';
+import type { PeripheralMapping } from './peripherals';
 import { Compiler } from '../lowlevel/compiler';
 
 const log = logger('vm');

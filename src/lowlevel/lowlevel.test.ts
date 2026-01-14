@@ -5,11 +5,11 @@ import { LowLevelProgram } from './lowlevel';
 import { Compiler } from './compiler';
 import { parse as _parse } from './parser';
 import { VM, VMResult } from '../vm/vm';
-import { Immediate } from '../lib/base-types';
+import { Immediate } from '../lib/types';
 import { AssemblyProgram } from '../assembly/assembly';
 
 describe('QLLC parsing', () => {
-  function parseError(programText: string){
+  function parseError(programText: string) {
     return () => {
       LowLevelProgram.parse(programText);
     };
@@ -101,10 +101,10 @@ describe('QLLC parsing', () => {
 });
 
 describe('QLLC typechecking', () => {
-  function expectValid(programText: string){
+  function expectValid(programText: string) {
     const program: LowLevelProgram = LowLevelProgram.concat([LowLevelProgram.parse(programText)]);
     const messages = program.typecheck();
-    if(messages.errors.length){
+    if (messages.errors.length) {
       throw new Error(messages.toString());
     }
     expect(messages.errors.length).toBe(0);
@@ -115,8 +115,8 @@ describe('QLLC typechecking', () => {
     try {
       return program.typecheck().errors.map((error) => error.text);
     }
-    catch(e: any){
-      if(e.location){
+    catch (e: any) {
+      if (e.location) {
         return [e.message];
       }
       throw e;
@@ -124,7 +124,7 @@ describe('QLLC typechecking', () => {
   }
 
   describe('Namespaces', () => {
-    test('lookup global namespace', () =>{
+    test('lookup global namespace', () => {
       return expectValid(`
         global t: byte = 34;
         function main(): byte {
@@ -133,7 +133,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('lookup namespace', () =>{
+    test('lookup namespace', () => {
       return expectValid(`
         namespace n {
           global t: byte = 34;
@@ -144,7 +144,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('lookup same namespace', () =>{
+    test('lookup same namespace', () => {
       return expectValid(`
         namespace n {
           global t: byte = 34;
@@ -158,7 +158,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('lookup same namespace (nested)', () =>{
+    test('lookup same namespace (nested)', () => {
       return expectValid(`
         namespace outer {
           namespace n {
@@ -174,7 +174,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('lookup same namespace, separate namespace declarations', () =>{
+    test('lookup same namespace, separate namespace declarations', () => {
       return expectValid(`
         namespace n {
           function fn(): byte {
@@ -208,7 +208,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('lookup using', () =>{
+    test('lookup using', () => {
       return expectValid(`
         using global::n;
         namespace n {
@@ -223,7 +223,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('lookup nested using', () =>{
+    test('lookup nested using', () => {
       return expectValid(`
         using global::outer::n;
         namespace outer {
@@ -240,7 +240,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('lookup nested using prefix', () =>{
+    test('lookup nested using prefix', () => {
       return expectValid(`
         using global::outer;
         namespace outer {
@@ -257,7 +257,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('lookup parent', () =>{
+    test('lookup parent', () => {
       return expectValid(`
         global t: byte = 34;
         namespace n {
@@ -271,7 +271,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('lookup parent after namespace', () =>{
+    test('lookup parent after namespace', () => {
       return expectValid(`
         global t: * byte = null;
         namespace n {
@@ -286,7 +286,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('lookup parent after namespace', () =>{
+    test('lookup parent after namespace', () => {
       return expectValid(`
         namespace kernel {
           namespace memory {
@@ -306,7 +306,7 @@ describe('QLLC typechecking', () => {
   });
 
   describe('Template instantiation', () => {
-    test('simple instantiation', () =>{
+    test('simple instantiation', () => {
       return expectValid(`
         type vector<T> = T[];
         function reduce<T, C>(vec: vector<T>, fn: (T, C) => C, c: C): C {
@@ -324,7 +324,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('simple instantiation, nominal type', () =>{
+    test('simple instantiation, nominal type', () => {
       return expectValid(`
         type vector<T> = T[];
         type int = byte;
@@ -343,7 +343,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('simple instantiation, in namespace, with confused instantiating type', () =>{
+    test('simple instantiation, in namespace, with confused instantiating type', () => {
       return expectValid(`
         namespace std {
           type vector<T> = T[];
@@ -365,7 +365,7 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('simple instantiation, in namespace, with confused template type', () =>{
+    test('simple instantiation, in namespace, with confused template type', () => {
       return expectValid(`
         namespace std {
           type vector<T> = T[];
@@ -593,17 +593,17 @@ describe('QLLC end-to-end', () => {
     try {
       const program: LowLevelProgram = LowLevelProgram.concat([LowLevelProgram.parse(programText)]);
       const errors = program.typecheck().errors;
-      if(errors.length){
+      if (errors.length) {
         throw new Error(errors.join('\n'));
       }
 
       let assemblyProgram = program.compile();
-      if(includeSystem){
+      if (includeSystem) {
         assemblyProgram = AssemblyProgram.concat([assemblyProgram, systemAssemblyProgram]);
       }
 
-      const [ messages, binaryProgram ] = assemblyProgram.assemble();
-      if(!binaryProgram){
+      const [messages, binaryProgram] = assemblyProgram.assemble();
+      if (!binaryProgram) {
         throw new Error(messages.toString() || 'internal error');
       }
 
@@ -614,19 +614,19 @@ describe('QLLC end-to-end', () => {
       });
       return await vm.run(memory);
     }
-    catch(e: any){
-      if(e.location){
+    catch (e: any) {
+      if (e.location) {
         return `${e.location.filename}(${e.location.start.line}): ${e.message}`;
       }
       return `${e}`;
     }
   }
 
-  function expectRunToBe(value: number, text: string, includeSystem: boolean = false, cycles?: number){
+  function expectRunToBe(value: number, text: string, includeSystem: boolean = false, cycles?: number) {
     return expect(run(text, includeSystem, cycles).then((n) => typeof n === 'string' ? n : Immediate.toString(n))).resolves.toBe(Immediate.toString(value));
   }
 
-  function expectExpressionToBe(expr: string, value: number){
+  function expectExpressionToBe(expr: string, value: number) {
     return expectRunToBe(value, `
       function main(): byte {
         return <byte>(${expr});

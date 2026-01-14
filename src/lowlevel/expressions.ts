@@ -10,7 +10,7 @@ import {
 import { Type, Storage, PointerType, TemplateType, FunctionType, StructType, ArrayType, SliceType, VariableType } from './types';
 import { TypeChecker, KindChecker } from './typechecker';
 import { Compiler, StorageCompiler } from './compiler';
-import { Immediate } from '../lib/base-types';
+import { Immediate } from '../lib/types';
 import { Instruction, Operation, } from '../vm/instructions';
 import { Register } from '../vm/instructions';
 import { TypeTable } from './tables';
@@ -62,14 +62,14 @@ abstract class Expression extends Syntax {
    * @param dr the register holding the destination.
    * @param sr the register holding the source.
    */
-  public compileAssignmentCheck(compiler: Compiler, dr: Register, ar: Register): void {}
+  public compileAssignmentCheck(compiler: Compiler, dr: Register, ar: Register): void { }
 
   /**
    * Returns whether the code generated for this expression needs to include a dereference.
    *
    * @param lvalue whether this expression is being compield as an "lvalue".
    */
-  protected dereference(lvalue?: boolean){
+  protected dereference(lvalue?: boolean) {
     return !lvalue && this.concreteType.integral;
   }
 
@@ -108,11 +108,11 @@ class IdentifierExpression extends Expression {
 
   private instantiated: boolean = false;
 
-  public constructor(private identifier: string, private typeArgs: Type[]){
+  public constructor(private identifier: string, private typeArgs: Type[]) {
     super();
   }
 
-  public substitute(typeTable: TypeTable){
+  public substitute(typeTable: TypeTable) {
     return new IdentifierExpression(
       this.identifier,
       this.typeArgs.map((type) => type.substitute(typeTable)),
@@ -126,13 +126,13 @@ class IdentifierExpression extends Expression {
     let needsReference = false;
     let type: Type;
     let qualifiedIdentifier: string;
-    if(lookup !== undefined){
+    if (lookup !== undefined) {
       // First check for parameters and locals.
       this.storage = lookup.value.storage;
       qualifiedIdentifier = lookup.identity;
       type = lookup.value.type;
     }
-    else if(declaration !== undefined){
+    else if (declaration !== undefined) {
       // Next check for globals, functions, and template functions.
       this.storage = declaration.storage;
       qualifiedIdentifier = declaration.qualifiedIdentifier;
@@ -150,7 +150,7 @@ class IdentifierExpression extends Expression {
     const cType = type.resolve();
 
     // Explicitly instantiated template type.
-    if(this.typeArgs.length){
+    if (this.typeArgs.length) {
       // Elaborate and check type arguments in this context.
       this.typeArgs.forEach((typeArg) => {
         typeArg.kindcheck(context, new KindChecker());
@@ -158,7 +158,7 @@ class IdentifierExpression extends Expression {
 
       // Only templates can be instantiated.
       const cType = type.resolve();
-      if(!(cType instanceof TemplateType)){
+      if (!(cType instanceof TemplateType)) {
         this.error(context, `unexpected type arguments ${this.typeArgs.join(', ')}`);
         return Type.Error;
       }
@@ -168,7 +168,7 @@ class IdentifierExpression extends Expression {
       // to this function we will find it.
       const instantiatedType = cType.instantiate(context, new KindChecker(), this.typeArgs, this.location);
       this.qualifiedIdentifier = `${qualifiedIdentifier}<${instantiatedType}>`;
-      if(needsReference){
+      if (needsReference) {
         context.reference(this.qualifiedIdentifier);
       }
 
@@ -176,11 +176,11 @@ class IdentifierExpression extends Expression {
     }
 
     // Uninstantiated template type.
-    if(cType instanceof TemplateType){
+    if (cType instanceof TemplateType) {
       // If we have an uninstantiated template, we must eventually instantiate
       // it or we won't be able to compile it.
       context.addCheck(() => {
-        if(!this.instantiated){
+        if (!this.instantiated) {
           this.error(context, `${this} not instantiated`);
         }
       });
@@ -190,7 +190,7 @@ class IdentifierExpression extends Expression {
       return cType.extendInstantiators((ctx, k, instantiatedType: Type) => {
         this.instantiated = true;
         this.qualifiedIdentifier = `${qualifiedIdentifier}<${instantiatedType}>`;
-        if(needsReference){
+        if (needsReference) {
           context.reference(this.qualifiedIdentifier);
         }
       });
@@ -198,7 +198,7 @@ class IdentifierExpression extends Expression {
 
     // Non-templated case.
     this.qualifiedIdentifier = qualifiedIdentifier;
-    if(needsReference){
+    if (needsReference) {
       context.reference(this.qualifiedIdentifier);
     }
     return type;
@@ -212,8 +212,8 @@ class IdentifierExpression extends Expression {
     return r;
   }
 
-  public dereference(lvalue: boolean): boolean{
-    if(this.storage === 'function'){
+  public dereference(lvalue: boolean): boolean {
+    if (this.storage === 'function') {
       return false;
     }
     return super.dereference(lvalue);
@@ -223,7 +223,7 @@ class IdentifierExpression extends Expression {
     return true;
   }
 
-  public toString(){
+  public toString() {
     return this.identifier;
   }
 }
@@ -233,7 +233,7 @@ writeOnce(IdentifierExpression, 'storage');
 class IntLiteralExpression extends Expression {
   public readonly immediate: Immediate;
 
-  public constructor(immediate: Immediate){
+  public constructor(immediate: Immediate) {
     super();
     this.immediate = immediate;
   }
@@ -246,7 +246,7 @@ class IntLiteralExpression extends Expression {
 
   public typecheck(context: TypeChecker, contextualType?: Type): Type {
     // If we contextually know we want a specific numeric type, let's use that.
-    if(contextualType && contextualType.numeric){
+    if (contextualType && contextualType.numeric) {
       return contextualType;
     }
     return Type.Byte;
@@ -260,7 +260,7 @@ class IntLiteralExpression extends Expression {
     return r;
   }
 
-  public toString(){
+  public toString() {
     return this.immediate.toString();
   }
 
@@ -272,7 +272,7 @@ class IntLiteralExpression extends Expression {
 class BoolLiteralExpression extends Expression {
   public readonly value: boolean;
 
-  public constructor(value: boolean){
+  public constructor(value: boolean) {
     super();
     this.value = value;
   }
@@ -283,7 +283,7 @@ class BoolLiteralExpression extends Expression {
 
   public typecheck(context: TypeChecker, contextualType?: Type): Type {
     // If we contextually know we want a specific numeric type, let's use that.
-    if(contextualType && contextualType.numeric){
+    if (contextualType && contextualType.numeric) {
       return contextualType;
     }
     return context.builtinType('bool');
@@ -297,7 +297,7 @@ class BoolLiteralExpression extends Expression {
     return r;
   }
 
-  public toString(){
+  public toString() {
     return this.value ? 'true' : 'false';
   }
 
@@ -313,7 +313,7 @@ type LiteralExpression = {
 
 function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpressions: readonly LiteralExpression[], length?: number): Register {
   // We can only compile non-integral literals when our compiler supports storage.
-  if(!(compiler instanceof StorageCompiler)){
+  if (!(compiler instanceof StorageCompiler)) {
     throw new InternalError(`expected storage when compiling literal expression`);
   }
 
@@ -334,7 +334,7 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
   compiler.emitMove(ri, r, 'initialize destination pointer');
 
   // Emit the length header if specified.
-  if(length !== undefined){
+  if (length !== undefined) {
     const sr = compiler.allocateRegister();
     compiler.emit([
       new ConstantDirective(sr, new ImmediateConstant(length)).comment(`length ${length}`),
@@ -346,9 +346,9 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
 
   // Evaluate each value (if there is one) and store it in the data.
   literalExpressions.forEach((literalExpression, i) => {
-    if(literalExpression.expression !== undefined){
+    if (literalExpression.expression !== undefined) {
       const er = literalExpression.expression.compile(compiler);
-      if(literalExpression.type.integral){
+      if (literalExpression.type.integral) {
         compiler.emitStaticStore(ri, er, 1, 'store integral');
       }
       else {
@@ -365,7 +365,7 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
       compiler.deallocateRegister(zr);
     }
 
-    if(i < literalExpressions.length - 1){
+    if (i < literalExpressions.length - 1) {
       compiler.emitIncrement(ri, literalExpression.type.size, 'next literal expression');
     }
   });
@@ -378,7 +378,7 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
 class StringLiteralExpression extends Expression {
   public readonly codePoints: readonly number[];
 
-  public constructor(public readonly text: string){
+  public constructor(public readonly text: string) {
     super();
     this.codePoints = stringToCodePoints(this.text);
   }
@@ -407,7 +407,7 @@ class StringLiteralExpression extends Expression {
     return this.codePoints.length;
   }
 
-  public toString(){
+  public toString() {
     return `'${TextData.escape(this.text)}'`;
   }
 }
@@ -415,7 +415,7 @@ class StringLiteralExpression extends Expression {
 class ArrayLiteralExpression extends Expression {
   private expressions: Expression[];
 
-  public constructor(expressions: Expression[]){
+  public constructor(expressions: Expression[]) {
     super();
     this.expressions = expressions;
   }
@@ -429,12 +429,12 @@ class ArrayLiteralExpression extends Expression {
   public typecheck(context: TypeChecker, contextualType?: Type): Type {
     // Three cases: we have a contextual type, we have at least 1 expression, or we have neither.
     let elementType: Type | undefined;
-    if(contextualType){
+    if (contextualType) {
       const cType = contextualType.resolve();
-      if(cType instanceof ArrayType){
+      if (cType instanceof ArrayType) {
         elementType = cType.index();
       }
-      else if(cType instanceof SliceType){
+      else if (cType instanceof SliceType) {
         elementType = cType.index();
       }
       else {
@@ -443,8 +443,8 @@ class ArrayLiteralExpression extends Expression {
     }
 
     // We don't need to typecheck the expressions if there are none.
-    if(!this.expressions.length){
-      if(!elementType){
+    if (!this.expressions.length) {
+      if (!elementType) {
         this.error(context, `expected contextual array type for empty array`);
         elementType = Type.Error;
       }
@@ -458,7 +458,7 @@ class ArrayLiteralExpression extends Expression {
 
     // Check the first expression.
     const initialElementType = expression.typecheck(context);
-    if(elementType && !elementType.isConvertibleTo(initialElementType)){
+    if (elementType && !elementType.isConvertibleTo(initialElementType)) {
       this.error(context, `expected ${elementType}, actual ${initialElementType}`);
     }
 
@@ -468,7 +468,7 @@ class ArrayLiteralExpression extends Expression {
     // Check the rest of the expressions.
     expressions.forEach((expression) => {
       const actualType = expression.typecheck(context);
-      if(!actualElementType.isConvertibleTo(actualType)){
+      if (!actualElementType.isConvertibleTo(actualType)) {
         this.error(context, `expected ${actualElementType}, actual ${actualType}`);
       }
     });
@@ -487,7 +487,7 @@ class ArrayLiteralExpression extends Expression {
     return compileLiteralExpressions('array_literal', compiler, expressions, expressions.length);
   }
 
-  public toString(){
+  public toString() {
     return `[ ${this.expressions.join(', ')} ]`;
   }
 
@@ -513,7 +513,7 @@ class StructLiteralExpression extends Expression {
   public constructor(
     private readonly type: Type,
     private readonly memberLiteralExpressions: readonly MemberLiteralExpression[]
-  ){
+  ) {
     super();
   }
 
@@ -533,11 +533,11 @@ class StructLiteralExpression extends Expression {
     this.type.kindcheck(context, new KindChecker());
 
     const structType = this.type.resolve();
-    if(structType instanceof StructType){
+    if (structType instanceof StructType) {
       // Ensure we have no duplicates.
       const identifiers = this.memberLiteralExpressions.map((m) => m.identifier);
       const duplicateIdentifiers = duplicates(identifiers);
-      if(duplicateIdentifiers.length){
+      if (duplicateIdentifiers.length) {
         this.error(context, `duplicate members ${duplicateIdentifiers.join(', ')}`);
       }
 
@@ -545,12 +545,12 @@ class StructLiteralExpression extends Expression {
       // are allowed to skip members, so
       this.memberLiteralExpressions.forEach((member) => {
         const structMember = structType.member(member.identifier);
-        if(structMember === undefined){
+        if (structMember === undefined) {
           this.error(context, `unknown member ${member.identifier}`);
           return;
         }
         const type = member.expression.typecheck(context, structMember.type);
-        if(!structMember.type.isConvertibleTo(type)){
+        if (!structMember.type.isConvertibleTo(type)) {
           this.error(context, `member ${member.identifier} expected ${structMember.type}, actual ${type}`);
         }
       });
@@ -579,7 +579,7 @@ class StructLiteralExpression extends Expression {
     return compileLiteralExpressions('struct_literal', compiler, this.memberExpressions);
   }
 
-  public toString(){
+  public toString() {
     return `{ ${this.memberLiteralExpressions.map((m) => `${m.identifier} = ${m.expression}`).join(', ')} }`;
   }
 }
@@ -590,7 +590,7 @@ class VoidExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    if(contextual && contextual.isConvertibleTo(Type.Void)){
+    if (contextual && contextual.isConvertibleTo(Type.Void)) {
       return contextual;
     }
     return Type.Void;
@@ -619,18 +619,18 @@ class NullExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    if(!contextual){
+    if (!contextual) {
       this.error(context, `expected contextual pointer type for null`);
       return Type.Error;
     }
 
     const cType = contextual.resolve();
-    if(cType instanceof PointerType){
+    if (cType instanceof PointerType) {
       return contextual;
     }
 
-    if(cType instanceof ArrayType){
-      if(cType.length !== undefined){
+    if (cType instanceof ArrayType) {
+      if (cType.length !== undefined) {
         this.error(context, `expected contextual unsized array type for null, actual ${contextual}`);
       }
       return contextual;
@@ -660,7 +660,7 @@ class NullExpression extends Expression {
 class SizeofExpression extends Expression {
   public constructor(
     private readonly type: Type,
-  ){
+  ) {
     super();
   }
 
@@ -687,7 +687,7 @@ class SizeofExpression extends Expression {
     return r;
   }
 
-  public toString(){
+  public toString() {
     return `sizeof ${this.type}`;
   }
 }
@@ -736,12 +736,12 @@ class NewExpression extends Expression {
      * we must forward the ellipsis value as well.
      */
     private readonly ellipsis: boolean = false,
-  ){
+  ) {
     super();
   }
 
   public substitute(typeTable: TypeTable): Expression {
-    if(this.newArrayExpression){
+    if (this.newArrayExpression) {
       return this.newArrayExpression.substitute(typeTable);
     }
     return new NewExpression(
@@ -755,11 +755,11 @@ class NewExpression extends Expression {
     this.type.kindcheck(context, new KindChecker());
 
     const cType = this.type.resolve();
-    if(cType instanceof ArrayType){
+    if (cType instanceof ArrayType) {
       // This should have been constructed as a new array expression, but we couldn't
       // see that at parse time.  The type *must* be a sized array or we won't
       // know how much memory to allocate.
-      if(cType.length === undefined){
+      if (cType.length === undefined) {
         this.error(context, `expected sized array type, actual ${this.type}`);
       }
 
@@ -774,16 +774,16 @@ class NewExpression extends Expression {
     }
 
     // Unexpected ...
-    if(this.ellipsis){
+    if (this.ellipsis) {
       this.error(context, `expected array type, actual ${this.type}`);
     }
 
     // If we've given the expression an initializer, typecheck it. Pass the
     // type contextually.
-    if(this.expression){
+    if (this.expression) {
       const type = this.expression.typecheck(context, this.type);
 
-      if(!this.type.isEqualTo(type)){
+      if (!this.type.isEqualTo(type)) {
         this.error(context, `expected ${this.type}, actual ${type}`);
       }
     }
@@ -792,7 +792,7 @@ class NewExpression extends Expression {
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
-    if(this.newArrayExpression){
+    if (this.newArrayExpression) {
       return this.newArrayExpression.compile(compiler, lvalue);
     }
 
@@ -806,7 +806,7 @@ class NewExpression extends Expression {
     // Initialize storage; now `dr` is a pointer to our new memory.
     let er;
     let isZero = false;
-    if(this.expression){
+    if (this.expression) {
       // Compile the initialization expression.
       er = this.expression.compile(compiler);
     }
@@ -820,7 +820,7 @@ class NewExpression extends Expression {
     }
 
     // Write to the destination.
-    if(this.type.integral || isZero){
+    if (this.type.integral || isZero) {
       compiler.emitStaticStore(dr, er, this.type.size, 'initialize integral new');
     }
     else {
@@ -832,11 +832,11 @@ class NewExpression extends Expression {
     return dr;
   }
 
-  public toString(){
-    if(this.newArrayExpression){
+  public toString() {
+    if (this.newArrayExpression) {
       return this.newArrayExpression.toString();
     }
-    if(this.expression){
+    if (this.expression) {
       return `new ${this.type} = ${this.expression}`;
     }
     return `new ${this.type}`;
@@ -870,7 +870,7 @@ class NewArrayExpression extends Expression {
      * element to (when `true`).
      */
     private readonly ellipsis: boolean = false,
-  ){
+  ) {
     super();
     this.type = type;
     this.size = size;
@@ -892,7 +892,7 @@ class NewArrayExpression extends Expression {
 
     // This type must be a slice (T[]).
     const cType = this.type.resolve();
-    if(!(cType instanceof SliceType)){
+    if (!(cType instanceof SliceType)) {
       this.error(context, `new array expected slice type, actual ${this.type}`);
       return Type.Error;
     }
@@ -900,17 +900,17 @@ class NewArrayExpression extends Expression {
 
     // Size should be a number.
     const sizeType = this.size.typecheck(context);
-    if(!sizeType.numeric){
+    if (!sizeType.numeric) {
       this.error(context, `new array size expected numeric type, actual ${sizeType}`);
     }
 
     // If we've given the expression an initializer, typecheck it. Pass the
     // type contextually so that we can easily allocate arrays.
-    if(this.expression){
+    if (this.expression) {
       const compareType = this.ellipsis ? this.elementType : this.type;
       const type = this.expression.typecheck(context, compareType);
 
-      if(!type.isEqualTo(compareType)){
+      if (!type.isEqualTo(compareType)) {
         this.error(context, `new array initializer expected ${compareType}, actual ${type}`);
       }
     }
@@ -927,7 +927,7 @@ class NewArrayExpression extends Expression {
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
     // We need StorageCompiler to allocate the slice descriptor.
-    if(!(compiler instanceof StorageCompiler)){
+    if (!(compiler instanceof StorageCompiler)) {
       throw new InternalError(`new[] requires StorageCompiler`);
     }
 
@@ -936,7 +936,7 @@ class NewArrayExpression extends Expression {
 
     // Compute heap allocation size: (count * element_size) + 1 for the length header.
     const sr = compiler.allocateRegister(); // Storage size in words.
-    if(this.elementType.size > 1){
+    if (this.elementType.size > 1) {
       const mr = compiler.allocateRegister();
       compiler.emit([
         new ConstantDirective(mr, new ImmediateConstant(this.elementType.size)).comment('new[]: element size'),
@@ -1014,7 +1014,7 @@ class NewArrayExpression extends Expression {
     // Write to destination.
     let er;
     let isZero = false;
-    if(this.expression){
+    if (this.expression) {
       er = this.expression.compile(compiler);
     }
     else {
@@ -1026,8 +1026,8 @@ class NewArrayExpression extends Expression {
     }
 
     // Ellipsis means we are using the value represented by `er` multiple times.
-    if(this.ellipsis || isZero){
-      if(this.elementType.integral || isZero){
+    if (this.ellipsis || isZero) {
+      if (this.elementType.integral || isZero) {
         compiler.emitDynamicStore(adr, er, sr, 'new[]: zero initialize');
       }
       else {
@@ -1060,7 +1060,7 @@ class NewArrayExpression extends Expression {
     ]);
 
     // Then multiply by element size if necessary to find the number of bytes to copy.
-    if(this.elementType.size > 1){
+    if (this.elementType.size > 1) {
       compiler.emit([
         new ConstantDirective(tr, new ImmediateConstant(this.elementType.size)).comment('new[]: source element size'),
         new InstructionDirective(Instruction.createOperation(Operation.MUL, esr, esr, tr)).comment('new[]: source all elements size'),
@@ -1092,7 +1092,7 @@ class NewArrayExpression extends Expression {
   }
 
   private compileStructuralEllipsis(compiler: Compiler, dr: Register, er: Register, cr: Register): void {
-    if(!this.elementType){
+    if (!this.elementType) {
       throw new InternalError(`${this} has not been typechecked`);
     }
 
@@ -1128,9 +1128,9 @@ class NewArrayExpression extends Expression {
     compiler.deallocateRegister(tr);
   }
 
-  public toString(){
-    if(this.expression){
-      if(this.ellipsis){
+  public toString() {
+    if (this.expression) {
+      if (this.ellipsis) {
         return `new ${this.elementType}[${this.size}] ... ${this.expression}`;
       }
       return `new ${this.elementType}[${this.size}] = ${this.expression}`;
@@ -1148,7 +1148,7 @@ class CastExpression extends Expression {
     private readonly type: Type,
     private readonly expression: Expression,
     private readonly unsafe: boolean = false,
-  ){
+  ) {
     super();
   }
 
@@ -1166,16 +1166,16 @@ class CastExpression extends Expression {
     const type = this.expression.typecheck(context, this.type);
 
     // We can safely cast away nominal differences.
-    if(this.type.isConvertibleTo(type)){
-      if(this.unsafe){
+    if (this.type.isConvertibleTo(type)) {
+      if (this.unsafe) {
         this.warning(context, `unnecessary unsafe cast between ${this.type} and ${type}`);
       }
       return this.type.tag(['.unsafe']);
     }
 
     // We can unsafely cast between integral types.
-    if(this.type.integral && type.integral){
-      if(!this.unsafe){
+    if (this.type.integral && type.integral) {
+      if (!this.unsafe) {
         this.error(context, `unsafe cast between ${this.type} and ${type}`);
       }
       return this.type;
@@ -1183,8 +1183,8 @@ class CastExpression extends Expression {
 
     // We can unsafely cast a slice to an integral type (extracts the data pointer).
     const cType = type.resolve();
-    if(this.type.integral && cType instanceof SliceType){
-      if(!this.unsafe){
+    if (this.type.integral && cType instanceof SliceType) {
+      if (!this.unsafe) {
         this.error(context, `unsafe cast between ${this.type} and ${type}`);
       }
       this.sliceToPointer = true;
@@ -1199,7 +1199,7 @@ class CastExpression extends Expression {
   public compile(compiler: Compiler, lvalue?: boolean): Register {
     const r = this.expression.compile(compiler, lvalue);
     // If casting a slice to an integral, extract the data pointer (first word).
-    if(this.sliceToPointer){
+    if (this.sliceToPointer) {
       compiler.emit([
         new InstructionDirective(Instruction.createOperation(Operation.LOAD, r, r)).comment('slice data pointer'),
       ]);
@@ -1207,7 +1207,7 @@ class CastExpression extends Expression {
     return r;
   }
 
-  public toString(){
+  public toString() {
     return `<${this.type}>(${this.expression})`;
   }
 
@@ -1226,7 +1226,7 @@ class BinaryExpression extends Expression {
     public readonly operator: BinaryOperator,
     public readonly left: Expression,
     public readonly right: Expression,
-  ){
+  ) {
     super();
   }
 
@@ -1242,7 +1242,7 @@ class BinaryExpression extends Expression {
     const tLeft = this.left.typecheck(context);
     const tRight = this.right.typecheck(context, tLeft);
 
-    switch(this.operator){
+    switch (this.operator) {
       case '+':
       case '-':
       case '*':
@@ -1251,13 +1251,13 @@ class BinaryExpression extends Expression {
       case '|':
       case '&': {
         // We can do arithmetic on numbers of the same type.
-        if(!tLeft.numeric){
+        if (!tLeft.numeric) {
           this.error(context, `expected numeric type, actual ${tLeft}`);
         }
-        if(!tRight.numeric){
+        if (!tRight.numeric) {
           this.error(context, `expected numeric type, actual ${tRight}`);
         }
-        if(!tLeft.isEqualTo(tRight)){
+        if (!tLeft.isEqualTo(tRight)) {
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
         }
 
@@ -1267,15 +1267,15 @@ class BinaryExpression extends Expression {
       case '&&':
       case '||': {
         // We can only treat integrals as truthy/falsy.
-        if(!tLeft.integral){
+        if (!tLeft.integral) {
           this.error(context, `expected integral type, actual ${tLeft}`);
         }
-        if(!tRight.integral){
+        if (!tRight.integral) {
           this.error(context, `expected integral type, actual ${tRight}`);
         }
 
         // Both sides must have the same type.
-        if(!tLeft.isEqualTo(tRight)){
+        if (!tLeft.isEqualTo(tRight)) {
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
         }
 
@@ -1287,13 +1287,13 @@ class BinaryExpression extends Expression {
       case '>':
       case '>=':
         // We can only compare numerics.
-        if(!tLeft.numeric){
+        if (!tLeft.numeric) {
           this.error(context, `expected numeric type, actual ${tLeft}`);
         }
-        if(!tRight.numeric){
+        if (!tRight.numeric) {
           this.error(context, `expected numeric type, actual ${tRight}`);
         }
-        if(!tLeft.isEqualTo(tRight)){
+        if (!tLeft.isEqualTo(tRight)) {
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
         }
         return context.builtinType('bool');
@@ -1301,13 +1301,13 @@ class BinaryExpression extends Expression {
       case '==':
       case '!=': {
         // We can only equate integrals.
-        if(!tLeft.integral){
+        if (!tLeft.integral) {
           this.error(context, `expected integral type, actual ${tLeft}`);
         }
-        if(!tRight.integral){
+        if (!tRight.integral) {
           this.error(context, `expected integral type, actual ${tRight}`);
         }
-        if(!tLeft.isEqualTo(tRight)){
+        if (!tLeft.isEqualTo(tRight)) {
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
         }
         return context.builtinType('bool');
@@ -1335,15 +1335,15 @@ class BinaryExpression extends Expression {
       '>=': Operation.LT,
     };
     const operation = operations[this.operator.toString()];
-    if(operation !== undefined){
+    if (operation !== undefined) {
       return operation;
     }
     throw new InternalError(`unexpected binary operator ${this.operator}`);
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
-    switch(this.operator){
-      case '&&':{
+    switch (this.operator) {
+      case '&&': {
         // Lazy evaluation.
         //
         // Evaluate left => lr.
@@ -1439,12 +1439,12 @@ class BinaryExpression extends Expression {
     }
   }
 
-  public toString(){
+  public toString() {
     return `(${this.left}) ${this.operator} (${this.right})`;
   }
 
-  public static build(left: Expression, tail:[BinaryOperator, Expression][]): Expression {
-    return tail.reduce((left, [ op, right ]) => {
+  public static build(left: Expression, tail: [BinaryOperator, Expression][]): Expression {
+    return tail.reduce((left, [op, right]) => {
       return new BinaryExpression(op, left, right);
     }, left);
   }
@@ -1456,7 +1456,7 @@ class UnaryExpression extends Expression {
   public constructor(
     private readonly operator: UnaryOperator,
     private readonly expression: Expression,
-  ){
+  ) {
     super();
   }
 
@@ -1470,10 +1470,10 @@ class UnaryExpression extends Expression {
   public typecheck(context: TypeChecker, contextual?: Type): Type {
     const type = this.expression.typecheck(context);
 
-    switch(this.operator){
+    switch (this.operator) {
       case '+':
       case '-': {
-        if(type.numeric){
+        if (type.numeric) {
           return type;
         }
 
@@ -1481,7 +1481,7 @@ class UnaryExpression extends Expression {
         return Type.Byte;
       }
       case '!': {
-        if(!type.integral){
+        if (!type.integral) {
           this.error(context, `expected integral type, actual ${type}`);
         }
         return context.builtinType('bool');
@@ -1490,11 +1490,11 @@ class UnaryExpression extends Expression {
       case '*': {
         const cType = type.resolve();
 
-        if(cType.err){
+        if (cType.err) {
           return cType;
         }
 
-        if(cType instanceof PointerType){
+        if (cType instanceof PointerType) {
           return cType.dereference();
         }
 
@@ -1503,12 +1503,12 @@ class UnaryExpression extends Expression {
       }
       case '&': {
         // We can't take the address of void.
-        if(type.isConvertibleTo(Type.Void)){
+        if (type.isConvertibleTo(Type.Void)) {
           this.error(context, `expected non-void type, actual ${type}`);
         }
 
         // We can't take the address of something that isn't assignable.
-        if(!this.expression.assignable){
+        if (!this.expression.assignable) {
           this.error(context, `expected assignable expression`);
         }
 
@@ -1520,7 +1520,7 @@ class UnaryExpression extends Expression {
       case 'len':
       case 'capacity': {
         const cType = type.resolve();
-        if(!(cType instanceof ArrayType) && !(cType instanceof SliceType)){
+        if (!(cType instanceof ArrayType) && !(cType instanceof SliceType)) {
           this.error(context, `expected array or slice type, actual ${type}`);
         }
         return Type.Byte;
@@ -1532,12 +1532,12 @@ class UnaryExpression extends Expression {
 
   public get assignable() {
     // Dereferences are assignable.
-    if(this.operator === '*'){
+    if (this.operator === '*') {
       return true;
     }
 
     // `len x` is assignable as like writing to x[-1], basically.
-    if(this.operator === 'len'){
+    if (this.operator === 'len') {
       return true;
     }
 
@@ -1545,7 +1545,7 @@ class UnaryExpression extends Expression {
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
-    switch(this.operator){
+    switch (this.operator) {
       case '+':
         // This is actually a no-op.
         return this.expression.compile(compiler);
@@ -1583,7 +1583,7 @@ class UnaryExpression extends Expression {
         // Not all expressions of the form `*e` must be dereferenced. For instance,
         // if `e` is an identifier refering to a struct, then `e` is already the address
         // of the struct.
-        if(this.dereference(lvalue)){
+        if (this.dereference(lvalue)) {
           compiler.emit([
             new InstructionDirective(Instruction.createOperation(Operation.LOAD, r, r)).comment(`${this}`),
           ]);
@@ -1600,16 +1600,16 @@ class UnaryExpression extends Expression {
         const exprType = this.expression.concreteType.resolve();
         const er = this.expression.compile(compiler);
 
-        if(exprType instanceof ArrayType){
+        if (exprType instanceof ArrayType) {
           // Array capacity is a compile-time constant (the array's declared length).
           compiler.emit([
             new ConstantDirective(er, new ImmediateConstant(exprType.length)).comment(`array capacity ${exprType.length}`),
           ]);
         }
-        else if(exprType instanceof SliceType){
+        else if (exprType instanceof SliceType) {
           // Slice layout: [pointer][length][capacity] - capacity at offset 2
           compiler.emitIncrement(er, 2, 'slice capacity offset');
-          if(this.dereference(lvalue)){
+          if (this.dereference(lvalue)) {
             compiler.emit([
               new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
             ]);
@@ -1621,16 +1621,16 @@ class UnaryExpression extends Expression {
         const exprType = this.expression.concreteType.resolve();
         const er = this.expression.compile(compiler);
 
-        if(exprType instanceof ArrayType){
+        if (exprType instanceof ArrayType) {
           // Array layout: [length][data...] - length at offset 0
           // No offset needed, just load
         }
-        else if(exprType instanceof SliceType){
+        else if (exprType instanceof SliceType) {
           // Slice layout: [pointer][length][capacity] - length at offset 1
           compiler.emitIncrement(er, 1, 'slice length offset');
         }
 
-        if(this.dereference(lvalue)){
+        if (this.dereference(lvalue)) {
           compiler.emit([
             new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
           ]);
@@ -1643,11 +1643,11 @@ class UnaryExpression extends Expression {
   }
 
   public compileAssignmentCheck(compiler: Compiler, lr: Register, vr: Register): void {
-    switch(this.operator){
+    switch (this.operator) {
       case 'len': {
         const exprType = this.expression.concreteType.resolve();
 
-        if(exprType instanceof ArrayType){
+        if (exprType instanceof ArrayType) {
           // Array capacity is a compile-time constant.
           // Check: vr <= capacity (i.e., vr > capacity is an error)
           const endRef = compiler.generateReference('capacity_check_end');
@@ -1665,7 +1665,7 @@ class UnaryExpression extends Expression {
           compiler.deallocateRegister(cr);
           compiler.deallocateRegister(er);
         }
-        else if(exprType instanceof SliceType){
+        else if (exprType instanceof SliceType) {
           // Slice layout: [pointer][length][capacity]
           // lr is the address of length (offset 1 from slice base)
           // Capacity is at offset 2, which is lr + 1
@@ -1684,7 +1684,7 @@ class UnaryExpression extends Expression {
     return;
   }
 
-  public toString(){
+  public toString() {
     return `${this.operator}(${this.expression})`;
   }
 }
@@ -1695,7 +1695,7 @@ class CallExpression extends Expression {
   public constructor(
     private readonly expression: Expression,
     private readonly argumentExpressions: readonly Expression[],
-  ){
+  ) {
     super();
   }
 
@@ -1713,11 +1713,11 @@ class CallExpression extends Expression {
 
     const cType = type.resolve();
 
-    if(cType.err){
+    if (cType.err) {
       return cType;
     }
 
-    if(cType instanceof TemplateType){
+    if (cType instanceof TemplateType) {
       const argumentTypes = this.argumentExpressions.map((argumentExpression) => {
         return argumentExpression.typecheck(context);
       });
@@ -1728,11 +1728,11 @@ class CallExpression extends Expression {
       ).at(this.location);
 
       const inferredType = cType.infer(context, new KindChecker(), expectedType, this.location);
-      if(!inferredType){
+      if (!inferredType) {
         this.error(context, `unable to infer template instantiation, actual ${type}`);
         return Type.Error;
       }
-      if(!(inferredType instanceof FunctionType)){
+      if (!(inferredType instanceof FunctionType)) {
         this.error(context, `expected function type, actual ${inferredType}`);
         return Type.Error;
       }
@@ -1741,8 +1741,8 @@ class CallExpression extends Expression {
       return inferredType.returnType;
     }
 
-    if(cType instanceof FunctionType){
-      if(this.argumentExpressions.length !== cType.arity){
+    if (cType instanceof FunctionType) {
+      if (this.argumentExpressions.length !== cType.arity) {
         this.error(context, `expected ${cType.arity} arguments, actual ${this.argumentExpressions.length}`);
       }
 
@@ -1753,7 +1753,7 @@ class CallExpression extends Expression {
 
         // Don't raise an error if we passed too many arguments here, we
         // already did above.
-        if(expectedType && !argumentType.isConvertibleTo(expectedType)){
+        if (expectedType && !argumentType.isConvertibleTo(expectedType)) {
           this.error(context, `expected ${expectedType}, actual ${argumentType}`);
         }
       });
@@ -1800,8 +1800,8 @@ class CallExpression extends Expression {
     // address of this storage as the first argument. Then when we
     // compile return statements that return non-integral values, we write
     // to this location.
-    if(!this.functionType.returnType.integral && !this.functionType.returnType.isConvertibleTo(Type.Void)){
-      if(!(compiler instanceof StorageCompiler)){
+    if (!this.functionType.returnType.integral && !this.functionType.returnType.isConvertibleTo(Type.Void)) {
+      if (!(compiler instanceof StorageCompiler)) {
         throw new InternalError(`expected storage when compiling non-integral return`);
       }
       const identifier = compiler.generateIdentifier('return');
@@ -1819,7 +1819,7 @@ class CallExpression extends Expression {
     return compiler.emitCall(args, tr);
   }
 
-  public toString(){
+  public toString() {
     const args = this.argumentExpressions.join(', ');
     return `${this.expression}(${args})`;
   }
@@ -1843,7 +1843,7 @@ type Suffix = {
 abstract class SuffixExpression extends Expression {
   public constructor(
     public readonly expression: Expression,
-  ){
+  ) {
     super();
   }
 
@@ -1853,19 +1853,19 @@ abstract class SuffixExpression extends Expression {
 
   public static build(expression: Expression, suffixes: Suffix[]) {
     return suffixes.reduce((expression, suffix) => {
-      if(suffix.identifier !== undefined && suffix.pointer){
+      if (suffix.identifier !== undefined && suffix.pointer) {
         return new ArrowExpression(expression, suffix.identifier).at(suffix.range, suffix.text, suffix.options);
       }
-      if(suffix.identifier !== undefined && !suffix.pointer){
+      if (suffix.identifier !== undefined && !suffix.pointer) {
         return new DotExpression(expression, suffix.identifier).at(suffix.range, suffix.text, suffix.options);
       }
-      if(suffix.isSlice){
+      if (suffix.isSlice) {
         return new SliceExpression(expression, suffix.lo, suffix.hi).at(suffix.range, suffix.text, suffix.options);
       }
-      if(suffix.index !== undefined){
+      if (suffix.index !== undefined) {
         return new IndexExpression(expression, suffix.index, suffix.unsafe).at(suffix.range, suffix.text, suffix.options);
       }
-      if(suffix.expressions !== undefined){
+      if (suffix.expressions !== undefined) {
         return new CallExpression(expression, suffix.expressions).at(suffix.range, suffix.text, suffix.options);
       }
       throw new InternalError('invalid suffix');
@@ -1895,7 +1895,7 @@ class DotExpression extends SuffixExpression {
   public constructor(
     expression: Expression,
     public readonly identifier: string,
-  ){
+  ) {
     super(expression);
   }
 
@@ -1910,13 +1910,13 @@ class DotExpression extends SuffixExpression {
     const type = this.expression.typecheck(context);
     const cType = type.resolve();
 
-    if(cType.err){
+    if (cType.err) {
       return cType;
     }
 
-    if(cType instanceof StructType){
+    if (cType instanceof StructType) {
       const member = cType.member(this.identifier);
-      if(member !== undefined){
+      if (member !== undefined) {
         // Store index for later use during compilation.
         this.offset = cType.offset(this.identifier)
         return member.type;
@@ -1936,7 +1936,7 @@ class DotExpression extends SuffixExpression {
 
     // We only dereference when we are evaluating an integral, e.g. `point.x` when
     // `x` is a byte.
-    if(this.dereference(lvalue)){
+    if (this.dereference(lvalue)) {
       compiler.emit([
         new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)),
       ]);
@@ -1945,7 +1945,7 @@ class DotExpression extends SuffixExpression {
     return er;
   }
 
-  public toString(){
+  public toString() {
     return `(${this.expression}).${this.identifier}`;
   }
 }
@@ -1957,7 +1957,7 @@ class ArrowExpression extends SuffixExpression {
   public constructor(
     expression: Expression,
     public readonly identifier: string,
-  ){
+  ) {
     super(expression);
   }
 
@@ -1972,23 +1972,23 @@ class ArrowExpression extends SuffixExpression {
     const type = this.expression.typecheck(context);
     const cType = type.resolve();
 
-    if(cType.err){
+    if (cType.err) {
       return cType;
     }
 
-    if(!(cType instanceof PointerType)){
+    if (!(cType instanceof PointerType)) {
       this.error(context, `expected pointer to struct type, actual ${type}`);
       return Type.Error;
     }
 
     const structType = cType.dereference().resolve();
-    if(!(structType instanceof StructType)){
+    if (!(structType instanceof StructType)) {
       this.error(context, `expected pointer to struct type, actual ${type}`);
       return Type.Error;
     }
 
     const member = structType.member(this.identifier);
-    if(member !== undefined){
+    if (member !== undefined) {
       // Store index for later use during compilation.
       this.offset = structType.offset(this.identifier);
       return member.type;
@@ -2010,7 +2010,7 @@ class ArrowExpression extends SuffixExpression {
 
     // We only dereference when we are evaluating an integral, e.g. `point->x` when
     // `x` is a byte.
-    if(this.dereference(lvalue)){
+    if (this.dereference(lvalue)) {
       compiler.emit([
         new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`deference ${this}`),
       ]);
@@ -2019,7 +2019,7 @@ class ArrowExpression extends SuffixExpression {
     return er;
   }
 
-  public toString(){
+  public toString() {
     return `(${this.expression}).${this.identifier}`;
   }
 }
@@ -2032,7 +2032,7 @@ class IndexExpression extends SuffixExpression {
     expression: Expression,
     public readonly index: Expression,
     public readonly unsafe: boolean = false,
-  ){
+  ) {
     super(expression);
   }
 
@@ -2050,19 +2050,19 @@ class IndexExpression extends SuffixExpression {
     const indexType = this.index.typecheck(context);
 
     let elementType;
-    if(cType instanceof ArrayType){
+    if (cType instanceof ArrayType) {
       elementType = cType.index();
     }
-    else if(cType instanceof SliceType){
+    else if (cType instanceof SliceType) {
       elementType = cType.index();
     }
-    else if(cType instanceof PointerType) {
-      if(!this.unsafe){
+    else if (cType instanceof PointerType) {
+      if (!this.unsafe) {
         this.error(context, `unsafe index on ${type}`);
       }
       elementType = cType.dereference();
     }
-    else if(cType === Type.Error){
+    else if (cType === Type.Error) {
       // Shhhh....
       elementType = Type.Error;
     }
@@ -2072,7 +2072,7 @@ class IndexExpression extends SuffixExpression {
     }
 
     // We can only index by a numeric type.
-    if(!indexType.numeric){
+    if (!indexType.numeric) {
       this.error(context, `index expected numeric type, actual ${type}`);
     }
 
@@ -2081,7 +2081,7 @@ class IndexExpression extends SuffixExpression {
     try {
       this.stride = elementType.size;
     }
-    catch(e){}
+    catch (e) { }
     return elementType;
   }
 
@@ -2090,7 +2090,7 @@ class IndexExpression extends SuffixExpression {
     const ir = this.index.compile(compiler);
 
     // If the expression is a pointer, we should check that it is not null.
-    if(this.unsafe){
+    if (this.unsafe) {
       compiler.emitNullCheck(er);
     }
 
@@ -2098,17 +2098,17 @@ class IndexExpression extends SuffixExpression {
     // Array layout: [length][data...] - length at offset 0
     // Slice layout: [pointer][length][capacity] - length at offset 1
     const exprType = this.expression.concreteType.resolve();
-    if(exprType instanceof ArrayType && !this.unsafe){
+    if (exprType instanceof ArrayType && !this.unsafe) {
       compiler.emitBoundsCheck(er, ir, 0);
     }
-    else if(exprType instanceof SliceType && !this.unsafe){
+    else if (exprType instanceof SliceType && !this.unsafe) {
       compiler.emitBoundsCheck(er, ir, 1);
     }
 
     // The left side is an array; we need to know the size of each element
     // so that we can index into the correct location. So we multiply the index
     // by the stride to get the actual offset.
-    if(this.stride > 1){
+    if (this.stride > 1) {
       const sr = compiler.allocateRegister();
       compiler.emit([
         new ConstantDirective(sr, new ImmediateConstant(this.stride)).comment(`stride ${this.stride}`),
@@ -2119,10 +2119,10 @@ class IndexExpression extends SuffixExpression {
 
     // For arrays: skip the length header (1 word) to get to data.
     // For slices: load the pointer (first word) which points directly to data.
-    if(exprType instanceof ArrayType){
+    if (exprType instanceof ArrayType) {
       compiler.emitIncrement(er, 1, 'array data start');
     }
-    else if(exprType instanceof SliceType){
+    else if (exprType instanceof SliceType) {
       compiler.emit([
         new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment('slice data pointer'),
       ]);
@@ -2134,7 +2134,7 @@ class IndexExpression extends SuffixExpression {
     ]);
 
     // Dereference if required.
-    if(this.dereference(lvalue)){
+    if (this.dereference(lvalue)) {
       compiler.emit([
         new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er))
       ]);
@@ -2144,7 +2144,7 @@ class IndexExpression extends SuffixExpression {
     return er;
   }
 
-  public toString(){
+  public toString() {
     return `(${this.expression})[${this.index}]`;
   }
 }
@@ -2161,7 +2161,7 @@ class SliceExpression extends SuffixExpression {
     expression: Expression,
     public readonly lo: Expression | undefined,
     public readonly hi: Expression | undefined,
-  ){
+  ) {
     super(expression);
   }
 
@@ -2178,13 +2178,13 @@ class SliceExpression extends SuffixExpression {
     const cType = type.resolve();
 
     let elementType: Type;
-    if(cType instanceof ArrayType){
+    if (cType instanceof ArrayType) {
       elementType = cType.index();
     }
-    else if(cType instanceof SliceType){
+    else if (cType instanceof SliceType) {
       elementType = cType.index();
     }
-    else if(cType === Type.Error){
+    else if (cType === Type.Error) {
       elementType = Type.Error;
     }
     else {
@@ -2193,15 +2193,15 @@ class SliceExpression extends SuffixExpression {
     }
 
     // Typecheck lo and hi if present.
-    if(this.lo){
+    if (this.lo) {
       const loType = this.lo.typecheck(context);
-      if(!loType.numeric){
+      if (!loType.numeric) {
         this.error(context, `slice lo index expected numeric type, actual ${loType}`);
       }
     }
-    if(this.hi){
+    if (this.hi) {
       const hiType = this.hi.typecheck(context);
-      if(!hiType.numeric){
+      if (!hiType.numeric) {
         this.error(context, `slice hi index expected numeric type, actual ${hiType}`);
       }
     }
@@ -2209,7 +2209,7 @@ class SliceExpression extends SuffixExpression {
     try {
       this.stride = elementType.size;
     }
-    catch(e){}
+    catch (e) { }
 
     // Result is always a slice.
     return new SliceType(elementType).at(this.location);
@@ -2221,7 +2221,7 @@ class SliceExpression extends SuffixExpression {
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
     // We need StorageCompiler to allocate the slice descriptor.
-    if(!(compiler instanceof StorageCompiler)){
+    if (!(compiler instanceof StorageCompiler)) {
       throw new InternalError(`slice expression requires StorageCompiler`);
     }
 
@@ -2234,7 +2234,7 @@ class SliceExpression extends SuffixExpression {
 
     // Compile lo (default to 0)
     let loR: Register;
-    if(this.lo){
+    if (this.lo) {
       loR = this.lo.compile(compiler);
     }
     else {
@@ -2246,13 +2246,13 @@ class SliceExpression extends SuffixExpression {
 
     // Compile hi (or defer to use length)
     let hiR: Register | undefined;
-    if(this.hi){
+    if (this.hi) {
       hiR = this.hi.compile(compiler);
     }
 
     const er = this.expression.compile(compiler);
 
-    if(exprType instanceof ArrayType){
+    if (exprType instanceof ArrayType) {
       // Array layout: [length][data...]
       // Load original length for bounds/capacity calculation.
       const origLenR = compiler.allocateRegister();
@@ -2261,7 +2261,7 @@ class SliceExpression extends SuffixExpression {
       ]);
 
       // If hi is not provided, use original length.
-      if(!hiR){
+      if (!hiR) {
         hiR = compiler.allocateRegister();
         compiler.emit([
           new InstructionDirective(Instruction.createOperation(Operation.MOV, hiR, origLenR)).comment('slice hi default len'),
@@ -2280,7 +2280,7 @@ class SliceExpression extends SuffixExpression {
 
       // Compute pointer = er + 1 + lo * stride (pointing to data[lo]).
       compiler.emitIncrement(er, 1, 'skip array length header');
-      if(this.stride > 1){
+      if (this.stride > 1) {
         const sr = compiler.allocateRegister();
         compiler.emit([
           new ConstantDirective(sr, new ImmediateConstant(this.stride)).comment(`stride ${this.stride}`),
@@ -2294,7 +2294,7 @@ class SliceExpression extends SuffixExpression {
 
       compiler.deallocateRegister(origLenR);
     }
-    else if(exprType instanceof SliceType){
+    else if (exprType instanceof SliceType) {
       // Slice layout: [pointer][length][capacity]
       const origPtrR = compiler.allocateRegister();
       const origCapR = compiler.allocateRegister();
@@ -2313,7 +2313,7 @@ class SliceExpression extends SuffixExpression {
       ]);
 
       // If hi is not provided, use original length.
-      if(!hiR){
+      if (!hiR) {
         hiR = compiler.allocateRegister();
         compiler.emit([
           new InstructionDirective(Instruction.createOperation(Operation.MOV, hiR, origLenR)).comment('slice hi default len'),
@@ -2331,7 +2331,7 @@ class SliceExpression extends SuffixExpression {
       ]);
 
       // Compute pointer = origPtr + lo * stride.
-      if(this.stride > 1){
+      if (this.stride > 1) {
         const sr = compiler.allocateRegister();
         compiler.emit([
           new ConstantDirective(sr, new ImmediateConstant(this.stride)).comment(`stride ${this.stride}`),
@@ -2349,7 +2349,7 @@ class SliceExpression extends SuffixExpression {
     }
 
     compiler.deallocateRegister(loR);
-    if(hiR){
+    if (hiR) {
       compiler.deallocateRegister(hiR);
     }
     compiler.deallocateRegister(er);
@@ -2376,7 +2376,7 @@ class SliceExpression extends SuffixExpression {
     return sliceR;
   }
 
-  public toString(){
+  public toString() {
     const lo = this.lo?.toString() ?? '';
     const hi = this.hi?.toString() ?? '';
     return `(${this.expression})[${lo}:${hi}]`;
@@ -2389,11 +2389,11 @@ class ConditionalExpression extends Expression {
     private readonly condition: Expression,
     private readonly ifExpression: Expression,
     private readonly elseExpression: Expression,
-  ){
+  ) {
     super();
   }
 
-  public substitute(typeTable: TypeTable){
+  public substitute(typeTable: TypeTable) {
     return new ConditionalExpression(
       this.condition.substitute(typeTable),
       this.ifExpression.substitute(typeTable),
@@ -2404,14 +2404,14 @@ class ConditionalExpression extends Expression {
   public typecheck(context: TypeChecker, contextual?: Type): Type {
     // A conditional's `condition` should be a type that is valid in a boolean context.
     const conditionType = this.condition.typecheck(context);
-    if(!conditionType.integral){
+    if (!conditionType.integral) {
       this.error(context, `expected integral type, actual ${conditionType}`);
     }
 
     // Each branch of the conditional should have the same type.
     const ifType = this.ifExpression.typecheck(context);
     const elseType = this.elseExpression.typecheck(context);
-    if(!ifType.isEqualTo(elseType)){
+    if (!ifType.isEqualTo(elseType)) {
       this.error(context, `expected ${ifType}, actual ${elseType}`);
     }
 
@@ -2455,18 +2455,18 @@ class ConditionalExpression extends Expression {
     return cr;
   }
 
-  public toString(){
+  public toString() {
     return `(${this.condition}) ? (${this.ifExpression}) : (${this.elseExpression})`;
   }
 
-  public static build(left: Expression, tail:[Expression, Expression][]) {
-    return tail.reduce((left, [ ifExpression, elseExpression ]) => {
+  public static build(left: Expression, tail: [Expression, Expression][]) {
+    return tail.reduce((left, [ifExpression, elseExpression]) => {
       return new ConditionalExpression(left, ifExpression, elseExpression);
     }, left);
   }
 }
 
-[ IdentifierExpression,
+[IdentifierExpression,
   IntLiteralExpression, StringLiteralExpression, BoolLiteralExpression,
   BinaryExpression, UnaryExpression,
   CallExpression,
@@ -2478,7 +2478,7 @@ class ConditionalExpression extends Expression {
   SizeofExpression,
 ].forEach((expressionClass) => {
   const typecheck = expressionClass.prototype.typecheck;
-  expressionClass.prototype.typecheck = function(this: Expression, context: TypeChecker, contextual?: Type): Type {
+  expressionClass.prototype.typecheck = function (this: Expression, context: TypeChecker, contextual?: Type): Type {
     const type = typecheck.call(this, context, contextual);
     this.concreteType = type.resolve();
     return type;

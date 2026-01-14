@@ -1,7 +1,7 @@
 import { logger } from '../lib/logger';
 
-import { Memory, Address, Immediate, Offset } from '../lib/base-types';
-import { Peripheral } from './peripheral-base';
+import { Memory, Address, Immediate, Offset } from '../lib/types';
+import { Peripheral } from './peripherals';
 
 const log = logger('vm:mmu');
 
@@ -31,11 +31,11 @@ enum AccessFlags {
 }
 
 namespace AccessFlags {
-  const specs: [ AccessFlags, string ][]  = [
-    [ AccessFlags.Present, 'present' ],
-    [ AccessFlags.Read, 'read' ],
-    [ AccessFlags.Write, 'write' ],
-    [ AccessFlags.Execute, 'execute' ],
+  const specs: [AccessFlags, string][] = [
+    [AccessFlags.Present, 'present'],
+    [AccessFlags.Read, 'read'],
+    [AccessFlags.Write, 'write'],
+    [AccessFlags.Execute, 'execute'],
   ];
 
   /**
@@ -46,7 +46,7 @@ namespace AccessFlags {
    */
   export function toString(flags: AccessFlags): string {
     return specs.map(([flag, s]) => {
-      if(flag & flags){
+      if (flag & flags) {
         return s;
       }
     }).filter((s) => !!s).join(', ');
@@ -94,15 +94,15 @@ interface MMU {
  * a `physicalAddress`.
  */
 class IdentityMMU implements MMU {
-  public enable(){}
-  public disable(){}
+  public enable() { }
+  public disable() { }
 
-  public translate(virtualAddress: Address, flags: AccessFlags){
+  public translate(virtualAddress: Address, flags: AccessFlags) {
     log.debug(`IdentityMMU: translating ${Immediate.toString(virtualAddress)} ${AccessFlags.toString(flags)}`);
     return virtualAddress;
   }
 
-  public reset(){}
+  public reset() { }
 }
 
 /**
@@ -144,7 +144,7 @@ class TwoLevelPageTablePeripheral extends Peripheral implements MMU {
   private baseAddress: Address = 0x0;
   private mru: AddressCache = {};
 
-  public constructor(memory: Memory){
+  public constructor(memory: Memory) {
     super();
     this.memory = memory;
   }
@@ -158,18 +158,18 @@ class TwoLevelPageTablePeripheral extends Peripheral implements MMU {
     this.enabled = false;
   }
 
-  public reset(){
+  public reset() {
     this.mru = {};
   }
 
   public translate(virtualAddress: Address, flag: AccessFlags): Address | undefined {
     // MMU not enabled (e.g. when in an interrupt).
-    if(!this.enabled){
+    if (!this.enabled) {
       return virtualAddress;
     }
 
     // MMU not mapped.
-    if(this.baseAddress === 0x0){
+    if (this.baseAddress === 0x0) {
       return virtualAddress;
     }
 
@@ -182,12 +182,12 @@ class TwoLevelPageTablePeripheral extends Peripheral implements MMU {
     const indexes = table1Index | table2Index;
     let physicalAddress, entryFlags;
     let cachedAddress = this.mru[indexes];
-    if(cachedAddress !== undefined){
+    if (cachedAddress !== undefined) {
       physicalAddress = cachedAddress & 0b11111111111111111111000000000000;
       entryFlags = cachedAddress & 0b1111;
 
       // Check flags.
-      if(!(entryFlags & AccessFlags.Present) || !(entryFlags & flag)){
+      if (!(entryFlags & AccessFlags.Present) || !(entryFlags & flag)) {
         return;
       }
       return physicalAddress + physicalOffset;
@@ -199,7 +199,7 @@ class TwoLevelPageTablePeripheral extends Peripheral implements MMU {
     entryFlags = tableEntry & 0b1111; // Last 4 bits.
 
     // Check flags.
-    if(!(entryFlags & AccessFlags.Present) || !(entryFlags & flag)){
+    if (!(entryFlags & AccessFlags.Present) || !(entryFlags & flag)) {
       return;
     }
 
@@ -209,7 +209,7 @@ class TwoLevelPageTablePeripheral extends Peripheral implements MMU {
     entryFlags = tableEntry & 0b1111; // Last 4 bits.
 
     // Check flags.
-    if(!(entryFlags & AccessFlags.Present) || !(entryFlags & flag)){
+    if (!(entryFlags & AccessFlags.Present) || !(entryFlags & flag)) {
       return;
     }
 
@@ -221,7 +221,7 @@ class TwoLevelPageTablePeripheral extends Peripheral implements MMU {
   }
 
   public notify(address: Address): void {
-    if(!this.mapping){
+    if (!this.mapping) {
       this.unmapped();
     }
 
@@ -250,7 +250,7 @@ class ListPageTablePeripheral extends Peripheral implements MMU {
   private baseAddress: Address = 0x0;
   private pages: Page[] = [];
 
-  public constructor(memory: Memory){
+  public constructor(memory: Memory) {
     super();
     this.memory = memory;
   }
@@ -264,14 +264,14 @@ class ListPageTablePeripheral extends Peripheral implements MMU {
     this.enabled = false;
   }
 
-  public reset(){
+  public reset() {
     this.pages = this.rebuild();
   }
 
-  private rebuild(){
+  private rebuild() {
     const pages: Page[] = [];
     const size = this.memory[this.baseAddress];
-    for(let i = 0; i < size; i++){
+    for (let i = 0; i < size; i++) {
       const page = {
         virtualAddress: this.memory[this.baseAddress + 1 + i * 4 + 0],
         physicalAddress: this.memory[this.baseAddress + 1 + i * 4 + 1],
@@ -288,12 +288,12 @@ class ListPageTablePeripheral extends Peripheral implements MMU {
 
   public translate(virtualAddress: Address, flag: AccessFlags): Address | undefined {
     // MMU not enabled (e.g. when in an interrupt).
-    if(!this.enabled){
+    if (!this.enabled) {
       return virtualAddress;
     }
 
     // MMU not mapped.
-    if(this.baseAddress === 0x0){
+    if (this.baseAddress === 0x0) {
       return virtualAddress;
     }
 
@@ -302,12 +302,12 @@ class ListPageTablePeripheral extends Peripheral implements MMU {
     });
 
     // Not mapped.
-    if(page === undefined){
+    if (page === undefined) {
       return;
     }
 
     // Not mapped with correct flags.
-    if(!(page.flags & flag)){
+    if (!(page.flags & flag)) {
       return;
     }
 
@@ -316,7 +316,7 @@ class ListPageTablePeripheral extends Peripheral implements MMU {
   }
 
   public notify(address: Address): void {
-    if(!this.mapping){
+    if (!this.mapping) {
       this.unmapped();
     }
 

@@ -1,37 +1,36 @@
-import readline from 'readline';
+import readline from "readline";
 
-import { logger } from '../lib/logger';
-import { ResolvablePromise } from '../lib/util';
-import { Memory, Immediate, Address } from "../lib/base-types";
-import { VM, State } from './vm';
-import type { VMResult } from './vm';
-import { Register, Instruction, Program } from './instructions';
-import { Compiler } from '../lowlevel/compiler';
+import { Address, Immediate, Memory } from "../../lib/types";
+import { logger } from "../../lib/logger";
+import { ResolvablePromise } from "../../lib/util";
+import { Compiler } from "../../lowlevel/compiler";
+import { Instruction, Program, Register } from "../../vm/instructions";
+import type { VMResult } from "../../vm/vm";
+import { State, VM } from "../../vm/vm";
 
-const log = logger('vm:debugger');
+const log = logger("vm:debugger");
 
-type CommandHandlerResult = 'done' | undefined;
+type CommandHandlerResult = "done" | undefined;
 type CommandHandler = (...args: string[]) => Promise<CommandHandlerResult>;
 type ParsedCommand = {
   command: CommandHandler;
-  args: string[],
-}
-
+  args: string[];
+};
 
 enum Color {
-  Black = '\u001b[30m',
-  Red = '\u001b[31m',
-  Green = '\u001b[32m',
-  Yellow = '\u001b[33m',
-  Blue = '\u001b[34m',
-  Magenta = '\u001b[35m',
-  Cyan = '\u001b[36m',
-  White = '\u001b[37m',
-  Reset = '\u001b[0m',
+  Black = "\u001b[30m",
+  Red = "\u001b[31m",
+  Green = "\u001b[32m",
+  Yellow = "\u001b[33m",
+  Blue = "\u001b[34m",
+  Magenta = "\u001b[35m",
+  Cyan = "\u001b[36m",
+  White = "\u001b[37m",
+  Reset = "\u001b[0m",
 }
 
 namespace Color {
-  export function escape(s: string, c: Color){
+  export function escape(s: string, c: Color) {
     return `${c}${s}${Color.Reset}`;
   }
 }
@@ -40,12 +39,12 @@ namespace Color {
  * An interactive debugger for the virtual machine.
  */
 class Debugger {
-  private static readonly Done = 'done';
+  private static readonly Done = "done";
 
   private interface?: readline.Interface;
 
   private commandNames: string[] = [];
-  private commands: { [ command: string ]: CommandHandler | undefined } = {};
+  private commands: { [command: string]: CommandHandler | undefined } = {};
 
   private vm: VM;
   private state: State;
@@ -53,22 +52,22 @@ class Debugger {
 
   private resolvable: ResolvablePromise<VMResult | undefined>;
 
-  public constructor(vm: VM, state: State, memory: Memory){
+  public constructor(vm: VM, state: State, memory: Memory) {
     this.vm = vm;
     this.state = state;
     this.memory = memory;
 
     const commands: [string, CommandHandler][] = [
-      ['continue', this.continue],
-      ['decode', this.decode],
-      ['frame', this.frame],
-      ['info', this.info],
-      ['help', this.help],
-      ['memory', this.mem],
-      ['quit', this.quit],
-      ['registers', this.registers],
-      ['step', this.step],
-      ['where', this.where],
+      ["continue", this.continue],
+      ["decode", this.decode],
+      ["frame", this.frame],
+      ["info", this.info],
+      ["help", this.help],
+      ["memory", this.mem],
+      ["quit", this.quit],
+      ["registers", this.registers],
+      ["step", this.step],
+      ["where", this.where],
     ];
 
     this.commandNames = commands.map(([name, command]) => name);
@@ -82,7 +81,7 @@ class Debugger {
       this.stop();
     });
 
-    log.debug('initialized debugger');
+    log.debug("initialized debugger");
   }
 
   public start(): Promise<VMResult | undefined> {
@@ -91,39 +90,39 @@ class Debugger {
       output: process.stdout,
       completer: this.completer,
       historySize: 1000,
-      prompt: this.color('# ', Color.Green),
+      prompt: this.color("# ", Color.Green),
       tabSize: 2,
     });
 
-    this.interface.on('line', (e) => {
+    this.interface.on("line", (e) => {
       this.onLine(e);
     });
 
-    this.onLine('i');
+    this.onLine("i");
 
-    log.debug('started debugger');
+    log.debug("started debugger");
 
     return this.resolvable.promise;
   }
 
   public stop() {
-    if(this.interface){
+    if (this.interface) {
       this.interface.close();
     }
   }
 
-  private completer(line: string){
+  private completer(line: string) {
     return [this.commandNames, line];
   }
 
-  private helpText(commandName: string){
+  private helpText(commandName: string) {
     const command = this.commands[commandName];
-    if(!command){
+    if (!command) {
       return;
     }
     const text = command.toString();
     const match = /\/\/ help: (.*)\n/.exec(text);
-    if(match){
+    if (match) {
       return match[1];
     }
   }
@@ -133,12 +132,17 @@ class Debugger {
   //
   private async help(): Promise<CommandHandlerResult> {
     // help: help -- display help.
-    let help = this.commandNames.map((c) => this.helpText(c)).filter((h): h is string => !!h);
+    let help = this.commandNames
+      .map((c) => this.helpText(c))
+      .filter((h): h is string => !!h);
     help = help.map((h) => {
-      const parts = h.split(' -- ');
-      return `  ${this.color(parts[0], Color.Green)} ${this.color('--', Color.White)} ${parts[1]}`;
+      const parts = h.split(" -- ");
+      return `  ${this.color(parts[0], Color.Green)} ${this.color(
+        "--",
+        Color.White
+      )} ${parts[1]}`;
     });
-    this.write(`commands:\n${help.join('\n')}`);
+    this.write(`commands:\n${help.join("\n")}`);
     return;
   }
 
@@ -148,11 +152,11 @@ class Debugger {
     return Debugger.Done;
   }
 
-  private async frame(count: string = '16'): Promise<CommandHandlerResult> {
+  private async frame(count: string = "16"): Promise<CommandHandlerResult> {
     // help: frame [count] -- display current stack frame (ish).
     // TODO: figure out how to show the current frame, not just the recent stack.
     const sp = this.state.registers[Compiler.SP];
-    return this.mem(sp.toString(), '8', count, 'true');
+    return this.mem(sp.toString(), "8", count, "true");
   }
 
   private async info(): Promise<CommandHandlerResult> {
@@ -160,14 +164,25 @@ class Debugger {
     const encoded = this.memory[this.state.registers[Register.IP]];
     const decoded = Instruction.decode(encoded);
 
-    this.write(`     ${this.color(this.state.toString(), Color.Green)}: ${Immediate.toString(encoded)}: ${this.color(decoded.toString(), Color.Blue)}`);
+    this.write(
+      `     ${this.color(
+        this.state.toString(),
+        Color.Green
+      )}: ${Immediate.toString(encoded)}: ${this.color(
+        decoded.toString(),
+        Color.Blue
+      )}`
+    );
 
     return;
   }
 
-  private async registers(registerName: string, value: string): Promise<CommandHandlerResult> {
+  private async registers(
+    registerName: string,
+    value: string
+  ): Promise<CommandHandlerResult> {
     // help: registers [register] [value] -- display and change register values.
-    if(arguments.length === 0){
+    if (arguments.length === 0) {
       this.write(this.state.toString());
       return;
     }
@@ -175,34 +190,41 @@ class Debugger {
     let r: Register;
     try {
       r = Register.parse(registerName);
-    }
-    catch(e){
+    } catch (e) {
       this.error(`invalid register ${registerName}`);
       return;
     }
 
-    if(arguments.length === 1){
-      this.write(`${Register.toString(r)}: ${Immediate.toString(this.state.registers[r])}`);
+    if (arguments.length === 1) {
+      this.write(
+        `${Register.toString(r)}: ${Immediate.toString(
+          this.state.registers[r]
+        )}`
+      );
       return;
     }
 
-    if(arguments.length === 2){
-      const val = Immediate.parse(value || '');
-      if(isNaN(val)){
+    if (arguments.length === 2) {
+      const val = Immediate.parse(value || "");
+      if (isNaN(val)) {
         this.error(`invalid value ${value}`);
       }
       this.state.registers[r] = val;
-      this.write(`${Register.toString(r)}: ${Immediate.toString(this.state.registers[r])}`);
+      this.write(
+        `${Register.toString(r)}: ${Immediate.toString(
+          this.state.registers[r]
+        )}`
+      );
       return;
     }
 
     this.error(`invalid arguments`);
   }
 
-  private async step(n: string = '1'): Promise<CommandHandlerResult> {
+  private async step(n: string = "1"): Promise<CommandHandlerResult> {
     // help: step [n] -- step the virtual machine.
     const cycles = parseInt(n);
-    if(isNaN(cycles)){
+    if (isNaN(cycles)) {
       this.error(`invalid cycle count ${n}`);
       return;
     }
@@ -210,12 +232,12 @@ class Debugger {
     // Since we are running the machine synchronously, we must
     // decide what to do.
     const ret = this.vm.step(cycles);
-    switch(ret){
-      case 'continue':
-      case 'break':
+    switch (ret) {
+      case "continue":
+      case "break":
         break;
-      case 'wait':
-      case 'halt':
+      case "wait":
+      case "halt":
         this.resolvable.resolve(undefined);
         return Debugger.Done;
     }
@@ -238,40 +260,56 @@ class Debugger {
     return this.decode(this.state.registers[Register.IP].toString(), count);
   }
 
-  private async decode(address: string, count: string = '8', high: string = ''): Promise<CommandHandlerResult> {
+  private async decode(
+    address: string,
+    count: string = "8",
+    high: string = ""
+  ): Promise<CommandHandlerResult> {
     // help: decode [count] [max] -- decode instructions.
-    if(arguments.length === 0){
-      this.write('d <address> [count]');
+    if (arguments.length === 0) {
+      this.write("d <address> [count]");
       return;
     }
 
     // Parse arguments.
     const addr = this.parseValue(address);
     const window = this.parseWindow(addr, count, high);
-    if(isNaN(addr) || window === undefined){
+    if (isNaN(addr) || window === undefined) {
       this.error(`invalid arguments`);
       return;
     }
 
     // Make a window on the code.
-    const program = Program.decode(this.memory.createView(window.low, window.high - window.low));
+    const program = Program.decode(
+      this.memory.createView(window.low, window.high - window.low)
+    );
     program.instructions.forEach((instruction, i) => {
       const color = i + window.low === addr ? Color.Blue : Color.Green;
-      this.write(`${this.color(Immediate.toString(window.low + i), color)}: ${instruction.toString()}`);
+      this.write(
+        `${this.color(
+          Immediate.toString(window.low + i),
+          color
+        )}: ${instruction.toString()}`
+      );
     });
   }
 
-  private async mem(address: string, count: string = '16', high: string = '', reverse?: string): Promise<CommandHandlerResult> {
+  private async mem(
+    address: string,
+    count: string = "16",
+    high: string = "",
+    reverse?: string
+  ): Promise<CommandHandlerResult> {
     // help: memory <address> [count] [max] -- display a memory dump.
-    if(arguments.length === 0){
-      this.write('d <address> [count]');
+    if (arguments.length === 0) {
+      this.write("d <address> [count]");
       return;
     }
 
     // Parse arguments.
     const addr = this.parseValue(address);
     const window = this.parseWindow(addr, count, high);
-    if(isNaN(addr) || window === undefined){
+    if (isNaN(addr) || window === undefined) {
       this.error(`invalid arguments`);
       return;
     }
@@ -279,13 +317,18 @@ class Debugger {
     // Make a window on the code.
     const memory = this.memory.createView(window.low, window.high - window.low);
     memory.forEach((data, i) => {
-      if(reverse){
+      if (reverse) {
         i = memory.length - i - 1;
         data = memory[i];
       }
 
       const color = i + window.low === addr ? Color.Blue : Color.Green;
-      this.write(`${this.color(Immediate.toString(window.low + i), color)}: ${Immediate.toString(data)}`);
+      this.write(
+        `${this.color(
+          Immediate.toString(window.low + i),
+          color
+        )}: ${Immediate.toString(data)}`
+      );
     });
     return;
   }
@@ -294,16 +337,15 @@ class Debugger {
     try {
       const r = Register.parse(value);
       return this.state.registers[r];
-    }
-    catch(e){}
+    } catch (e) { }
 
     return Immediate.parse(value);
   }
 
-  private parseWindow(base: Address, count: string, high: string){
+  private parseWindow(base: Address, count: string, high: string) {
     const c = Immediate.parse(count);
     let h = high ? Immediate.parse(high) : c;
-    if(isNaN(c) || isNaN(h)){
+    if (isNaN(c) || isNaN(h)) {
       return;
     }
 
@@ -314,20 +356,23 @@ class Debugger {
   }
 
   private parse(input: string): ParsedCommand | undefined {
-    const [ command, ...args ] = input.trim().split(/\s+/).filter((part) => !!part);
+    const [command, ...args] = input
+      .trim()
+      .split(/\s+/)
+      .filter((part) => !!part);
 
     // Find the right command; prefer full match, then first
     // command in the list with the parsed command as a prefix.
     let fn = this.commands[command];
-    if(!fn){
+    if (!fn) {
       const fullCommand = this.commandNames.find((commandName) => {
         return commandName.indexOf(command) === 0;
       });
-      if(fullCommand){
+      if (fullCommand) {
         fn = this.commands[fullCommand];
       }
     }
-    if(!fn){
+    if (!fn) {
       return;
     }
 
@@ -337,10 +382,10 @@ class Debugger {
     };
   }
 
-  private onLine(input: string){
+  private onLine(input: string) {
     // Ignore empty lines.
     input = input.trim();
-    if(!input && this.interface){
+    if (!input && this.interface) {
       this.interface.prompt();
       return;
     }
@@ -349,7 +394,7 @@ class Debugger {
     const parsed = this.parse(input);
 
     // Unknown command.
-    if(parsed === undefined){
+    if (parsed === undefined) {
       this.error(`unknown command ${input}`);
       this.interface?.prompt();
       return;
@@ -357,27 +402,27 @@ class Debugger {
 
     // Found command.
     parsed.command.apply(this, parsed.args).then((result) => {
-      if(result === undefined && this.interface){
+      if (result === undefined && this.interface) {
         this.interface.prompt();
       }
     });
   }
 
-  private onClose(){
-    throw new Error('close!');
+  private onClose() {
+    throw new Error("close!");
   }
 
-  private write(s: string){
-    process.stdout.write(s + '\n');
+  private write(s: string) {
+    process.stdout.write(s + "\n");
   }
 
-  private error(s: string){
-    process.stderr.write(this.color(s, Color.Red) + '\n');
+  private error(s: string) {
+    process.stderr.write(this.color(s, Color.Red) + "\n");
   }
 
-  private color(s: string, color: Color){
+  private color(s: string, color: Color) {
     return Color.escape(s, color);
   }
 }
 
-export { Debugger }
+export { Debugger };

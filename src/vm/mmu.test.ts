@@ -1,7 +1,7 @@
 import { IdentityMMU, AccessFlags, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
-import { Memory } from '../lib/base-types';
+import { Memory } from '../lib/types';
 import { VM } from './vm';
-import type { PeripheralMapping } from './peripheral-base';
+import type { PeripheralMapping } from './peripherals';
 
 describe('MMU', () => {
 
@@ -24,7 +24,7 @@ describe('MMU', () => {
   });
 
   describe('simple list-based page table', () => {
-    function create(size: number = 0x200){
+    function create(size: number = 0x200) {
       const memory = new Memory(size);
       memory.fill(0);
 
@@ -94,7 +94,7 @@ describe('MMU', () => {
   });
 
   describe('2-level page table', () => {
-    function create(size: number = 0x200){
+    function create(size: number = 0x200) {
       const memory = new Memory(size);
       memory.fill(0);
 

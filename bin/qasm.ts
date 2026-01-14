@@ -1,15 +1,14 @@
 #! /usr/bin/env bun
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
-import { readFiles } from '../src/lib/fs-util';
-import { InternalError } from '../src/lib/util';
-import { logger } from '../src/lib/logger';
-import { parseArguments } from '../src/lib/cli';
-import { AssemblyProgram } from '../src/assembly/assembly';
-import { parse } from '../src/assembly/parser';
+import { AssemblyProgram } from "../src/assembly/assembly";
+import { logger } from "../src/lib/logger";
+import { InternalError } from "../src/lib/util";
+import { parseArguments } from "../src/platform/server/cli";
+import { readFiles } from "../src/platform/server/fs";
 
-const log = logger('qasm');
+const log = logger("qasm");
 
 ///////////////////////////////////////////////////////////////////////
 // Configure CLI.
@@ -22,62 +21,65 @@ interface Options {
   files: string[];
 }
 
-const argv = parseArguments<Options>('qasm',
-  '$0 <files..>',
-  'assemble and link the given files',
+const argv = parseArguments<Options>(
+  "qasm",
+  "$0 <files..>",
+  "assemble and link the given files",
   {
     options: {
       output: {
-        alias: 'o',
-        describe: 'output path',
-        type: 'string',
-        default: 'out.qbin',
+        alias: "o",
+        describe: "output path",
+        type: "string",
+        default: "out.qbin",
       },
       assemble: {
-        alias: 'a',
-        describe: 'output assembly, not binary',
-        type: 'boolean',
+        alias: "a",
+        describe: "output assembly, not binary",
+        type: "boolean",
         default: false,
       },
       std: {
         describe: "include the standard library; it doesn't do much yet",
-        type: 'boolean',
+        type: "boolean",
         default: false,
       },
       nosystem: {
-        describe: 'do not include the system runtime',
-        type: 'boolean',
+        describe: "do not include the system runtime",
+        type: "boolean",
         default: false,
       },
     },
     positional: {
-      name: 'files',
-      describe: 'the source files to assemble',
-      type: 'string',
+      name: "files",
+      describe: "the source files to assemble",
+      type: "string",
       array: true,
       demandOption: true,
     },
-  },
+  }
 );
 
 ///////////////////////////////////////////////////////////////////////
 let libraryPath: string | undefined = undefined;
-function resolveLibrary(filename: string){
-  if(!libraryPath){
+function resolveLibrary(filename: string) {
+  if (!libraryPath) {
     // We are in `./bin/`, running the TypeScript file directly with bun.
-    libraryPath = path.resolve(__dirname, '..');
-    if(!fs.existsSync(path.join(libraryPath, 'package.json'))){
-      libraryPath = path.resolve(__dirname, '..', '..');
+    libraryPath = path.resolve(__dirname, "..");
+    if (!fs.existsSync(path.join(libraryPath, "package.json"))) {
+      libraryPath = path.resolve(__dirname, "..", "..");
     }
-    if(!fs.existsSync(path.join(libraryPath, 'package.json'))){
-      throw new InternalError('unable to locate library');
+    if (!fs.existsSync(path.join(libraryPath, "package.json"))) {
+      throw new InternalError("unable to locate library");
     }
-    libraryPath = path.join(libraryPath, 'lib', 'bin');
+    libraryPath = path.join(libraryPath, "lib", "bin");
   }
 
   const fullPath = path.join(libraryPath, filename);
-  if(!fs.existsSync(fullPath)){
-    throw new Error(`unable to locate library ${filename}; library path ${libraryPath}`);
+  if (!fs.existsSync(fullPath)) {
+    throw new Error(
+      `unable to locate library ${filename}; library path ${libraryPath}`
+    );
   }
 
   return fullPath;
@@ -86,18 +88,20 @@ function resolveLibrary(filename: string){
 async function main(): Promise<number | undefined> {
   const filenames = argv.files;
 
-  if(argv.std){
-    filenames.push(resolveLibrary('std.qasm'));
+  if (argv.std) {
+    filenames.push(resolveLibrary("std.qasm"));
   }
-  if(!argv.nosystem){
-    filenames.push(resolveLibrary('system.qasm'));
+  if (!argv.nosystem) {
+    filenames.push(resolveLibrary("system.qasm"));
   }
 
   // Parse.
   const programTexts = await readFiles(filenames);
-  const assemblyPrograms: AssemblyProgram[] = programTexts.map((programText, i) => {
-    return AssemblyProgram.parse(programText, filenames[i]);
-  });
+  const assemblyPrograms: AssemblyProgram[] = programTexts.map(
+    (programText, i) => {
+      return AssemblyProgram.parse(programText, filenames[i]);
+    }
+  );
 
   // Build.
   const assemblyProgram = AssemblyProgram.concat(assemblyPrograms);
@@ -105,34 +109,36 @@ async function main(): Promise<number | undefined> {
 
   // Assemble.
   const [messages, program] = assemblyProgram.assemble();
-  if(!program){
-    process.stderr.write(`${messages || 'internal error'}\n`);
+  if (!program) {
+    process.stderr.write(`${messages || "internal error"}\n`);
     return -1;
   }
 
   log.debug(`assembled program:\n${program}\n`);
 
   // Output.
-  if(!argv.assemble){
+  if (!argv.assemble) {
     await fs.promises.writeFile(argv.output, program.encode().toBytes());
     return;
-  }
-  else {
+  } else {
     // HACK: nicer default filename.
-    const output = argv.output === 'out.qbin' ? 'out.qasm' : argv.output;
-    await fs.promises.writeFile(output, assemblyProgram.toAssembly(), 'utf-8');
+    const output = argv.output === "out.qbin" ? "out.qasm" : argv.output;
+    await fs.promises.writeFile(output, assemblyProgram.toAssembly(), "utf-8");
     return;
   }
 }
 
-main().then((r) => {
-  process.exit(r || 0);
-}).catch((e) => {
-  if(e.location){
-    console.error(`${e.location.filename}(${e.location.start.line}): ${e.message}`);
-  }
-  else {
-    console.error(e);
-  }
-  process.exit(-1);
-});
+main()
+  .then((r) => {
+    process.exit(r || 0);
+  })
+  .catch((e) => {
+    if (e.location) {
+      console.error(
+        `${e.location.filename}(${e.location.start.line}): ${e.message}`
+      );
+    } else {
+      console.error(e);
+    }
+    process.exit(-1);
+  });

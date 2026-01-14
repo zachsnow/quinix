@@ -1,4 +1,4 @@
-import { Memory, Immediate } from '../lib/base-types';
+import { Memory, Immediate } from '../lib/types';
 
 /**
  * A virtual machine operation.
@@ -139,7 +139,7 @@ namespace Register {
    */
   export function parse(s: string): Register {
     var index = registers.indexOf(s);
-    if(index !== -1){
+    if (index !== -1) {
       return index;
     }
     throw new Error('invalid register');
@@ -147,7 +147,7 @@ namespace Register {
 
   export function toString(r: Register): string {
     const s = registers[r];
-    if(s !== undefined){
+    if (s !== undefined) {
       return s;
     }
     throw new Error('invalid register');
@@ -167,7 +167,7 @@ class Instruction {
   public immediate?: number;
 
   public toString() {
-    if(this.immediate !== undefined){
+    if (this.immediate !== undefined) {
       return Immediate.toString(this.immediate);
     }
 
@@ -185,7 +185,7 @@ class Instruction {
 
   public encode(): number {
     // Immediates are just their own value.
-    if(this.immediate !== undefined){
+    if (this.immediate !== undefined) {
       return this.immediate >>> 0;
     }
 
@@ -205,7 +205,7 @@ class Instruction {
 
     const operation = (u32 >>> 24) & 0xff
 
-    if(!Operation.isValid(operation)){
+    if (!Operation.isValid(operation)) {
       instruction.immediate = u32;
       return instruction;
     }
@@ -217,26 +217,26 @@ class Instruction {
     return instruction;
   }
 
-  public static createOperation(operation: Operation, dr?: Register, sr0?: Register, sr1?: Register){
+  public static createOperation(operation: Operation, dr?: Register, sr0?: Register, sr1?: Register) {
     const instruction = new Instruction();
 
     const specification = Operation.specifications[operation];
-    if(!specification){
+    if (!specification) {
       throw new Error();
     }
     instruction.operation = operation;
 
-    if(specification.d && dr === undefined){
+    if (specification.d && dr === undefined) {
       throw new Error(`${Operation.toString(operation)}: missing destination register`);
     }
     instruction.dr = dr;
 
-    if(specification.s0 && sr0 === undefined){
+    if (specification.s0 && sr0 === undefined) {
       throw new Error(`${Operation.toString(operation)}: missing first source register`);
     }
     instruction.sr0 = sr0;
 
-    if(specification.s1 && sr1 === undefined){
+    if (specification.s1 && sr1 === undefined) {
       throw new Error(`${Operation.toString(operation)}: missing second source register`);
     }
     instruction.sr1 = sr1;
@@ -244,7 +244,7 @@ class Instruction {
     return instruction;
   }
 
-  public static createImmediate(u32: number){
+  public static createImmediate(u32: number) {
     u32 = (u32 & 0xffffffff);
 
     const instruction = new Instruction();
@@ -257,7 +257,7 @@ class Instruction {
 class Program {
   public readonly instructions: Instruction[] = [];
 
-  public constructor(instructions: Instruction[]){
+  public constructor(instructions: Instruction[]) {
     this.instructions = instructions;
   }
 
@@ -281,12 +281,12 @@ class Program {
     let isConstant = false;
     let haltCount = 0;
     u32s.forEach((u32) => {
-      if(isConstant){
+      if (isConstant) {
         isConstant = false;
         instructions.push(Instruction.createImmediate(u32));
         haltCount = 0;
       }
-      else if(haltCount > 1){
+      else if (haltCount > 1) {
         instructions.push(Instruction.createImmediate(u32));
       }
       else {

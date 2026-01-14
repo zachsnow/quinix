@@ -1,9 +1,9 @@
-import { Memory } from './base-types';
+import { Memory } from "./types";
 
-describe('Base types', () => {
-  describe('Memory', () => {
-    test('from string', () => {
-      const string = 'Hi, \ud83c\udf55!';
+describe("Base types", () => {
+  describe("Memory", () => {
+    test("from string", () => {
+      const string = "Hi, \ud83c\udf55!";
       const memory = Memory.fromString(string);
       expect(memory.length).toBe(6);
       expect(memory[0]).toBe(72);

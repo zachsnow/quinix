@@ -1,8 +1,20 @@
-import { Instruction, Register, Operation, Program, Immediate } from '../vm/instructions';
-import { Address } from '../lib/base-types';
-import { VM } from '../vm/vm';
-import { Messages, SymbolTable, Syntax, stringToCodePoints, parseFile } from '../lib/util';
-import { parse } from './parser';
+import { Address } from "../lib/types";
+import {
+  Messages,
+  SymbolTable,
+  Syntax,
+  parseFile,
+  stringToCodePoints,
+} from "../lib/util";
+import {
+  Immediate,
+  Instruction,
+  Operation,
+  Program,
+  Register,
+} from "../vm/instructions";
+import { VM } from "../vm/vm";
+import { parse } from "./parser";
 
 class Assembler extends Messages {
   public readonly programSectionBase = VM.PROGRAM_ADDR;
@@ -17,32 +29,35 @@ class Assembler extends Messages {
  * quoted (@`some label that can contain anything!`).
  */
 class Reference {
-  private static QUALIFIED_IDENTIFIER_REGEX = /^[a-zA-Z_][a-zA-Z_0-9\$]+(::[a-zA-Z_][a-zA-Z_0-9\$]+)*$/;
+  private static QUALIFIED_IDENTIFIER_REGEX =
+    /^[a-zA-Z_][a-zA-Z_0-9\$]+(::[a-zA-Z_][a-zA-Z_0-9\$]+)*$/;
 
   public constructor(
     /**
      * The name of the reference.
      */
-    private readonly name: string,
-  ){}
+    private readonly name: string
+  ) { }
 
   public preassemble(assembler: Assembler, ip: Address): void {
     assembler.addressTable.set(this.name, ip);
   }
 
   public assemble(assembler: Assembler): Instruction[] | undefined {
-    if(!assembler.addressTable.has(this.name)){
+    if (!assembler.addressTable.has(this.name)) {
       return;
     }
 
     // Relocate reference.
     const address = assembler.addressTable.get(this.name).value;
-    return [ Instruction.createImmediate(address + assembler.programSectionBase) ];
+    return [
+      Instruction.createImmediate(address + assembler.programSectionBase),
+    ];
   }
 
-  public toString(){
+  public toString() {
     // Try to output "nice", unquoted references.
-    if(!Reference.QUALIFIED_IDENTIFIER_REGEX.exec(this.name)){
+    if (!Reference.QUALIFIED_IDENTIFIER_REGEX.exec(this.name)) {
       return "@`" + this.name + "`";
     }
     return `@${this.name}`;
@@ -53,7 +68,7 @@ class Reference {
  * Base class for directives.
  */
 abstract class Directive extends Syntax {
-  private _comment: string = '';
+  private _comment: string = "";
 
   /**
    * A first pass over directives that constructs a table mapping
@@ -62,7 +77,7 @@ abstract class Directive extends Syntax {
    * @param addressTable the address table being constructed.
    * @param ip the address that the directive is being assembled at.
    */
-  public preassemble(assembler: Assembler, ip: Address): void {}
+  public preassemble(assembler: Assembler, ip: Address): void { }
 
   /**
    * Assembles the directive to a list of instructions.
@@ -74,7 +89,7 @@ abstract class Directive extends Syntax {
   /**
    * The number of bytes the directive will take in the binary.
    */
-  public get size(){
+  public get size() {
     return 1;
   }
 
@@ -84,14 +99,13 @@ abstract class Directive extends Syntax {
    *
    * @param text the text to annotate.
    */
-  protected withComment(text: string){
-    if(!this._comment){
+  protected withComment(text: string) {
+    if (!this._comment) {
       return text;
     }
     const characters = 72 - text.length;
-    const space = characters > 0 ?
-      new Array(72 - text.length).fill(' ').join('') :
-      ' ';
+    const space =
+      characters > 0 ? new Array(72 - text.length).fill(" ").join("") : " ";
     return `${text}${space}; ${this._comment}`;
   }
 
@@ -105,7 +119,7 @@ abstract class Directive extends Syntax {
    * *generating* an assembly program, as opposed to when parsing one.
 
    */
-  public comment(text: string){
+  public comment(text: string) {
     this._comment = this._comment ? `${text} -- ${this._comment}` : text;
     return this;
   }
@@ -119,7 +133,7 @@ abstract class Directive extends Syntax {
 abstract class Data extends Syntax {
   public abstract assemble(assembler: Assembler): Instruction[];
 
-  public get size(){
+  public get size() {
     return 1;
   }
 }
@@ -132,17 +146,17 @@ class TextData extends Data {
   private text: string;
   private codePoints: number[];
 
-  public constructor(text: string){
+  public constructor(text: string) {
     super();
     this.text = text;
     this.codePoints = stringToCodePoints(this.text);
   }
 
-  public toString(){
+  public toString() {
     return `'${TextData.escape(this.text)}'`;
   }
 
-  public get size(){
+  public get size() {
     // Strings are prefixed by their capacity and size in codepoints.
     return this.codePoints.length + 2;
   }
@@ -153,7 +167,7 @@ class TextData extends Data {
     const instructions: Instruction[] = [];
     instructions.push(Instruction.createImmediate(this.codePoints.length));
     instructions.push(Instruction.createImmediate(this.codePoints.length));
-    for(let i = 0; i < this.codePoints.length; i++){
+    for (let i = 0; i < this.codePoints.length; i++) {
       instructions.push(Instruction.createImmediate(this.codePoints[i]));
     }
     return instructions;
@@ -175,7 +189,6 @@ class TextData extends Data {
       return s.replace(c, r);
     }, s);
   }
-
 }
 
 /**
@@ -184,7 +197,7 @@ class TextData extends Data {
  */
 class ImmediatesData extends Data {
   private immediates: number[];
-  public constructor(immediates: number[]){
+  public constructor(immediates: number[]) {
     super();
     this.immediates = immediates;
   }
@@ -195,12 +208,12 @@ class ImmediatesData extends Data {
     });
   }
 
-  public get size(){
+  public get size() {
     return this.immediates.length;
   }
 
-  public toString(){
-    return this.immediates.map((i) => Immediate.toString(i, 1)).join(' ');
+  public toString() {
+    return this.immediates.map((i) => Immediate.toString(i, 1)).join(" ");
   }
 }
 
@@ -211,21 +224,21 @@ class ImmediatesData extends Data {
  */
 class ReferenceData extends Data {
   private readonly reference: Reference;
-  public constructor(reference: Reference){
+  public constructor(reference: Reference) {
     super();
     this.reference = reference;
   }
 
   public assemble(assembler: Assembler): Instruction[] {
     const instructions = this.reference.assemble(assembler);
-    if(instructions === undefined){
+    if (instructions === undefined) {
       this.error(assembler, `unknown reference ${this.reference}`);
       return [];
     }
     return instructions;
   }
 
-  public toString(){
+  public toString() {
     return this.reference.toString();
   }
 }
@@ -241,7 +254,7 @@ class DataDirective extends Directive {
   private readonly reference: Reference;
   private readonly data: Data;
 
-  public constructor(reference: Reference, data: Data){
+  public constructor(reference: Reference, data: Data) {
     super();
     this.reference = reference;
     this.data = data;
@@ -259,7 +272,7 @@ class DataDirective extends Directive {
     return this.withComment(`data ${this.reference} ${this.data}`);
   }
 
-  public get size(){
+  public get size() {
     return this.data.size;
   }
 }
@@ -277,18 +290,16 @@ abstract class Constant extends Syntax {
 class ImmediateConstant extends Constant {
   private readonly immediate: Immediate;
 
-  public constructor(immediate: Immediate){
+  public constructor(immediate: Immediate) {
     super();
     this.immediate = immediate;
   }
 
   public assemble(assembler: Assembler): Instruction[] {
-    return [
-      Instruction.createImmediate(this.immediate),
-    ];
+    return [Instruction.createImmediate(this.immediate)];
   }
 
-  public toString(){
+  public toString() {
     return Immediate.toString(this.immediate, 2);
   }
 }
@@ -299,21 +310,21 @@ class ImmediateConstant extends Constant {
 class ReferenceConstant extends Constant {
   private readonly reference: Reference;
 
-  public constructor(reference: Reference){
+  public constructor(reference: Reference) {
     super();
     this.reference = reference;
   }
 
   public assemble(assembler: Assembler): Instruction[] {
     const instructions = this.reference.assemble(assembler);
-    if(instructions === undefined){
+    if (instructions === undefined) {
       this.error(assembler, `unknown reference ${this.reference}`);
       return [];
     }
-    return instructions
+    return instructions;
   }
 
-  public toString(){
+  public toString() {
     return this.reference.toString();
   }
 }
@@ -328,7 +339,7 @@ class ConstantDirective extends Directive {
   public dr: Register;
   public constant: Constant;
 
-  public constructor(dr: Register, constant: Constant){
+  public constructor(dr: Register, constant: Constant) {
     super();
     this.dr = dr;
     this.constant = constant;
@@ -342,7 +353,9 @@ class ConstantDirective extends Directive {
   }
 
   public toString(): string {
-    return this.withComment(`constant ${Register.toString(this.dr)} ${this.constant}`);
+    return this.withComment(
+      `constant ${Register.toString(this.dr)} ${this.constant}`
+    );
   }
 
   public get size(): number {
@@ -358,7 +371,7 @@ class ConstantDirective extends Directive {
 class LabelDirective extends Directive {
   private reference: Reference;
 
-  public constructor(reference: Reference){
+  public constructor(reference: Reference) {
     super();
     this.reference = reference;
   }
@@ -386,16 +399,16 @@ class LabelDirective extends Directive {
 class InstructionDirective extends Directive {
   private instruction: Instruction;
 
-  public constructor(instruction: Instruction){
+  public constructor(instruction: Instruction) {
     super();
     this.instruction = instruction;
   }
 
   public assemble(assembler: Assembler): Instruction[] {
-    return [ this.instruction ];
+    return [this.instruction];
   }
 
-  public toString(){
+  public toString() {
     return this.withComment(this.instruction.toString());
   }
 }
@@ -403,18 +416,17 @@ class InstructionDirective extends Directive {
 /**
  * A table mapping labels to their address in the final binary.
  */
-class AddressTable extends SymbolTable<Address> {}
-
+class AddressTable extends SymbolTable<Address> { }
 
 class AssemblyProgram {
   public directives: Directive[] = [];
 
-  public constructor(directives: Directive[]){
+  public constructor(directives: Directive[]) {
     this.directives = directives;
   }
 
   public toString(annotate: boolean = false): string {
-    if(annotate){
+    if (annotate) {
       let address = VM.PROGRAM_ADDR;
       this.directives.forEach((d) => {
         d.comment(Address.toString(address, 2));
@@ -422,7 +434,7 @@ class AssemblyProgram {
       });
     }
 
-    return this.directives.join('\n');
+    return this.directives.join("\n");
   }
 
   /**
@@ -436,24 +448,28 @@ class AssemblyProgram {
    */
   public toAssembly(): string {
     const data = this.directives
-      .map((directive) => directive instanceof DataDirective ? directive : null)
+      .map((directive) =>
+        directive instanceof DataDirective ? directive : null
+      )
       .filter((directive): directive is DataDirective => !!directive);
 
     const directives = this.directives.filter((directive) => {
       return !(directive instanceof DataDirective);
     });
 
-    return [ ...directives, ...data ].join('\n');
+    return [...directives, ...data].join("\n");
   }
 
   /**
    * Assembles the directives in the program and returns a
    * binary `Program`.
    */
-  public assemble(): [ Messages, Program | undefined ] {
+  public assemble(): [Messages, Program | undefined] {
     // We'll put all of the data after the code, so split them out.
     const data = this.directives
-      .map((directive) => directive instanceof DataDirective ? directive : null)
+      .map((directive) =>
+        directive instanceof DataDirective ? directive : null
+      )
       .filter((directive): directive is DataDirective => !!directive);
 
     const directives = this.directives.filter((directive) => {
@@ -461,8 +477,12 @@ class AssemblyProgram {
     });
 
     // Emit 2 halts; sentinal used to aid in decoding for now.
-    directives.push(new InstructionDirective(Instruction.createOperation(Operation.HALT)));
-    directives.push(new InstructionDirective(Instruction.createOperation(Operation.HALT)));
+    directives.push(
+      new InstructionDirective(Instruction.createOperation(Operation.HALT))
+    );
+    directives.push(
+      new InstructionDirective(Instruction.createOperation(Operation.HALT))
+    );
 
     // Pre-assemble to collect addresses of labels and data.
     const assembler = new Assembler();
@@ -497,11 +517,11 @@ class AssemblyProgram {
     instructions.push(Instruction.createOperation(Operation.HALT));
 
     // If we have errors, the program isn't actually valid.
-    if(assembler.errors.length){
-      return [ assembler, undefined ];
+    if (assembler.errors.length) {
+      return [assembler, undefined];
     }
 
-    return [ assembler, new Program(instructions) ];
+    return [assembler, new Program(instructions)];
   }
 
   /**
@@ -529,16 +549,10 @@ class AssemblyProgram {
 }
 
 export {
-  Directive,
-
-  ConstantDirective, ImmediateConstant, ReferenceConstant,
-  DataDirective, TextData, ImmediatesData, ReferenceData,
-  InstructionDirective,
-  LabelDirective,
-
-  Reference,
   AddressTable,
   Assembler,
+  AssemblyProgram, ConstantDirective, DataDirective, Directive, ImmediateConstant, ImmediatesData, InstructionDirective,
+  LabelDirective,
+  Reference, ReferenceConstant, ReferenceData, TextData
+};
 
-  AssemblyProgram,
-}

@@ -3,10 +3,10 @@
  * This file is bundled with bun to create build/quinix.js for browser use.
  */
 
-import { LowLevelProgram } from './lowlevel/lowlevel';
-import { VM } from './vm/vm';
-import { BufferedPeripheral } from './vm/peripheral-base';
-import { codePointsToString, stringToCodePoints, release, ResolvablePromise } from './lib/util';
+import { LowLevelProgram } from '../../lowlevel/lowlevel';
+import { VM } from '../../vm/vm';
+import { BufferedPeripheral } from '../../vm/peripherals';
+import { codePointsToString, stringToCodePoints, release, ResolvablePromise } from '../../lib/util';
 
 // Import the bare-metal standard library from the source file.
 // This is embedded at build time by bun.

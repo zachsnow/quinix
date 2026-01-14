@@ -1,23 +1,25 @@
 #! /usr/bin/env bun
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
-import { logger } from '../src/lib/logger';
-import { parseArguments } from '../src/lib/cli';
-import { VM, Breakpoint } from '../src/vm/vm';
-import { Memory, Address } from '../src/lib/base-types';
-import { Program } from '../src/vm/instructions';
-import { Compiler } from '../src/lowlevel/compiler';
-import { Debugger } from '../src/vm/debugger';
+import { Address, Memory } from "../src/lib/types";
+import { logger } from "../src/lib/logger";
+import { Compiler } from "../src/lowlevel/compiler";
+import { parseArguments } from "../src/platform/server/cli";
+import { Debugger } from "../src/platform/server/debugger";
+import { Program } from "../src/vm/instructions";
 import {
   TimerPeripheral,
+} from "../src/vm/peripherals";
+import {
   DebugBreakPeripheral,
-  DebugOutputPeripheral,
-  DebugInputPeripheral,
   DebugFilePeripheral,
-} from '../src/vm/peripherals';
+  DebugInputPeripheral,
+  DebugOutputPeripheral,
+} from "../src/platform/server/peripherals";
+import { Breakpoint, VM } from "../src/vm/vm";
 
-const log = logger('qvm');
+const log = logger("qvm");
 
 ///////////////////////////////////////////////////////////////////////
 // Configure CLI.
@@ -26,60 +28,60 @@ interface Options {
   binary: string;
   cycles?: string;
   break: string;
-  'break-write': string;
+  "break-write": string;
   stats: boolean;
 }
 
 const argv = parseArguments<Options>(
-  'qvm',
-  '$0 [binary]',
-  'execute the given binary',
+  "qvm",
+  "$0 [binary]",
+  "execute the given binary",
   {
     options: {
       cycles: {
-        alias: 'c',
-        describe: 'halt after number of cycles',
-        type: 'string',
+        alias: "c",
+        describe: "halt after number of cycles",
+        type: "string",
       },
       break: {
-        alias: 'b',
-        describe: 'break on address',
-        type: 'string',
-        default: '',
+        alias: "b",
+        describe: "break on address",
+        type: "string",
+        default: "",
       },
-      'break-write': {
-        alias: 'w',
-        describe: 'break on write',
-        type: 'string',
-        default: '',
+      "break-write": {
+        alias: "w",
+        describe: "break on write",
+        type: "string",
+        default: "",
       },
       stats: {
-        alias: 's',
-        describe: 'display statistics',
-        type: 'boolean',
+        alias: "s",
+        describe: "display statistics",
+        type: "boolean",
         default: false,
-      }
+      },
     },
     positional: {
-      name: 'binary',
-      describe: 'the binary to execute',
-      type: 'string',
+      name: "binary",
+      describe: "the binary to execute",
+      type: "string",
       demandOption: false,
     },
-  },
+  }
 );
 
 const breakpoints: Breakpoint[] = [];
 if (argv.break) {
   breakpoints.push({
-    type: 'execute',
+    type: "execute",
     address: Address.parse(argv.break),
   });
 }
-if (argv['break-write']) {
+if (argv["break-write"]) {
   breakpoints.push({
-    type: 'write',
-    address: Address.parse(argv['break-write']),
+    type: "write",
+    address: Address.parse(argv["break-write"]),
   });
 }
 
@@ -90,9 +92,8 @@ const filename = argv.binary;
 let programData: Memory;
 if (!filename) {
   programData = new Memory();
-}
-else {
-  if (!filename.endsWith('.qbin')) {
+} else {
+  if (!filename.endsWith(".qbin")) {
     console.warn(`warning: non-standard extension ${path.extname(filename)}`);
   }
   const buffer = fs.readFileSync(filename);
@@ -121,33 +122,38 @@ const vm = new VM({
   ],
 });
 
-vm.run(programData).then((r) => {
-  log.debug(`terminated: ${r}`);
-  switch (r) {
-    case Compiler.NULL_ERROR:
-      console.error('error: NULL_ERROR');
-      break;
-    case Compiler.BOUNDS_ERROR:
-      console.error('error: BOUNDS_ERROR');
-      break;
-    case Compiler.CAPACITY_ERROR:
-      console.error('error: CAPACITY_ERROR');
-      break;
-  }
-  return Promise.resolve(r);
-}, (e) => {
-  log.debug(`error: ${e}`);
-  if (argv.verbose) {
-    log.debug(`${e.stack}`);
-  }
-  return Promise.resolve(-1);
-}).then((r) => {
-  if (argv.stats) {
-    console.info(`\nVM statistics:\n${vm.stats}`);
-  }
-  process.exit(r);
-});
+vm.run(programData)
+  .then(
+    (r) => {
+      log.debug(`terminated: ${r}`);
+      switch (r) {
+        case Compiler.NULL_ERROR:
+          console.error("error: NULL_ERROR");
+          break;
+        case Compiler.BOUNDS_ERROR:
+          console.error("error: BOUNDS_ERROR");
+          break;
+        case Compiler.CAPACITY_ERROR:
+          console.error("error: CAPACITY_ERROR");
+          break;
+      }
+      return Promise.resolve(r);
+    },
+    (e) => {
+      log.debug(`error: ${e}`);
+      if (argv.verbose) {
+        log.debug(`${e.stack}`);
+      }
+      return Promise.resolve(-1);
+    }
+  )
+  .then((r) => {
+    if (argv.stats) {
+      console.info(`\nVM statistics:\n${vm.stats}`);
+    }
+    process.exit(r);
+  });
 
-process.on('SIGINT', function () {
+process.on("SIGINT", function () {
   vm.kill();
 });

@@ -1,6 +1,6 @@
-import { parseArgs } from 'util';
-import inspector from 'inspector';
-import { setVerbose } from './logger';
+import inspector from "inspector";
+import { parseArgs } from "util";
+import { setVerbose } from "../../lib/logger";
 
 interface DefaultOptions {
   verbose: boolean;
@@ -8,7 +8,7 @@ interface DefaultOptions {
   help: boolean;
 }
 
-type OptionType = 'string' | 'boolean';
+type OptionType = "string" | "boolean";
 
 interface OptionConfig {
   alias?: string;
@@ -24,7 +24,7 @@ type OptionsConfig = { [key: string]: OptionConfig };
 interface PositionalConfig {
   name: string;
   describe?: string;
-  type?: 'string';
+  type?: "string";
   array?: boolean;
   demandOption?: boolean;
 }
@@ -34,29 +34,52 @@ interface ParseOptions {
   positional: PositionalConfig;
 }
 
-function printHelp(scriptName: string, usage: string, description: string, parseOptions: ParseOptions): void {
+function printHelp(
+  scriptName: string,
+  usage: string,
+  description: string,
+  parseOptions: ParseOptions
+): void {
   console.log(`${scriptName} - ${description}\n`);
-  console.log(`Usage: ${usage.replace('$0', scriptName)}\n`);
-  console.log('Options:');
+  console.log(`Usage: ${usage.replace("$0", scriptName)}\n`);
+  console.log("Options:");
 
   const allOptions: OptionsConfig = {
     ...parseOptions.options,
-    verbose: { alias: 'v', describe: 'enable verbose output', type: 'boolean', default: false },
-    inspect: { alias: 'i', describe: 'run inspector', type: 'boolean', default: false },
-    help: { alias: 'h', describe: 'show help', type: 'boolean', default: false },
+    verbose: {
+      alias: "v",
+      describe: "enable verbose output",
+      type: "boolean",
+      default: false,
+    },
+    inspect: {
+      alias: "i",
+      describe: "run inspector",
+      type: "boolean",
+      default: false,
+    },
+    help: {
+      alias: "h",
+      describe: "show help",
+      type: "boolean",
+      default: false,
+    },
   };
 
   for (const [name, config] of Object.entries(allOptions)) {
-    const alias = config.alias ? `-${config.alias}, ` : '    ';
-    const defaultStr = config.default !== undefined ? ` [default: ${config.default}]` : '';
-    console.log(`  ${alias}--${name.padEnd(16)} ${config.describe || ''}${defaultStr}`);
+    const alias = config.alias ? `-${config.alias}, ` : "    ";
+    const defaultStr =
+      config.default !== undefined ? ` [default: ${config.default}]` : "";
+    console.log(
+      `  ${alias}--${name.padEnd(16)} ${config.describe || ""}${defaultStr}`
+    );
   }
 
   if (parseOptions.positional) {
     console.log(`\nPositional arguments:`);
     const p = parseOptions.positional;
-    const required = p.demandOption ? ' (required)' : '';
-    console.log(`  ${p.name.padEnd(20)} ${p.describe || ''}${required}`);
+    const required = p.demandOption ? " (required)" : "";
+    console.log(`  ${p.name.padEnd(20)} ${p.describe || ""}${required}`);
   }
 }
 
@@ -69,11 +92,18 @@ function parseArguments<Options>(
   const userOptions = parseOptions.options || {};
 
   // Build parseArgs config
-  const options: { [key: string]: { type: 'string' | 'boolean'; short?: string; multiple?: boolean; default?: string | boolean } } = {};
+  const options: {
+    [key: string]: {
+      type: "string" | "boolean";
+      short?: string;
+      multiple?: boolean;
+      default?: string | boolean;
+    };
+  } = {};
 
   // Add user options
   for (const [name, config] of Object.entries(userOptions)) {
-    const type = config.type === 'boolean' ? 'boolean' : 'string';
+    const type = config.type === "boolean" ? "boolean" : "string";
     options[name] = { type };
     if (config.alias) {
       options[name].short = config.alias;
@@ -81,15 +111,15 @@ function parseArguments<Options>(
     if (config.array) {
       options[name].multiple = true;
     }
-    if (config.default !== undefined && type === 'boolean') {
+    if (config.default !== undefined && type === "boolean") {
       options[name].default = config.default as boolean;
     }
   }
 
   // Add default options
-  options.verbose = { type: 'boolean', short: 'v', default: false };
-  options.inspect = { type: 'boolean', short: 'i', default: false };
-  options.help = { type: 'boolean', short: 'h', default: false };
+  options.verbose = { type: "boolean", short: "v", default: false };
+  options.inspect = { type: "boolean", short: "i", default: false };
+  options.help = { type: "boolean", short: "h", default: false };
 
   let parsed;
   try {
@@ -131,7 +161,9 @@ function parseArguments<Options>(
   if (positionalConfig.demandOption) {
     const val = (values as any)[positionalConfig.name];
     if (val === undefined || (Array.isArray(val) && val.length === 0)) {
-      console.error(`Error: Missing required positional argument: ${positionalConfig.name}`);
+      console.error(
+        `Error: Missing required positional argument: ${positionalConfig.name}`
+      );
       printHelp(scriptName, usage, description, parseOptions);
       process.exit(1);
     }

@@ -1,4 +1,4 @@
-import { Immediate } from '../lib/base-types';
+import { Immediate } from '../lib/types';
 import { indent, InternalError, Syntax, Location, duplicates, writeOnce, IFileRange, IParseOptions } from '../lib/util';
 import { TypeChecker, KindChecker, Source } from './typechecker';
 import { TypeTable } from './tables';
@@ -50,7 +50,7 @@ abstract class Type extends Syntax {
    *
    * @param type the type to check for equality with this type.
    */
-  public isEqualTo(type: Type){
+  public isEqualTo(type: Type) {
     return this.isUnifiableWith(type, true);
   }
 
@@ -130,12 +130,12 @@ class TypedStorage {
   public constructor(
     public readonly type: Type,
     public readonly storage: Storage,
-  ){
+  ) {
     this.type = type;
     this.storage = storage;
   }
 
-  public toString(){
+  public toString() {
     return `.${this.storage} ${this.type}`;
   }
 }
@@ -144,12 +144,12 @@ class TypedIdentifier {
   public identifier: string;
   public type: Type;
 
-  public constructor(identifier: string, type: Type){
+  public constructor(identifier: string, type: Type) {
     this.identifier = identifier;
     this.type = type;
   }
 
-  public toString(){
+  public toString() {
     return `${this.identifier}: ${this.type}`;
   }
 
@@ -168,12 +168,12 @@ type Builtin = (typeof Builtins)[number];
 class BuiltinType extends Type {
   private builtin: Builtin;
 
-  public constructor(builtin: Builtin){
+  public constructor(builtin: Builtin) {
     super();
     this.builtin = builtin;
   }
 
-  public elaborate(context: TypeChecker): void {}
+  public elaborate(context: TypeChecker): void { }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
     // Builtins are always valid.
@@ -181,7 +181,7 @@ class BuiltinType extends Type {
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
-    if(type instanceof VariableType){
+    if (type instanceof VariableType) {
       type = type.unify(this);
     }
 
@@ -190,31 +190,31 @@ class BuiltinType extends Type {
     // This could hide some subsequent errors, but once the user fixes the
     // initial error that cuased this instance of `<error>`, the subsequent
     // errors will be revealed.
-    if(this.builtin === '<error>'){
+    if (this.builtin === '<error>') {
       return true;
     }
 
     // Otherwise, are only unifiable with equal builtins.
     const scalarType = type.evaluate();
-    if(scalarType instanceof BuiltinType){
-      if(this.builtin === scalarType.builtin){
+    if (scalarType instanceof BuiltinType) {
+      if (this.builtin === scalarType.builtin) {
         return true;
       }
     }
 
-    if(nominal){
+    if (nominal) {
       return false;
     }
 
     const resolvedType = scalarType.resolve();
-    if(resolvedType instanceof BuiltinType){
+    if (resolvedType instanceof BuiltinType) {
       return this.builtin === resolvedType.builtin;
     }
 
     return false;
   }
 
-  public toString(){
+  public toString() {
     return this.builtin;
   }
 
@@ -233,7 +233,7 @@ class VariableType extends Type {
   private static id = 0;
   private id: number = VariableType.id++;
 
-  public constructor(public binding?: Type){
+  public constructor(public binding?: Type) {
     super();
   }
 
@@ -241,10 +241,10 @@ class VariableType extends Type {
     throw new InternalError(`unable to elaborate type variable`);
   }
 
-  public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {}
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker): void { }
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
-    if(this.binding){
+    if (this.binding) {
       return this.evaluate().isUnifiableWith(type, nominal);
     }
 
@@ -256,11 +256,11 @@ class VariableType extends Type {
     return this.binding ? this.binding.evaluate() : this;
   }
 
-  public unify(type: Type){
-    if(this === type){
+  public unify(type: Type) {
+    if (this === type) {
       return this.binding || this;
     }
-    if(!this.binding){
+    if (!this.binding) {
       this.binding = type;
     }
     return this.binding;
@@ -271,7 +271,7 @@ class VariableType extends Type {
   }
 
   public toString(): string {
-    if(this.binding){
+    if (this.binding) {
       return `'${this.id} -> ${this.binding}`;
     }
     return `'${this.id}`;
@@ -299,10 +299,10 @@ class TemplateType extends Type {
      * The `instantiators` are called whenever the template is instantiated.
      */
     private readonly instantiators: readonly Instantiator[] = [],
-  ){
+  ) {
     super();
 
-    if(!this.typeVariables.length){
+    if (!this.typeVariables.length) {
       throw new InternalError(`no type variables for templated ${this.type}`);
     }
   }
@@ -318,7 +318,7 @@ class TemplateType extends Type {
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker): void {
     const duplicateTypeVariables = duplicates(this.typeVariables);
-    if(duplicateTypeVariables.length){
+    if (duplicateTypeVariables.length) {
       this.error(context, `duplicate type variables ${duplicateTypeVariables.join(', ')}`);
     }
 
@@ -334,7 +334,7 @@ class TemplateType extends Type {
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
-    if(type instanceof VariableType){
+    if (type instanceof VariableType) {
       type = type.unify(this);
     }
 
@@ -363,7 +363,7 @@ class TemplateType extends Type {
    */
   public instantiate(context: TypeChecker, kindchecker: KindChecker, typeArgs: readonly Type[], location?: Location): Type {
     // Check that we passed the right number of arguments.
-    if(this.typeVariables.length !== typeArgs.length){
+    if (this.typeVariables.length !== typeArgs.length) {
       this.error(context, `expected ${this.typeVariables.length} type arguments, actual ${typeArgs.join(', ')}`);
       return Type.Error;
     }
@@ -421,13 +421,13 @@ class TemplateType extends Type {
     actualType.kindcheck(context, new KindChecker());
 
     // If the types can't unify, there's no inferred instantation.
-    if(!expectedType.isUnifiableWith(actualType, false)){
+    if (!expectedType.isUnifiableWith(actualType, false)) {
       return;
     }
 
     // If any of the type variables are unbound, we didn't find a specific
     // instantiation.
-    if(typeArgs.some((arg) => arg.evaluate() instanceof VariableType)){
+    if (typeArgs.some((arg) => arg.evaluate() instanceof VariableType)) {
       return;
     }
 
@@ -436,7 +436,7 @@ class TemplateType extends Type {
     return this.instantiate(context, kindchecker, typeArgs.map((arg) => arg.evaluate()), location);
   }
 
-  public toString(){
+  public toString() {
     return `<${this.typeVariables.join(', ')}>${this.type}`;
   }
 
@@ -451,10 +451,10 @@ class TemplateInstantiationType extends Type {
   public constructor(
     public readonly type: Type,
     public readonly typeArguments: readonly Type[],
-  ){
+  ) {
     super();
 
-    if(!this.typeArguments.length){
+    if (!this.typeArguments.length) {
       throw new InternalError(`template instantiation with no type arguments`);
     }
   }
@@ -468,8 +468,8 @@ class TemplateInstantiationType extends Type {
     ).at(this.location).tag(this.tags);
   }
 
-  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
-    if(this.instantiatedType !== undefined){
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker) {
+    if (this.instantiatedType !== undefined) {
       this.instantiatedType.kindcheck(context, kindchecker);
       return;
     }
@@ -480,7 +480,7 @@ class TemplateInstantiationType extends Type {
     });
 
     const type = this.type.resolve();
-    if(!(type instanceof TemplateType)){
+    if (!(type instanceof TemplateType)) {
       this.error(context, `expected template type, actual ${this.type}`);
       this.instantiatedType = Type.Error;
       return;
@@ -507,7 +507,7 @@ class TemplateInstantiationType extends Type {
     return false;
   }
 
-  public toString(){
+  public toString() {
     return `(${this.type})<${this.typeArguments.join(', ')}>`;
   }
 }
@@ -522,12 +522,12 @@ type Suffix = {
 };
 
 class SuffixType {
-  public static build(type: Type, suffixes: Suffix[]){
+  public static build(type: Type, suffixes: Suffix[]) {
     return suffixes.reduce((type, suffix) => {
-      if(suffix.identifier !== undefined){
+      if (suffix.identifier !== undefined) {
         return new DotType(type, suffix.identifier).at(suffix.range, suffix.text, suffix.options);
       }
-      else if(suffix.size !== undefined){
+      else if (suffix.size !== undefined) {
         return new ArrayType(type, suffix.size).at(suffix.range, suffix.text, suffix.options);
       }
       else {
@@ -543,7 +543,7 @@ class DotType extends Type {
   public constructor(
     public readonly type: Type,
     public readonly identifier: string,
-  ){
+  ) {
     super();
   }
 
@@ -559,14 +559,14 @@ class DotType extends Type {
 
     const type = this.type.resolve();
 
-    if(!(type instanceof StructType)){
+    if (!(type instanceof StructType)) {
       this.error(context, `expected struct type, actual ${this.type}`);
       this.memberType = Type.Error;
       return;
     }
 
     const memberType = type.member(this.identifier);
-    if(!memberType){
+    if (!memberType) {
       this.error(context, `unknown member ${this.identifier}`);
       this.memberType = Type.Error;
       return;
@@ -604,7 +604,7 @@ class FunctionType extends Type {
      * Function return type.
      */
     public readonly returnType: Type,
-  ){
+  ) {
     super();
   }
 
@@ -625,19 +625,19 @@ class FunctionType extends Type {
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
-    if(type instanceof VariableType){
+    if (type instanceof VariableType) {
       type = type.unify(this);
     }
 
     const concreteType = type.resolve();
-    if(concreteType instanceof FunctionType){
+    if (concreteType instanceof FunctionType) {
       // Return types must unify.
-      if(!this.returnType.isUnifiableWith(concreteType.returnType, nominal)){
+      if (!this.returnType.isUnifiableWith(concreteType.returnType, nominal)) {
         return false;
       }
 
       // Arity must match.
-      if(this.arity !== concreteType.arity){
+      if (this.arity !== concreteType.arity) {
         return false;
       }
 
@@ -661,11 +661,11 @@ class FunctionType extends Type {
   /**
    * Returns the return type of this function type.
    */
-  public apply(){
+  public apply() {
     return this.returnType;
   }
 
-  public toString(){
+  public toString() {
     const args = this.argumentTypes.map((arg) => arg.toString()).join(', ');
     return `(${args}) => ${this.returnType}`;
   }
@@ -679,17 +679,17 @@ class IdentifierType extends Type {
 
   public constructor(
     private readonly identifier: string,
-  ){
+  ) {
     super();
     this.identifier = identifier;
 
     const builtins: string[] = Array.from(Builtins);
-    if(builtins.indexOf(this.identifier) !== -1){
+    if (builtins.indexOf(this.identifier) !== -1) {
       throw new InternalError(this.withLocation(`invalid identifier ${this.identifier}`));
     }
   }
 
-  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker) {
     const lookup = kindchecker.typeTable.lookup(this.identifier);
     const declaration = context.namespace.lookupType(context, this.identifier);
 
@@ -697,17 +697,17 @@ class IdentifierType extends Type {
     // We don't want to look up already-bound identifiers because we
     // probably just instantiated them into a new spot that is not
     // the context in which they should be looked up!
-    if(this.qualifiedIdentifier !== undefined){
+    if (this.qualifiedIdentifier !== undefined) {
       return;
     }
 
-    if(lookup !== undefined){
+    if (lookup !== undefined) {
       // This is a type binding; it can't be recursive. We don't
       // save the qualified identifier because it doesn't really have
       // one.
       return;
     }
-    else if(declaration !== undefined){
+    else if (declaration !== undefined) {
       // This is a type name.
 
       // Save for later comparisons.
@@ -715,20 +715,20 @@ class IdentifierType extends Type {
       this.type = declaration.type;
 
       // Invalid recursive reference.
-      if(kindchecker.isInvalid(this.qualifiedIdentifier)){
+      if (kindchecker.isInvalid(this.qualifiedIdentifier)) {
         this.error(context, `recursive type ${this}`);
         return;
       }
 
       // Valid recursive reference; we're done.
-      if(kindchecker.isRecursive(this.qualifiedIdentifier)){
+      if (kindchecker.isRecursive(this.qualifiedIdentifier)) {
         return;
       }
 
       // Otherwise we must pass through this type so we can verify
       // (mutually) recursive types. Make sure to reset the lookup context
       // to the declaration's namesapce.
-      if(!declaration.namespace){
+      if (!declaration.namespace) {
         throw new InternalError(`no namespace`);
       }
       const namespaceContext = context.forNamespace(declaration.namespace);
@@ -749,25 +749,25 @@ class IdentifierType extends Type {
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
-    if(type instanceof VariableType){
+    if (type instanceof VariableType) {
       type = type.unify(this);
     }
 
     // If we've already shown an error associated with this identifier,
     // just shut up about it.
-    if(this.qualifiedIdentifier === IdentifierType.ErrorIdentifier){
+    if (this.qualifiedIdentifier === IdentifierType.ErrorIdentifier) {
       return true;
     }
 
     // Nominal equality -- we avoid resolving either side unnecessarily.
     const evaluatedType = type.evaluate();
-    if(evaluatedType instanceof IdentifierType){
-      if(this.qualifiedIdentifier === evaluatedType.qualifiedIdentifier){
+    if (evaluatedType instanceof IdentifierType) {
+      if (this.qualifiedIdentifier === evaluatedType.qualifiedIdentifier) {
         return true;
       }
     }
 
-    if(nominal){
+    if (nominal) {
       return false;
     }
 
@@ -778,7 +778,7 @@ class IdentifierType extends Type {
   public substitute(typeTable: TypeTable): Type {
     // If we have bound this type variable, replace it with
     // the value we bound in the type table.
-    if(typeTable.has(this.identifier)){
+    if (typeTable.has(this.identifier)) {
       return typeTable.get(this.identifier).value;
     }
 
@@ -808,7 +808,7 @@ class IdentifierType extends Type {
     return this.type.size;
   }
 
-  public toString(){
+  public toString() {
     return this.identifier;
   }
 }
@@ -818,12 +818,12 @@ writeOnce(IdentifierType, 'type', true);
 class PointerType extends Type {
   private type: Type;
 
-  public constructor(type: Type){
+  public constructor(type: Type) {
     super();
     this.type = type;
   }
 
-  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker) {
     // Passing through a pointer tells the kindchecker that all of the types
     // we've seen inside a structure are valid.
     this.type.kindcheck(context, kindchecker.pointer());
@@ -831,13 +831,13 @@ class PointerType extends Type {
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
-    if(type instanceof VariableType){
+    if (type instanceof VariableType) {
       type = type.unify(this);
     }
 
     // Pointers are unifiable when the types that they point to are unifiable.
     type = nominal ? type.evaluate() : type.resolve();
-    if(type instanceof PointerType){
+    if (type instanceof PointerType) {
       return this.type.isUnifiableWith(type.type, nominal);
     }
     return false;
@@ -847,7 +847,7 @@ class PointerType extends Type {
     return this.type;
   }
 
-  public toString(){
+  public toString() {
     return `* ${this.type}`;
   }
 
@@ -862,32 +862,32 @@ class ArrayType extends Type {
   public constructor(
     private type: Type,
     public readonly length: number,
-  ){
+  ) {
     super();
   }
 
-  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker) {
     // Arrays do not allow recursive references (unlike pointers/slices).
     this.type.kindcheck(context, kindchecker);
   }
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
-    if(type instanceof VariableType){
+    if (type instanceof VariableType) {
       type = type.unify(this);
     }
 
     type = nominal ? type.evaluate() : type.resolve();
 
     // Arrays unify with arrays of same element type and exact same length.
-    if(type instanceof ArrayType){
-      if(this.type.isUnifiableWith(type.type, nominal)){
+    if (type instanceof ArrayType) {
+      if (this.type.isUnifiableWith(type.type, nominal)) {
         return this.length === type.length;
       }
     }
 
     // Arrays also unify with slices of the same element type (implicit conversion).
-    if(type instanceof SliceType){
+    if (type instanceof SliceType) {
       return this.type.isUnifiableWith(type.index(), nominal);
     }
 
@@ -910,7 +910,7 @@ class ArrayType extends Type {
     ).at(this.location).tag(this.tags);
   }
 
-  public toString(){
+  public toString() {
     return `${this.type}[${Immediate.toString(this.length, 1)}]`;
   }
 }
@@ -918,25 +918,25 @@ class ArrayType extends Type {
 class SliceType extends Type {
   public constructor(
     private type: Type,
-  ){
+  ) {
     super();
   }
 
-  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker) {
     // Slices contain a pointer, so recursive references are valid.
     this.type.kindcheck(context, kindchecker.pointer());
   }
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
-    if(type instanceof VariableType){
+    if (type instanceof VariableType) {
       type = type.unify(this);
     }
 
     type = nominal ? type.evaluate() : type.resolve();
 
     // Slices unify with slices of the same element type.
-    if(type instanceof SliceType){
+    if (type instanceof SliceType) {
       return this.type.isUnifiableWith(type.type, nominal);
     }
 
@@ -958,7 +958,7 @@ class SliceType extends Type {
     ).at(this.location).tag(this.tags);
   }
 
-  public toString(){
+  public toString() {
     return `${this.type}[]`;
   }
 }
@@ -969,7 +969,7 @@ type Member = {
 }
 
 class StructType extends Type {
-  public constructor(public readonly members: readonly Member[]){
+  public constructor(public readonly members: readonly Member[]) {
     super();
   }
 
@@ -979,14 +979,14 @@ class StructType extends Type {
     });
   }
 
-  public kindcheck(context: TypeChecker, kindchecker: KindChecker){
+  public kindcheck(context: TypeChecker, kindchecker: KindChecker) {
     // Passing through a structure.
     const nestedKindchecker = kindchecker.struct();
 
     // A struct type is valid if its members are valid.
     this.members.forEach((member) => {
       member.type.kindcheck(context, nestedKindchecker);
-      if(member.type.isConvertibleTo(Type.Void)){
+      if (member.type.isConvertibleTo(Type.Void)) {
         this.error(context, `invalid void struct member`);
       }
     });
@@ -994,17 +994,17 @@ class StructType extends Type {
 
   public isUnifiableWith(type: Type, nominal: boolean): boolean {
     // Bind type variables.
-    if(type instanceof VariableType){
+    if (type instanceof VariableType) {
       type = type.unify(this);
     }
 
     // Struct types have structural equality. They should have the
     // exact same number, order, and type of members.
     type = type.resolve();
-    if(type instanceof StructType){
+    if (type instanceof StructType) {
       const structType = type;
 
-      if(this.members.length !== structType.members.length){
+      if (this.members.length !== structType.members.length) {
         return false;
       }
 
@@ -1025,13 +1025,13 @@ class StructType extends Type {
   public offset(identifier: string): number {
     let offset = 0;
     const member = this.members.find((member) => {
-      if(member.identifier === identifier){
+      if (member.identifier === identifier) {
         return true;
       }
       offset += member.type.size;
     });
 
-    if(member === undefined){
+    if (member === undefined) {
       throw new InternalError(this.withLocation(`invalid struct member ${identifier} (${this.members})`));
     }
     return offset;
@@ -1045,7 +1045,7 @@ class StructType extends Type {
     return size;
   }
 
-  public toString(){
+  public toString() {
     const members = this.members.map((member) => {
       return `${member.identifier}: ${member.type};`;
     }).join('\n');

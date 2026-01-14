@@ -1,14 +1,17 @@
-import { stringToCodePoints } from './util';
+import { stringToCodePoints } from "./util";
 
-function formatNumber(n: number, bytes: number = 4, signed: boolean = false): string {
-  let sign = '';
-  if(signed){
-    if(n < 0){
+function formatNumber(
+  n: number,
+  bytes: number = 4,
+  signed: boolean = false
+): string {
+  let sign = "";
+  if (signed) {
+    if (n < 0) {
       n = -n;
-      sign = '-'
+      sign = "-";
     }
-  }
-  else {
+  } else {
     n = n >>> 0;
   }
 
@@ -17,7 +20,7 @@ function formatNumber(n: number, bytes: number = 4, signed: boolean = false): st
 
 function parseNumber(s: string): number {
   s = s.trim();
-  if(s.indexOf('0x') === 0){
+  if (s.indexOf("0x") === 0) {
     return parseInt(s.substr(2), 16);
   }
   return parseInt(s, 10);
@@ -58,8 +61,8 @@ namespace Address {
  */
 type Offset = number;
 namespace Offset {
-  export function toString(offset: Offset, bytes: number = 2){
-    return formatNumber(offset, bytes)
+  export function toString(offset: Offset, bytes: number = 2) {
+    return formatNumber(offset, bytes);
   }
 }
 
@@ -85,13 +88,13 @@ class Memory extends Uint32Array {
     return this.byteOffset / Memory.BYTES_PER_ELEMENT;
   }
 
-  public toString(){
+  public toString() {
     const lines: string[] = [];
     this.forEach((n, i) => {
       const address = this.base + i;
       lines.push(`${Address.toString(address)}: ${Immediate.toString(n)}`);
     });
-    return lines.join('\n');
+    return lines.join("\n");
   }
 
   /**
@@ -107,7 +110,11 @@ class Memory extends Uint32Array {
    * @param bytes the bytes to convert to memory.
    */
   public static fromBytes(bytes: Uint8Array): Memory {
-    return new Memory(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength / Memory.BYTES_PER_ELEMENT);
+    return new Memory(
+      bytes.buffer as ArrayBuffer,
+      bytes.byteOffset,
+      bytes.byteLength / Memory.BYTES_PER_ELEMENT
+    );
   }
 
   /**
@@ -125,6 +132,4 @@ class Memory extends Uint32Array {
   }
 }
 
-export {
-  Memory, Address, Immediate, Offset,
-}
+export { Address, Immediate, Memory, Offset };

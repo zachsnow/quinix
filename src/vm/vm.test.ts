@@ -1,4 +1,4 @@
-import { Address } from '../lib/base-types';
+import { Address } from '../lib/types';
 import { Instruction, Operation, Program, Register } from "./instructions";
 import { VM } from './vm';
 
@@ -10,7 +10,7 @@ describe('VM', () => {
     return vm.run(program.encode());
   };
 
-  async function dump(instructions: Instruction[], address: Address){
+  async function dump(instructions: Instruction[], address: Address) {
     const program = new Program(instructions);
 
     const vm = new VM();
