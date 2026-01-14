@@ -3,8 +3,8 @@ import {
   release,
   ResolvablePromise,
   stringToCodePoints,
-} from "../../lib/util";
-import { BufferedPeripheral } from "../../vm/peripherals";
+} from "@/lib/util";
+import { BufferedPeripheral } from "@/vm/peripherals";
 
 /**
  * A peripheral to write to a DOM element.

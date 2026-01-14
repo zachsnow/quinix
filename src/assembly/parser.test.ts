@@ -1,4 +1,4 @@
-import { Operation } from "../vm/instructions";
+import { Operation } from "@/vm/instructions";
 import { AssemblyProgram, ConstantDirective, DataDirective } from "./assembly";
 import { parse } from "./parser";
 

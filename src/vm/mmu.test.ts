@@ -1,12 +1,16 @@
-import { IdentityMMU, AccessFlags, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
-import { Memory } from '../lib/types';
-import { VM } from './vm';
-import type { PeripheralMapping } from './peripherals';
+import { Memory } from "@/lib/types";
+import {
+  AccessFlags,
+  IdentityMMU,
+  ListPageTablePeripheral,
+  TwoLevelPageTablePeripheral,
+} from "./mmu";
+import type { PeripheralMapping } from "./peripherals";
+import { VM } from "./vm";
 
-describe('MMU', () => {
-
-  describe('identity', () => {
-    test('enabled', () => {
+describe("MMU", () => {
+  describe("identity", () => {
+    test("enabled", () => {
       const mmu = new IdentityMMU();
       mmu.enable();
       expect(mmu.translate(0x100, AccessFlags.Execute)).toBe(0x100);
@@ -23,7 +27,7 @@ describe('MMU', () => {
     });
   });
 
-  describe('simple list-based page table', () => {
+  describe("simple list-based page table", () => {
     function create(size: number = 0x200) {
       const memory = new Memory(size);
       memory.fill(0);
@@ -32,10 +36,10 @@ describe('MMU', () => {
       return {
         memory,
         view,
-      }
+      };
     }
 
-    test('disabled', () => {
+    test("disabled", () => {
       const { memory, view } = create();
       const mmu = new ListPageTablePeripheral(memory);
       mmu.disable();
@@ -45,7 +49,7 @@ describe('MMU', () => {
       expect(mmu.translate(0x100, AccessFlags.Read)).toBe(0x100);
     });
 
-    test('unmapped', () => {
+    test("unmapped", () => {
       const { memory, view } = create();
       const mmu = new ListPageTablePeripheral(memory);
       mmu.enable();
@@ -58,7 +62,7 @@ describe('MMU', () => {
       expect(mmu.translate(0x100, AccessFlags.Read)).toBe(0x100);
     });
 
-    test('simple mapping', () => {
+    test("simple mapping", () => {
       const { memory, view } = create(0x2000);
       const mmu = new ListPageTablePeripheral(memory);
       const vm = new VM();
@@ -80,7 +84,8 @@ describe('MMU', () => {
       memory[0x15] = 0x600;
       memory[0x16] = 0x400;
       memory[0x17] = 0x100;
-      memory[0x18] = AccessFlags.Present | AccessFlags.Read | AccessFlags.Execute;
+      memory[0x18] =
+        AccessFlags.Present | AccessFlags.Read | AccessFlags.Execute;
 
       view[0] = 0x10;
       mmu.notify(0);
@@ -93,7 +98,7 @@ describe('MMU', () => {
     });
   });
 
-  describe('2-level page table', () => {
+  describe("2-level page table", () => {
     function create(size: number = 0x200) {
       const memory = new Memory(size);
       memory.fill(0);
@@ -102,10 +107,10 @@ describe('MMU', () => {
       return {
         memory,
         view,
-      }
+      };
     }
 
-    test('disabled', () => {
+    test("disabled", () => {
       const { memory, view } = create();
       const mmu = new TwoLevelPageTablePeripheral(memory);
       mmu.disable();
@@ -115,7 +120,7 @@ describe('MMU', () => {
       expect(mmu.translate(0x100, AccessFlags.Read)).toBe(0x100);
     });
 
-    test('unmapped', () => {
+    test("unmapped", () => {
       const { memory, view } = create();
       const mmu = new TwoLevelPageTablePeripheral(memory);
       mmu.enable();
@@ -128,7 +133,7 @@ describe('MMU', () => {
       expect(mmu.translate(0x100, AccessFlags.Read)).toBe(0x100);
     });
 
-    test('simple mapping', () => {
+    test("simple mapping", () => {
       const { memory, view } = create(0x2000);
       const mmu = new TwoLevelPageTablePeripheral(memory);
       const vm = new VM();
@@ -136,7 +141,7 @@ describe('MMU', () => {
         base: 0x100,
         peripheral: mmu,
         view: view,
-      }
+      };
       mmu.map(vm, mapping);
       mmu.enable();
 

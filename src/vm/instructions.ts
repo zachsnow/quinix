@@ -1,4 +1,4 @@
-import { Memory, Immediate } from '../lib/types';
+import { Immediate, Memory } from "@/lib/types";
 
 /**
  * A virtual machine operation.
@@ -40,11 +40,11 @@ enum Operation {
 
 namespace Operation {
   export type Specification = {
-    name: string,
-    d: boolean,
-    s0: boolean,
-    s1: boolean,
-  }
+    name: string;
+    d: boolean;
+    s0: boolean;
+    s1: boolean;
+  };
 
   export const specifications: Specification[] = [
     "halt",
@@ -71,20 +71,19 @@ namespace Operation {
     "nop",
     "wait",
   ].map((spec) => {
-    const parts = spec.split(' ');
+    const parts = spec.split(" ");
     const name = parts[0];
-    const i = parts.indexOf('s');
+    const i = parts.indexOf("s");
     return {
       name,
-      d: parts[1] === 'd',
+      d: parts[1] === "d",
       s0: i !== -1,
-      s1: parts.indexOf('s', i + 1) !== -1,
+      s1: parts.indexOf("s", i + 1) !== -1,
     };
-
   });
 
   export function toString(operation: Operation): string {
-    return Operation.specifications[operation].name
+    return Operation.specifications[operation].name;
   }
 
   /**
@@ -109,17 +108,17 @@ namespace Register {
   /**
    * The display names of all the generic registers of the virtual machine.
    */
-  export const genericRegisters = new Array<string>(GENERIC_REGISTER_COUNT).fill("r").map((r, i) => {
-    return r + i.toString(10);
-  });
+  export const genericRegisters = new Array<string>(GENERIC_REGISTER_COUNT)
+    .fill("r")
+    .map((r, i) => {
+      return r + i.toString(10);
+    });
 
   /**
    * The display names of the special registers of the virtual machine.
    */
 
-  export const specialRegisters = [
-    "ip",
-  ];
+  export const specialRegisters = ["ip"];
 
   /**
    * The display names of all the registers of the virtual machine.
@@ -142,7 +141,7 @@ namespace Register {
     if (index !== -1) {
       return index;
     }
-    throw new Error('invalid register');
+    throw new Error("invalid register");
   }
 
   export function toString(r: Register): string {
@@ -150,7 +149,7 @@ namespace Register {
     if (s !== undefined) {
       return s;
     }
-    throw new Error('invalid register');
+    throw new Error("invalid register");
   }
 
   export const R0 = 0;
@@ -175,12 +174,12 @@ class Instruction {
 
     const parts = [
       Operation.toString(this.operation),
-      specification.d ? Register.toString(this.dr!) : '',
-      specification.s0 ? Register.toString(this.sr0!) : '',
-      specification.s1 ? Register.toString(this.sr1!) : '',
+      specification.d ? Register.toString(this.dr!) : "",
+      specification.s0 ? Register.toString(this.sr0!) : "",
+      specification.s1 ? Register.toString(this.sr1!) : "",
     ].filter((part) => !!part);
 
-    return parts.join(' ');
+    return parts.join(" ");
   }
 
   public encode(): number {
@@ -201,9 +200,9 @@ class Instruction {
   public static decode(u32: number): Instruction {
     const instruction = new Instruction();
 
-    u32 = (u32 & 0xffffffff);
+    u32 = u32 & 0xffffffff;
 
-    const operation = (u32 >>> 24) & 0xff
+    const operation = (u32 >>> 24) & 0xff;
 
     if (!Operation.isValid(operation)) {
       instruction.immediate = u32;
@@ -217,7 +216,12 @@ class Instruction {
     return instruction;
   }
 
-  public static createOperation(operation: Operation, dr?: Register, sr0?: Register, sr1?: Register) {
+  public static createOperation(
+    operation: Operation,
+    dr?: Register,
+    sr0?: Register,
+    sr1?: Register
+  ) {
     const instruction = new Instruction();
 
     const specification = Operation.specifications[operation];
@@ -227,17 +231,23 @@ class Instruction {
     instruction.operation = operation;
 
     if (specification.d && dr === undefined) {
-      throw new Error(`${Operation.toString(operation)}: missing destination register`);
+      throw new Error(
+        `${Operation.toString(operation)}: missing destination register`
+      );
     }
     instruction.dr = dr;
 
     if (specification.s0 && sr0 === undefined) {
-      throw new Error(`${Operation.toString(operation)}: missing first source register`);
+      throw new Error(
+        `${Operation.toString(operation)}: missing first source register`
+      );
     }
     instruction.sr0 = sr0;
 
     if (specification.s1 && sr1 === undefined) {
-      throw new Error(`${Operation.toString(operation)}: missing second source register`);
+      throw new Error(
+        `${Operation.toString(operation)}: missing second source register`
+      );
     }
     instruction.sr1 = sr1;
 
@@ -245,7 +255,7 @@ class Instruction {
   }
 
   public static createImmediate(u32: number) {
-    u32 = (u32 & 0xffffffff);
+    u32 = u32 & 0xffffffff;
 
     const instruction = new Instruction();
     instruction.immediate = u32;
@@ -262,9 +272,13 @@ class Program {
   }
 
   public toString(baseAddress: number = 0): string {
-    return this.instructions.map((instruction, i) => {
-      return Immediate.toString(baseAddress + i) + ': ' + instruction.toString();
-    }).join('\n');
+    return this.instructions
+      .map((instruction, i) => {
+        return (
+          Immediate.toString(baseAddress + i) + ": " + instruction.toString()
+        );
+      })
+      .join("\n");
   }
 
   public encode(): Memory {
@@ -285,11 +299,9 @@ class Program {
         isConstant = false;
         instructions.push(Instruction.createImmediate(u32));
         haltCount = 0;
-      }
-      else if (haltCount > 1) {
+      } else if (haltCount > 1) {
         instructions.push(Instruction.createImmediate(u32));
-      }
-      else {
+      } else {
         const instruction = Instruction.decode(u32);
         haltCount += instruction.operation === Operation.HALT ? 1 : 0;
         isConstant = instruction.operation === Operation.CONSTANT;
@@ -301,10 +313,5 @@ class Program {
   }
 }
 
-export {
-  Operation,
-  Register,
-  Instruction,
-  Program,
-  Immediate,
-}
+export { Immediate, Instruction, Operation, Program, Register };
+

@@ -1,4 +1,4 @@
-import { Register } from '../vm/instructions';
+import { Register } from '@/vm/instructions';
 import { RegisterAllocator, Compiler } from './compiler';
 
 describe('Register allocation', () => {
@@ -27,7 +27,7 @@ describe('Register allocation', () => {
     const allocator = new RegisterAllocator();
     // We only allocate generic registers, and not those that the compiler treats as
     // special.
-    for(let i = 0; i < Register.GENERIC_REGISTER_COUNT - Compiler.ReservedRegisters.length; i++){
+    for (let i = 0; i < Register.GENERIC_REGISTER_COUNT - Compiler.ReservedRegisters.length; i++) {
       const r = allocator.allocate();
       expect(Register.genericRegisters.indexOf(Register.toString(r))).not.toBe(-1);
       expect(Compiler.ReservedRegisters.indexOf(r)).toBe(-1);

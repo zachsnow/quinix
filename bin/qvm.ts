@@ -2,22 +2,20 @@
 import fs from "fs";
 import path from "path";
 
-import { Address, Memory } from "../src/lib/types";
-import { logger } from "../src/lib/logger";
-import { Compiler } from "../src/lowlevel/compiler";
-import { parseArguments } from "../src/platform/server/cli";
-import { Debugger } from "../src/platform/server/debugger";
-import { Program } from "../src/vm/instructions";
-import {
-  TimerPeripheral,
-} from "../src/vm/peripherals";
+import { logger } from "@/lib/logger";
+import { Address, Memory } from "@/lib/types";
+import { Compiler } from "@/lowlevel/compiler";
+import { Program } from "@/vm/instructions";
+import { parseArguments } from "@server/cli";
+import { Debugger } from "@server/debugger";
 import {
   DebugBreakPeripheral,
   DebugFilePeripheral,
   DebugInputPeripheral,
   DebugOutputPeripheral,
-} from "../src/platform/server/peripherals";
-import { Breakpoint, VM } from "../src/vm/vm";
+} from "@server/peripherals";
+import { TimerPeripheral } from "@/vm/peripherals";
+import { Breakpoint, VM } from "@/vm/vm";
 
 const log = logger("qvm");
 

@@ -1,6 +1,6 @@
-import { logger } from '../lib/logger';
+import { logger } from '@/lib/logger';
 
-import { Memory, Address, Immediate, Offset } from '../lib/types';
+import { Memory, Address, Immediate, Offset } from '@/lib/types';
 import { Peripheral } from './peripherals';
 
 const log = logger('vm:mmu');

@@ -4,9 +4,9 @@ import path from 'path';
 import { LowLevelProgram } from './lowlevel';
 import { Compiler } from './compiler';
 import { parse as _parse } from './parser';
-import { VM, VMResult } from '../vm/vm';
-import { Immediate } from '../lib/types';
-import { AssemblyProgram } from '../assembly/assembly';
+import { VM, VMResult } from '@/vm/vm';
+import { Immediate } from '@/lib/types';
+import { AssemblyProgram } from '@/assembly/assembly';
 
 describe('QLLC parsing', () => {
   function parseError(programText: string) {

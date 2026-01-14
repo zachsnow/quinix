@@ -1,19 +1,18 @@
-import { InternalError, duplicates, Syntax, IParseOptions, IFileRange, stringToCodePoints, writeOnce } from '../lib/util';
 import {
-  ConstantDirective, ImmediateConstant, ReferenceConstant,
+  AssemblyProgram,
+  ConstantDirective, ImmediateConstant,
   InstructionDirective,
   LabelDirective,
+  ReferenceConstant,
   TextData,
-
-  AssemblyProgram,
-} from '../assembly/assembly';
-import { Type, Storage, PointerType, TemplateType, FunctionType, StructType, ArrayType, SliceType, VariableType } from './types';
-import { TypeChecker, KindChecker } from './typechecker';
+} from '@/assembly/assembly';
+import { Immediate } from '@/lib/types';
+import { Instruction, Operation, Register, } from '@/vm/instructions';
+import { duplicates, IFileRange, InternalError, IParseOptions, stringToCodePoints, Syntax, writeOnce } from '@/lib/util';
 import { Compiler, StorageCompiler } from './compiler';
-import { Immediate } from '../lib/types';
-import { Instruction, Operation, } from '../vm/instructions';
-import { Register } from '../vm/instructions';
 import { TypeTable } from './tables';
+import { KindChecker, TypeChecker } from './typechecker';
+import { ArrayType, FunctionType, PointerType, SliceType, Storage, StructType, TemplateType, Type, VariableType } from './types';
 
 ///////////////////////////////////////////////////////////////////////
 // Expressions.
@@ -2486,15 +2485,7 @@ class ConditionalExpression extends Expression {
 });
 
 export {
-  Expression,
-  IdentifierExpression,
-  IntLiteralExpression, StringLiteralExpression, BoolLiteralExpression,
-  BinaryExpression, UnaryExpression,
-  CallExpression,
-  DotExpression, ArrowExpression, IndexExpression, SliceExpression, SuffixExpression,
-  ConditionalExpression,
-  CastExpression, NewExpression, NewArrayExpression,
-  NullExpression, VoidExpression,
-  ArrayLiteralExpression, StructLiteralExpression,
-  SizeofExpression,
+  ArrayLiteralExpression, ArrowExpression, BinaryExpression, BoolLiteralExpression, CallExpression, CastExpression, ConditionalExpression, DotExpression, Expression,
+  IdentifierExpression, IndexExpression, IntLiteralExpression, NewArrayExpression, NewExpression, NullExpression, SizeofExpression, SliceExpression, StringLiteralExpression, StructLiteralExpression, SuffixExpression, UnaryExpression, VoidExpression
 };
+

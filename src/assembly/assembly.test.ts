@@ -1,4 +1,4 @@
-import { Operation } from "../vm/instructions";
+import { Operation } from "@/vm/instructions";
 import { Assembler, AssemblyProgram, Reference, TextData } from "./assembly";
 import { parse } from "./parser";
 

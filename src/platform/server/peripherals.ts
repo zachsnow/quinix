@@ -1,11 +1,11 @@
-import { stringToCodePoints, ResolvablePromise, codePointsToString, release } from '../../lib/util';
-import { logger } from '../../lib/logger';
-import { VM } from '../../vm/vm';
-import type { Interrupt } from '../../vm/vm';
-import { Address } from '../../lib/types';
-import { Instruction, Operation, Register, Immediate } from '../../vm/instructions';
-import { Peripheral, BufferedPeripheral } from '../../vm/peripherals';
-import type { PeripheralMapping } from '../../vm/peripherals';
+import { stringToCodePoints, ResolvablePromise, codePointsToString, release } from '@/lib/util';
+import { logger } from '@/lib/logger';
+import { VM } from '@/vm/vm';
+import type { Interrupt } from '@/vm/vm';
+import { Address } from '@/lib/types';
+import { Instruction, Operation, Register, Immediate } from '@/vm/instructions';
+import { Peripheral, BufferedPeripheral } from '@/vm/peripherals';
+import type { PeripheralMapping } from '@/vm/peripherals';
 import fs from 'fs';
 import readline from 'readline';
 

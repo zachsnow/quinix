@@ -2,11 +2,11 @@
 import fs from "fs";
 import path from "path";
 
-import { AssemblyProgram } from "../src/assembly/assembly";
-import { logger } from "../src/lib/logger";
-import { InternalError } from "../src/lib/util";
-import { parseArguments } from "../src/platform/server/cli";
-import { readFiles } from "../src/platform/server/fs";
+import { AssemblyProgram } from "@/assembly/assembly";
+import { logger } from "@/lib/logger";
+import { InternalError } from "@/lib/util";
+import { parseArguments } from "@server/cli";
+import { readFiles } from "@server/fs";
 
 const log = logger("qasm");
 

@@ -1,12 +1,12 @@
 import readline from "readline";
 
-import { Address, Immediate, Memory } from "../../lib/types";
-import { logger } from "../../lib/logger";
-import { ResolvablePromise } from "../../lib/util";
-import { Compiler } from "../../lowlevel/compiler";
-import { Instruction, Program, Register } from "../../vm/instructions";
-import type { VMResult } from "../../vm/vm";
-import { State, VM } from "../../vm/vm";
+import { Address, Immediate, Memory } from "@/lib/types";
+import { logger } from "@/lib/logger";
+import { ResolvablePromise } from "@/lib/util";
+import { Compiler } from "@/lowlevel/compiler";
+import { Instruction, Program, Register } from "@/vm/instructions";
+import type { VMResult } from "@/vm/vm";
+import { State, VM } from "@/vm/vm";
 
 const log = logger("vm:debugger");
 

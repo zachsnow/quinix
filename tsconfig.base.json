@@ -11,6 +11,12 @@
     "isolatedModules": true,
     "noEmit": true,
     "baseUrl": ".",
-    "rootDir": "."
+    "rootDir": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@server/*": ["src/platform/server/*"],
+      "@browser/*": ["src/platform/browser/*"],
+      "@bin/*": ["bin/*"]
+    }
   }
 }

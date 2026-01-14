@@ -1,4 +1,4 @@
-import { InternalError, unique, range } from '../lib/util';
+import { InternalError, unique, range } from '@/lib/util';
 import {
   Directive,
   ConstantDirective, ImmediateConstant, ReferenceConstant,
@@ -7,8 +7,8 @@ import {
   LabelDirective,
 
   Reference,
-} from '../assembly/assembly';
-import { Register, Instruction, Operation, Immediate } from '../vm/instructions';
+} from '@/assembly/assembly';
+import { Register, Instruction, Operation, Immediate } from '@/vm/instructions';
 import { Storage } from './types';
 
 class RegisterAllocator {
@@ -18,7 +18,7 @@ class RegisterAllocator {
   private allocatedCalleeSave: Register[] = [];
   private everAllocatedCalleeSave: Register[] = [];
 
-  public constructor(){
+  public constructor() {
     this.unallocatedCalleeSave = Array.from(Compiler.CalleeSaveRegisters);
     this.unallocatedCallerSave = Array.from(Compiler.CallerSaveRegisters);
   }
@@ -46,14 +46,14 @@ class RegisterAllocator {
   public allocate(): Register {
     this.unallocatedCallerSave.sort((a, b) => a - b);
     let r = this.unallocatedCallerSave.shift();
-    if(r !== undefined){
+    if (r !== undefined) {
       this.allocatedCallerSave.push(r);
       return r;
     }
 
     this.unallocatedCalleeSave.sort((a, b) => a - b);
     r = this.unallocatedCalleeSave.shift();
-    if(r !== undefined){
+    if (r !== undefined) {
       this.allocatedCalleeSave.push(r);
       this.everAllocatedCalleeSave.push(r);
       return r;
@@ -69,14 +69,14 @@ class RegisterAllocator {
    */
   public deallocate(r: Register): void {
     let i = this.allocatedCallerSave.indexOf(r);
-    if(i >= 0){
+    if (i >= 0) {
       this.allocatedCallerSave.splice(i, 1);
       this.unallocatedCallerSave.push(r);
       return;
     }
 
     i = this.allocatedCalleeSave.indexOf(r);
-    if(i >= 0){
+    if (i >= 0) {
       this.allocatedCalleeSave.splice(i, 1);
       this.unallocatedCalleeSave.push(r);
       return;
@@ -122,7 +122,7 @@ class Compiler {
    * Generic registers that the compiler treats as "special", and that
    * should not be allocated / used by emitted code except in the relevant way.
    */
-  public static readonly ReservedRegisters = [ Compiler.RET, Compiler.SP, Compiler.ONE ];
+  public static readonly ReservedRegisters = [Compiler.RET, Compiler.SP, Compiler.ONE];
 
   public static readonly CallerSaveRegisters = range(1, Register.GENERIC_REGISTER_COUNT / 2);
   public static readonly CalleeSaveRegisters = range(
@@ -172,7 +172,7 @@ class Compiler {
    * @param allocator the custom allocator to use.
    * @param deallocator the custom deallocator to use.
    */
-  public constructor(prefix: string, allocator: string = Compiler.DefaultAllocator, deallocator: string = Compiler.DefaultDeallocator){
+  public constructor(prefix: string, allocator: string = Compiler.DefaultAllocator, deallocator: string = Compiler.DefaultDeallocator) {
     this.prefix = prefix;
     this.allocator = allocator;
     this.deallocator = deallocator;
@@ -277,7 +277,7 @@ class Compiler {
     // Push caller-save registers; skip pushing those that hold the target
     // or the arguments, since we will push and deallocate those separately.
     const callerSave = this.registers.callerSave.filter((r) => {
-      if(r === target){
+      if (r === target) {
         return false;
       }
       return !args.find((arg) => {
@@ -291,7 +291,7 @@ class Compiler {
     // Push arguments and deallocate them.
     let argSize = 0;
     args.forEach((arg) => {
-      if(arg.integral){
+      if (arg.integral) {
         this.emitPush(arg.register, 'push argument');
       }
       else {
@@ -414,10 +414,10 @@ class Compiler {
   }
 
   protected pushMany(n: number, comment: string = ''): Directive[] {
-    if(!n){
+    if (!n) {
       return [];
     }
-    else if(n === 1){
+    else if (n === 1) {
       return [
         new InstructionDirective(Instruction.createOperation(Operation.SUB, Compiler.SP, Compiler.SP, Compiler.ONE)).comment(comment),
       ];
@@ -441,7 +441,7 @@ class Compiler {
    * @param comment optional comment
    */
   public emitMove(dr: Register, sr: Register, comment: string = ''): void {
-    if(dr === sr){
+    if (dr === sr) {
       return;
     }
     this.emit([
@@ -459,12 +459,12 @@ class Compiler {
    * @param comment optional comment.
    */
   public emitStaticStore(dr: Register, sr: Register, size: number = 1, comment: string = ''): void {
-    if(size <= 0){
+    if (size <= 0) {
       throw new InternalError(`invalid store ${size}`);
     }
 
     // "Unroll" lops of length 1.
-    if(size === 1){
+    if (size === 1) {
       this.emit([
         new InstructionDirective(Instruction.createOperation(Operation.STORE, dr, sr)).comment(comment),
       ]);
@@ -530,7 +530,7 @@ class Compiler {
    * @param comment optional comment.
    */
   public emitStaticCopy(dr: Register, sr: Register, size: number, comment: string = ''): void {
-    if(size <= 0){
+    if (size <= 0) {
       throw new InternalError(`invalid copy ${size}`);
     }
 
@@ -538,7 +538,7 @@ class Compiler {
     // be copied byte by byte. `dr` holds the destination *address*, and `sr` the source address.
 
     // "Unroll" loops of length 1.
-    if(size === 1){
+    if (size === 1) {
       const r = this.allocateRegister();
       this.emit([
         new InstructionDirective(Instruction.createOperation(Operation.LOAD, r, sr)).comment(comment),
@@ -549,7 +549,7 @@ class Compiler {
     }
 
     // For fun, let's *actually* unroll small loops.
-    if(size <= 8){
+    if (size <= 8) {
       this.emitUnrolledStaticCopy(dr, sr, size, comment);
       return;
     }
@@ -617,12 +617,12 @@ class Compiler {
     this.emitMove(di, dr, comment);
     this.emitMove(si, sr);
 
-    for(let i = 0; i < size; i++){
+    for (let i = 0; i < size; i++) {
       this.emit([
         new InstructionDirective(Instruction.createOperation(Operation.LOAD, rc, si)).comment(`copy byte ${i}`),
         new InstructionDirective(Instruction.createOperation(Operation.STORE, di, rc)),
       ]);
-      if(i < size - 1){
+      if (i < size - 1) {
         this.emit([
           new InstructionDirective(Instruction.createOperation(Operation.ADD, di, di, Compiler.ONE)),
           new InstructionDirective(Instruction.createOperation(Operation.ADD, si, si, Compiler.ONE)),
@@ -644,14 +644,14 @@ class Compiler {
    * @param dereference whether to emit a dereference of the address, too.
    */
   public emitIdentifier(identifier: string, storage: Storage, dr: Register, dereference: boolean): void {
-    switch(storage){
+    switch (storage) {
       case 'global': {
         // Global variables live in the code.
         const reference = new Reference(identifier);
         this.emit([
           new ConstantDirective(dr, new ReferenceConstant(reference)).comment(`global address ${reference}`),
         ]);
-        if(dereference){
+        if (dereference) {
           this.emit([
             new InstructionDirective(Instruction.createOperation(Operation.LOAD, dr, dr)).comment(`dereference ${reference}`),
           ]);
@@ -664,7 +664,7 @@ class Compiler {
         this.emit([
           new ConstantDirective(dr, new ReferenceConstant(reference)).comment(`function address ${reference}`),
         ]);
-        if(dereference){
+        if (dereference) {
           throw new InternalError(`cannot dereference function ${identifier}`);
         }
         return;
@@ -683,11 +683,11 @@ class Compiler {
    * @param comment optional comment.
    */
   protected increment(r: Register, n: number = 1, comment: string = ''): Directive[] {
-    if(n === 0){
+    if (n === 0) {
       return [];
     }
 
-    if(n === 1){
+    if (n === 1) {
       return [
         new InstructionDirective(Instruction.createOperation(Operation.ADD, r, r, Compiler.ONE)).comment(comment),
       ];
@@ -733,7 +733,7 @@ class Compiler {
     const endRef = this.generateReference('bounds_check_end');
 
     this.emitMove(sr, ar, 'array/slice address');
-    if(lengthOffset > 0){
+    if (lengthOffset > 0) {
       this.emitIncrement(sr, lengthOffset, 'length offset');
     }
     // VM comparison ops return 0 for true, 1 for false (inverted from C semantics)
@@ -840,10 +840,10 @@ abstract class StorageCompiler extends Compiler {
  */
 class GlobalCompiler extends StorageCompiler {
   private temporaryStorage: number = 0;
-  private temporaries: { [identifier: string ]: number } = {};
+  private temporaries: { [identifier: string]: number } = {};
   private temporaryReference: Reference;
 
-  public constructor(identifier: string){
+  public constructor(identifier: string) {
     super(identifier);
 
     this.temporaryReference = this.generateReference('temporary');
@@ -855,21 +855,21 @@ class GlobalCompiler extends StorageCompiler {
   }
 
   public emitIdentifier(identifier: string, storage: Storage, dr: Register, dereference: boolean): void {
-    switch(storage){
+    switch (storage) {
       case 'parameter': {
         throw new InternalError(`invalid parameter identifier ${identifier}`);
       }
       case 'local': {
         // Locals live in our temporary storage area.
         let location = this.temporaries[identifier];
-        if(location !== undefined){
+        if (location !== undefined) {
           const tr = this.allocateRegister();
           this.emit([
             new ConstantDirective(tr, new ReferenceConstant(this.temporaryReference)),
             new ConstantDirective(dr, new ImmediateConstant(location)).comment(`temporary address ${identifier}`),
             new InstructionDirective(Instruction.createOperation(Operation.ADD, dr, tr, dr)),
           ]);
-          if(dereference){
+          if (dereference) {
             this.emit([
               new InstructionDirective(Instruction.createOperation(Operation.LOAD, dr, dr)).comment(`dereference ${identifier}`),
             ]);
@@ -887,7 +887,7 @@ class GlobalCompiler extends StorageCompiler {
 
   public compile(): Directive[] {
     const directives: Directive[] = [];
-    if(this.temporaryStorage){
+    if (this.temporaryStorage) {
       directives.push(new DataDirective(this.temporaryReference, new ImmediatesData(new Array(this.temporaryStorage).fill(0))));
     }
     directives.push(...super.compile());
@@ -901,12 +901,12 @@ class GlobalCompiler extends StorageCompiler {
  */
 class FunctionCompiler extends StorageCompiler {
   protected localStorage: number = 0;
-  private locals: { [identifier: string ]: number } = {};
+  private locals: { [identifier: string]: number } = {};
 
   private readonly parameterStorage: number = 0;
-  private parameters: { [ identifier: string]: number } = {};
+  private parameters: { [identifier: string]: number } = {};
 
-  public constructor(identifier: string, parameters: Parameter[]){
+  public constructor(identifier: string, parameters: Parameter[]) {
     super(identifier);
 
     // Find location of parameters.
@@ -946,13 +946,13 @@ class FunctionCompiler extends StorageCompiler {
    * @param dereference whether to emit a dereference of the address, too.
    */
   public emitIdentifier(identifier: string, storage: Storage, dr: Register, dereference: boolean): void {
-    switch(storage){
+    switch (storage) {
       case 'parameter': {
         // Parameters live on the stack, at the beginning of the stack frame, so we
         // add the parameter offset to the stack frame's base address to find the address
         // of the parameter.
         let location = this.parameters[identifier];
-        if(location !== undefined){
+        if (location !== undefined) {
           // The offset must take into account the stack frame address and the return address.
           const offset = location + 1;
 
@@ -964,7 +964,7 @@ class FunctionCompiler extends StorageCompiler {
           ]);
           this.deallocateRegister(sfr);
 
-          if(dereference){
+          if (dereference) {
             this.emit([
               new InstructionDirective(Instruction.createOperation(Operation.LOAD, dr, dr)).comment(`dereference ${identifier}`),
             ]);
@@ -976,8 +976,8 @@ class FunctionCompiler extends StorageCompiler {
       case 'local': {
         // Locals live on the stack, after the arguments, callee-save registers, and return address.
         let location = this.locals[identifier];
-        if(location !== undefined){
-          if(location === 1){
+        if (location !== undefined) {
+          if (location === 1) {
             this.emitPeek(dr, 'stack frame address');
             this.emit([
               new InstructionDirective(Instruction.createOperation(Operation.SUB, dr, dr, Compiler.ONE)).comment(`local address ${identifier}`),
@@ -992,7 +992,7 @@ class FunctionCompiler extends StorageCompiler {
             ]);
             this.deallocateRegister(sfr);
           }
-          if(dereference){
+          if (dereference) {
             this.emit([
               new InstructionDirective(Instruction.createOperation(Operation.LOAD, dr, dr)).comment(`dereference ${identifier}`),
             ]);
@@ -1065,7 +1065,7 @@ class FunctionCompiler extends StorageCompiler {
       // local storage.
       new InstructionDirective(Instruction.createOperation(Operation.LOAD, Compiler.SP, Compiler.SP)).comment('restore sp'),
 
-       // Recover return-to address.
+      // Recover return-to address.
       ...this.pop(r, 'pop return address'),
 
       // Return.

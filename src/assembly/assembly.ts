@@ -1,19 +1,19 @@
-import { Address } from "../lib/types";
+import { Address } from "@/lib/types";
 import {
   Messages,
   SymbolTable,
   Syntax,
   parseFile,
   stringToCodePoints,
-} from "../lib/util";
+} from "@/lib/util";
 import {
   Immediate,
   Instruction,
   Operation,
   Program,
   Register,
-} from "../vm/instructions";
-import { VM } from "../vm/vm";
+} from "@/vm/instructions";
+import { VM } from "@/vm/vm";
 import { parse } from "./parser";
 
 class Assembler extends Messages {

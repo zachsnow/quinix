@@ -1,6 +1,6 @@
 #! /usr/bin/env bun
 import { $ } from "bun";
-import { parseArguments } from "../src/platform/server/cli";
+import { parseArguments } from "@server/cli";
 
 interface Options {
   file: string;

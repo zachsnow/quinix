@@ -2,11 +2,11 @@
 import fs from "fs";
 import path from "path";
 
-import { logger } from "../src/lib/logger";
-import { InternalError } from "../src/lib/util";
-import { LowLevelProgram } from "../src/lowlevel/lowlevel";
-import { parseArguments } from "../src/platform/server/cli";
-import { readFiles } from "../src/platform/server/fs";
+import { logger } from "@/lib/logger";
+import { InternalError } from "@/lib/util";
+import { LowLevelProgram } from "@/lowlevel/lowlevel";
+import { parseArguments } from "@server/cli";
+import { readFiles } from "@server/fs";
 
 const log = logger("qllc");
 

@@ -1,10 +1,10 @@
-import { logger } from '../lib/logger';
-import { VM } from './vm';
-import type { Interrupt } from './vm';
-import { Memory, Address, Offset } from '../lib/types';
-import { Instruction, Immediate } from './instructions';
+import { logger } from "@/lib/logger";
+import { Address, Memory, Offset } from "@/lib/types";
+import { Immediate, Instruction } from "./instructions";
+import type { Interrupt } from "./vm";
+import { VM } from "./vm";
 
-const log = logger('vm:peripherals');
+const log = logger("vm:peripherals");
 
 abstract class Peripheral {
   /**
@@ -78,9 +78,9 @@ abstract class Peripheral {
 }
 
 type PeripheralMapping = {
-  peripheral: Peripheral,
-  base: Address,
-  view: Memory,
+  peripheral: Peripheral;
+  base: Address;
+  view: Memory;
 };
 
 abstract class BufferedPeripheral extends Peripheral {
@@ -130,7 +130,12 @@ abstract class BufferedPeripheral extends Peripheral {
 
     const control = this.mapping.view[this.CONTROL_ADDR];
 
-    log.debug(`${this.name}: notified buffered peripheral: ${Immediate.toString(control, 1)}`);
+    log.debug(
+      `${this.name}: notified buffered peripheral: ${Immediate.toString(
+        control,
+        1
+      )}`
+    );
 
     if (control === this.WRITE) {
       this.mapping.view[this.CONTROL_ADDR] = this.PENDING;
@@ -141,11 +146,13 @@ abstract class BufferedPeripheral extends Peripheral {
       }
       const outputBuffer = this.outputBuffer;
       this.outputBuffer = [];
-      this.onWrite(outputBuffer).then(() => {
-        this.ready();
-      }).catch((e) => {
-        this.error(e);
-      });
+      this.onWrite(outputBuffer)
+        .then(() => {
+          this.ready();
+        })
+        .catch((e) => {
+          this.error(e);
+        });
       return;
     }
 
@@ -156,13 +163,15 @@ abstract class BufferedPeripheral extends Peripheral {
         this.ready();
         return;
       }
-      this.onRead().then((data) => {
-        this.inputBuffer = data;
-        this.writeShared();
-        this.ready();
-      }).catch((e) => {
-        this.error(e);
-      });
+      this.onRead()
+        .then((data) => {
+          this.inputBuffer = data;
+          this.writeShared();
+          this.ready();
+        })
+        .catch((e) => {
+          this.error(e);
+        });
       return;
     }
 
@@ -178,7 +187,7 @@ abstract class BufferedPeripheral extends Peripheral {
    * to the shared buffer.
    */
   protected async onWrite(data: number[]): Promise<void> {
-    return Promise.reject('write not supported');
+    return Promise.reject("write not supported");
   }
 
   /**
@@ -190,7 +199,7 @@ abstract class BufferedPeripheral extends Peripheral {
    * be returned to the client program.
    */
   protected async onRead(): Promise<number[]> {
-    return Promise.reject('read not supported.')
+    return Promise.reject("read not supported.");
   }
 
   /**
@@ -256,7 +265,7 @@ abstract class BufferedPeripheral extends Peripheral {
    *
    * @param message optional message to log.
    */
-  protected ready(message: string = 'complete') {
+  protected ready(message: string = "complete") {
     log.debug(`${this.name}: ${message}`);
     if (!this.mapping) {
       this.unmapped();
@@ -269,7 +278,7 @@ abstract class BufferedPeripheral extends Peripheral {
    *
    * @param message optional error to log.
    */
-  protected error(message: string = 'error') {
+  protected error(message: string = "error") {
     log.debug(`${this.name}: ${message}`);
     if (!this.mapping) {
       this.unmapped();
@@ -282,7 +291,7 @@ abstract class BufferedPeripheral extends Peripheral {
  * A peripheral implementing a "hardware" timer.
  */
 class TimerPeripheral extends Peripheral {
-  public readonly name = 'timer';
+  public readonly name = "timer";
   public readonly identifier = 0x00000001;
 
   public readonly io = 0x1;
@@ -338,9 +347,6 @@ class TimerPeripheral extends Peripheral {
   }
 }
 
-export {
-  Peripheral,
-  BufferedPeripheral,
-  TimerPeripheral,
-};
+export { BufferedPeripheral, Peripheral, TimerPeripheral };
 export type { PeripheralMapping };
+

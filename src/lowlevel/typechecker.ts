@@ -1,30 +1,30 @@
-import { Messages, Location, InternalError } from '../lib/util';
-import { TypeTable, StorageTable } from './tables';
-import { Type, IdentifierType } from './types';
-import { NamespaceDeclaration } from './lowlevel';
-import { IdentifierExpression } from './expressions';
+import { Location, Messages } from "@/lib/util";
+import { NamespaceDeclaration } from "./lowlevel";
+import { StorageTable, TypeTable } from "./tables";
+import { IdentifierType, Type } from "./types";
 
 type SourceInstantiation = {
   identity: string;
   message: string;
   location?: Location;
-}
+};
 
 /**
  * Represents the source of a context; namely, a list of instantiations
  * that lead to this point.
  */
 class Source {
-  public constructor(
-    public instantiations: SourceInstantiation[] = []
-  ){}
+  public constructor(public instantiations: SourceInstantiation[] = []) { }
 
-  public extend(identity: string, message: string, location?: Location){
-    return new Source([...this.instantiations, {
-      identity,
-      message,
-      location,
-    }]);
+  public extend(identity: string, message: string, location?: Location) {
+    return new Source([
+      ...this.instantiations,
+      {
+        identity,
+        message,
+        location,
+      },
+    ]);
   }
 
   public get depth(): number {
@@ -32,18 +32,20 @@ class Source {
   }
 
   public get identity(): string {
-    if(!this.depth){
-      return '';
+    if (!this.depth) {
+      return "";
     }
     return this.instantiations[this.depth - 1].identity;
   }
 
-  public toString(){
-    return this.instantiations.map((instantiation) => {
-      return instantiation.location ?
-        `at: ${instantiation.location.toString()} ${instantiation.message}` :
-        instantiation.message;
-    }).join('\n  ');
+  public toString() {
+    return this.instantiations
+      .map((instantiation) => {
+        return instantiation.location
+          ? `at: ${instantiation.location.toString()} ${instantiation.message}`
+          : instantiation.message;
+      })
+      .join("\n  ");
   }
 }
 
@@ -62,17 +64,13 @@ class TypeChecker extends Messages {
   private checks: Check[] = [];
   private recordedReferences: string[] = [];
 
-  public constructor(
-    public namespace: NamespaceDeclaration,
-  ){
+  public constructor(public namespace: NamespaceDeclaration) {
     super();
     this.symbolTable = new StorageTable();
   }
 
   public extend(symbolTable: StorageTable | undefined): TypeChecker {
-    const context = new TypeChecker(
-      this.namespace,
-    );
+    const context = new TypeChecker(this.namespace);
 
     // Allow overriding the symbol table.
     context.symbolTable = symbolTable ?? this.symbolTable;
@@ -97,7 +95,7 @@ class TypeChecker extends Messages {
     return context;
   }
 
-  public forNamespace(namespace: NamespaceDeclaration){
+  public forNamespace(namespace: NamespaceDeclaration) {
     const context = this.extend(undefined);
     context.namespace = namespace;
     return context;
@@ -133,7 +131,7 @@ class TypeChecker extends Messages {
     return context;
   }
 
-  public reference(ref: string){
+  public reference(ref: string) {
     this.recordedReferences.push(ref);
   }
 
@@ -141,12 +139,12 @@ class TypeChecker extends Messages {
     return this.recordedReferences;
   }
 
-  public error(message: string, location?: Location){
+  public error(message: string, location?: Location) {
     const prefix = this.source.toString();
     super.error(prefix ? `\n  ${prefix}\n  ${message}` : message, location);
   }
 
-  public warning(message: string, location?: Location){
+  public warning(message: string, location?: Location) {
     const prefix = this.source.toString();
     super.warning(prefix ? `\n  ${prefix}\n  ${message}` : message, location);
   }
@@ -199,7 +197,6 @@ class KindChecker {
    */
   private directs: string[] = [];
 
-
   /**
    * The current type table; for substitutions only (we
    * don't allow 'local' type declarations for now).
@@ -214,11 +211,11 @@ class KindChecker {
    * @param qualifiedIdentifier the qualified identifier being *defined*;
    * optional.
    */
-  public constructor(qualifiedIdentifier?: string, typeTable?: TypeTable){
-    if(qualifiedIdentifier){
+  public constructor(qualifiedIdentifier?: string, typeTable?: TypeTable) {
+    if (qualifiedIdentifier) {
       this.directs.push(qualifiedIdentifier);
     }
-    if(typeTable){
+    if (typeTable) {
       this.typeTable = typeTable;
     }
   }
@@ -229,7 +226,12 @@ class KindChecker {
     return kindchecker;
   }
 
-  private extend(visiteds?: string[], structs?: string[], pointers?: string[], directs?: string[]): KindChecker {
+  private extend(
+    visiteds?: string[],
+    structs?: string[],
+    pointers?: string[],
+    directs?: string[]
+  ): KindChecker {
     const kindchecker = new KindChecker();
     kindchecker.visiteds = visiteds || [...this.visiteds];
     kindchecker.structs = structs || [...this.structs];
@@ -248,7 +250,7 @@ class KindChecker {
       [...this.visiteds, ...this.pointers],
       [...this.structs, ...this.directs],
       [],
-      [],
+      []
     );
   }
 
@@ -261,7 +263,7 @@ class KindChecker {
       [...this.visiteds, ...this.structs],
       [],
       [...this.pointers, ...this.directs],
-      [],
+      []
     );
   }
 
@@ -272,12 +274,10 @@ class KindChecker {
    * @param qualifiedIdentifier the fully qualified identifier to visit.
    */
   public visit(qualifiedIdentifier: string): KindChecker {
-    return this.extend(
-      undefined,
-      undefined,
-      undefined,
-      [ ...this.directs, qualifiedIdentifier ],
-    );
+    return this.extend(undefined, undefined, undefined, [
+      ...this.directs,
+      qualifiedIdentifier,
+    ]);
   }
 
   /**
@@ -288,9 +288,11 @@ class KindChecker {
    * check for validity.
    */
   public isInvalid(qualifiedIdentifier: string): boolean {
-    return this.structs.indexOf(qualifiedIdentifier) !== -1 ||
+    return (
+      this.structs.indexOf(qualifiedIdentifier) !== -1 ||
       this.pointers.indexOf(qualifiedIdentifier) !== -1 ||
-      this.directs.indexOf(qualifiedIdentifier) !== -1;
+      this.directs.indexOf(qualifiedIdentifier) !== -1
+    );
   }
 
   /**
@@ -308,4 +310,4 @@ class KindChecker {
   }
 }
 
-export { TypeChecker, KindChecker, Source };
+export { KindChecker, Source, TypeChecker };

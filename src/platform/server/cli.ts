@@ -1,6 +1,6 @@
 import inspector from "inspector";
 import { parseArgs } from "util";
-import { setVerbose } from "../../lib/logger";
+import { setVerbose } from "@/lib/logger";
 
 interface DefaultOptions {
   verbose: boolean;

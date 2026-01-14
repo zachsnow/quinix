@@ -1,8 +1,8 @@
 import {
   InternalError, Messages, indent, parseFile, writeOnce, duplicates, flatten,
   IFileRange, IParseOptions,
-} from '../lib/util';
-import { logger } from '../lib/logger';
+} from '@/lib/util';
+import { logger } from '@/lib/logger';
 import {
   Directive,
 
@@ -14,14 +14,14 @@ import {
   Reference,
 
   AssemblyProgram,
-} from '../assembly/assembly';
-import { VM } from '../vm/vm';
-import { Instruction, Operation } from '../vm/instructions';
+} from '@/assembly/assembly';
+import { VM } from '@/vm/vm';
+import { Instruction, Operation } from '@/vm/instructions';
 import { Type, TypedIdentifier, TypedStorage, FunctionType, TemplateType, Storage, ArrayType, SliceType } from './types';
 import { Expression, StringLiteralExpression } from './expressions';
 import { BlockStatement } from './statements';
 import { TypeChecker, KindChecker, Source } from './typechecker';
-import { Syntax } from '../lib/util';
+import { Syntax } from '@/lib/util';
 import { Compiler, FunctionCompiler, InterruptCompiler, GlobalCompiler, StorageCompiler } from './compiler';
 import { parse } from './parser';
 import { TypeTable } from './tables';
@@ -36,12 +36,12 @@ class Liveness {
     // Iterate to a fixed point.
     const references = Object.keys(this.links);
     let changes = true;
-    while(changes){
+    while (changes) {
       changes = false;
       references.forEach((ref) => {
-        if(this.live[ref]){
+        if (this.live[ref]) {
           this.links[ref].forEach((linkedRef) => {
-            if(!this.live[linkedRef]){
+            if (!this.live[linkedRef]) {
               changes = true;
             }
             this.live[linkedRef] = true;
@@ -51,7 +51,7 @@ class Liveness {
     }
   }
 
-  public toString(){
+  public toString() {
     const references = Object.keys(this.links);
     references.sort();
     const tables = references.map((ref) => {
@@ -108,7 +108,7 @@ abstract class Declaration extends Syntax {
    * this declaration, including the declaration itself.
    */
   public get allDeclarations(): Declaration[] {
-    return [ this ];
+    return [this];
   }
 }
 
@@ -119,7 +119,7 @@ abstract class Declaration extends Syntax {
 abstract class NamedDeclaration extends Declaration {
   public constructor(
     public readonly identifier: string,
-  ){
+  ) {
     super();
   }
 
@@ -129,7 +129,7 @@ abstract class NamedDeclaration extends Declaration {
    * identifier is `global::foo::bar`.
    */
   public get qualifiedIdentifier(): string {
-    if(this.namespace){
+    if (this.namespace) {
       return `${this.namespace.qualifiedIdentifier}::${this.identifier}`;
     }
     throw new InternalError('no namespace');
@@ -163,7 +163,7 @@ class TypeDeclaration extends BaseTypeDeclaration {
   public constructor(
     identifier: string,
     public readonly type: Type,
-  ){
+  ) {
     super(identifier);
   }
 
@@ -172,9 +172,9 @@ class TypeDeclaration extends BaseTypeDeclaration {
     this.type.kindcheck(context, new KindChecker(this.qualifiedIdentifier));
   }
 
-  public typecheck(context: TypeChecker): void {}
+  public typecheck(context: TypeChecker): void { }
 
-  public toString(){
+  public toString() {
     return `type ${this.identifier} = ${this.type};`;
   }
 }
@@ -186,7 +186,7 @@ class TemplateTypeDeclaration extends BaseTypeDeclaration {
     identifier: string,
     private readonly typeVariables: readonly string[],
     private readonly unboundType: Type,
-  ){
+  ) {
     super(identifier);
   }
 
@@ -203,14 +203,14 @@ class TemplateTypeDeclaration extends BaseTypeDeclaration {
   }
 
   private instantiator(context: TypeChecker, kindchecker: KindChecker, type: Type, typeTable: TypeTable, source: Source): void {
-    if(!this.namespace){
+    if (!this.namespace) {
       throw new InternalError('no namespace');
     }
 
     context = context.forSource(source).forNamespace(this.namespace);
 
     // Don't go too deep!
-    if(context.instantiationDepth > TypeChecker.MAX_INSTANTIATION_DEPTH){
+    if (context.instantiationDepth > TypeChecker.MAX_INSTANTIATION_DEPTH) {
       this.error(context, `too many instantiations`);
       return;
     }
@@ -221,9 +221,9 @@ class TemplateTypeDeclaration extends BaseTypeDeclaration {
     type.kindcheck(context, new KindChecker(this.qualifiedIdentifier).withTypeTable(kindchecker.typeTable));
   }
 
-  public typecheck(context: TypeChecker): void {}
+  public typecheck(context: TypeChecker): void { }
 
-  public toString(){
+  public toString() {
     return `type <${this.typeVariables.join(', ')}>${this.identifier} = ${this.type};`;
   }
 }
@@ -241,7 +241,7 @@ class GlobalDeclaration extends BaseValueDeclaration {
     identifier: string,
     public readonly type: Type,
     private readonly expression?: Expression,
-  ){
+  ) {
     super(identifier);
   }
 
@@ -249,21 +249,21 @@ class GlobalDeclaration extends BaseValueDeclaration {
     return 'global';
   }
 
-  public kindcheck(context: TypeChecker){
+  public kindcheck(context: TypeChecker) {
     this.type.kindcheck(context, new KindChecker());
   }
 
-  public typecheck(context: TypeChecker){
+  public typecheck(context: TypeChecker) {
     // Pre-declarations don't need typechecking; we assume that the module
     // that actually declares them is already typechecked and that the
     // pre-declaration is correct.
-    if(!this.expression){
+    if (!this.expression) {
       return;
     }
 
     const expressionContext = context.recordReferences();
     const type = this.expression.typecheck(expressionContext, this.type);
-    if(!type.isConvertibleTo(this.type)){
+    if (!type.isConvertibleTo(this.type)) {
       this.error(context, `expected ${this.type}, actual ${type}`)
     }
 
@@ -275,7 +275,7 @@ class GlobalDeclaration extends BaseValueDeclaration {
    */
   public compileData(): Directive[] {
     // Global pre-declarations aren't compiled.
-    if(!this.expression){
+    if (!this.expression) {
       return [];
     }
 
@@ -283,10 +283,10 @@ class GlobalDeclaration extends BaseValueDeclaration {
 
     // We can make a nice string in the assembly by special-casing string literals
     // when the global is an array type (not a slice).
-    if(this.expression instanceof StringLiteralExpression){
+    if (this.expression instanceof StringLiteralExpression) {
       const cType = this.type.resolve();
       // Only special-case for arrays; slices need the full compilation path.
-      if(cType instanceof ArrayType){
+      if (cType instanceof ArrayType) {
         const len = this.expression.length;
         return [
           new DataDirective(reference, new ImmediatesData([len])).comment('length header'),
@@ -298,9 +298,9 @@ class GlobalDeclaration extends BaseValueDeclaration {
 
     // We can skip some moves and stores by special-casing constant values.
     const constant = this.expression.constant();
-    if(constant !== undefined){
+    if (constant !== undefined) {
       return [
-        new DataDirective(reference, new ImmediatesData([ constant ])),
+        new DataDirective(reference, new ImmediatesData([constant])),
       ];
     }
 
@@ -315,21 +315,21 @@ class GlobalDeclaration extends BaseValueDeclaration {
    */
   public compileInit(): Directive[] {
     // Global pre-declarations don't need initialization.
-    if(!this.expression){
+    if (!this.expression) {
       return [];
     }
 
     // String literals in arrays are handled statically in compileData().
-    if(this.expression instanceof StringLiteralExpression){
+    if (this.expression instanceof StringLiteralExpression) {
       const cType = this.type.resolve();
-      if(cType instanceof ArrayType){
+      if (cType instanceof ArrayType) {
         return [];
       }
     }
 
     // Constants are handled statically in compileData().
     const constant = this.expression.constant();
-    if(constant !== undefined){
+    if (constant !== undefined) {
       return [];
     }
 
@@ -346,12 +346,12 @@ class GlobalDeclaration extends BaseValueDeclaration {
     // Handle array-to-slice conversion.
     const cGlobalType = this.type.resolve();
     const cExprType = this.expression.concreteType.resolve();
-    if(cGlobalType instanceof SliceType && cExprType instanceof ArrayType){
+    if (cGlobalType instanceof SliceType && cExprType instanceof ArrayType) {
       const sliceReg = compiler.emitArrayToSlice(sr);
       compiler.emitStaticCopy(dr, sliceReg, 3, 'copy slice descriptor');
       compiler.deallocateRegister(sliceReg);
     }
-    else if(this.type.integral){
+    else if (this.type.integral) {
       compiler.emitStaticStore(dr, sr, 1, `store to global ${this.qualifiedIdentifier}`);
     }
     else {
@@ -368,15 +368,15 @@ class GlobalDeclaration extends BaseValueDeclaration {
     return [...this.compileData(), ...this.compileInit()];
   }
 
-  public toString(){
-    if(this.expression){
+  public toString() {
+    if (this.expression) {
       return `global ${this.identifier}: ${this.type} = ${this.expression};`;
     }
     return `global ${this.identifier}: ${this.type};`;
   }
 
   public initializeLiveness(liveness: Liveness): void {
-    if(!this.expression){
+    if (!this.expression) {
       return;
     }
 
@@ -398,11 +398,11 @@ class FunctionDeclaration extends BaseValueDeclaration {
   private live: boolean = false;
 
   public constructor(
-      identifier: string,
-      protected readonly parameters: readonly TypedIdentifier[],
-      protected readonly returnType: Type,
-      protected readonly block?: BlockStatement,
-  ){
+    identifier: string,
+    protected readonly parameters: readonly TypedIdentifier[],
+    protected readonly returnType: Type,
+    protected readonly block?: BlockStatement,
+  ) {
     super(identifier);
   }
 
@@ -425,14 +425,14 @@ class FunctionDeclaration extends BaseValueDeclaration {
     const duplicateParameters = duplicates(this.parameters.map((parameter) => {
       return parameter.identifier;
     }));
-    if(duplicateParameters.length){
+    if (duplicateParameters.length) {
       this.error(context, `duplicate parameters ${duplicateParameters.join(', ')}`);
     }
   }
 
   public typecheck(context: TypeChecker): void {
     // Pre-declaration.
-    if(!this.block){
+    if (!this.block) {
       return;
     }
 
@@ -450,16 +450,16 @@ class FunctionDeclaration extends BaseValueDeclaration {
 
     // All paths through a function must return.
     const isVoid = this.returnType.isConvertibleTo(Type.Void);
-    if(!isVoid && !this.block.returns()){
+    if (!isVoid && !this.block.returns()) {
       this.error(context, `non-void function missing return`);
     }
 
     // Check for interrupt handler correctness.
-    if(this.interrupt){
-      if(this.parameters.length > 0){
+    if (this.interrupt) {
+      if (this.parameters.length > 0) {
         this.error(context, `interrupt expected no arguments, actual ${this.type}`);
       }
-      if(!isVoid){
+      if (!isVoid) {
         this.error(context, `interrupt expected ${Type.Void} return type, actual ${this.returnType}`);
       }
     }
@@ -470,10 +470,10 @@ class FunctionDeclaration extends BaseValueDeclaration {
 
   public compile(): Directive[] {
     // No directives for pre-declarations.
-    if(!this.block){
+    if (!this.block) {
       return [];
     }
-    if(!this.live){
+    if (!this.live) {
       return [];
     }
 
@@ -487,7 +487,7 @@ class FunctionDeclaration extends BaseValueDeclaration {
     });
 
     // If we return a non-integral, we instead pass a pointer to the place to write the return value.
-    if(!this.returnType.integral && !this.returnType.isConvertibleTo(Type.Void)){
+    if (!this.returnType.integral && !this.returnType.isConvertibleTo(Type.Void)) {
       parameters.unshift({
         identifier: '$return',
         size: 1,
@@ -512,27 +512,27 @@ class FunctionDeclaration extends BaseValueDeclaration {
   }
 
   public initializeLiveness(liveness: Liveness): void {
-    if(!this.block){
+    if (!this.block) {
       return;
     }
 
     // We always mark `main` as live.
-    if(this.qualifiedIdentifier === LowLevelProgram.ENTRYPOINT){
+    if (this.qualifiedIdentifier === LowLevelProgram.ENTRYPOINT) {
       liveness.live[this.qualifiedIdentifier] = true;
     }
 
-    if(this.tagged('.export')){
+    if (this.tagged('.export')) {
       liveness.live[this.qualifiedIdentifier] = true;
     }
 
     liveness.links[this.qualifiedIdentifier] = this.references;
   }
 
-  public updateLiveness(liveness: Liveness){
+  public updateLiveness(liveness: Liveness) {
     this.live = liveness.live[this.qualifiedIdentifier];
   }
 
-  public toString(){
+  public toString() {
     const args = this.parameters.join(', ');
     return `function ${this.identifier}(${args}): ${this.returnType} ${this.block}`;
   }
@@ -560,10 +560,10 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
     private readonly parameters: readonly TypedIdentifier[],
     private readonly returnType: Type,
     private readonly block: BlockStatement,
-  ){
+  ) {
     super(identifier);
 
-    if(!this.typeVariables.length){
+    if (!this.typeVariables.length) {
       throw new InternalError(`expected type variables`);
     }
   }
@@ -595,28 +595,28 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
     });
   }
 
-  public kindcheck(context: TypeChecker){
+  public kindcheck(context: TypeChecker) {
     this.type.kindcheck(context, new KindChecker());
 
     const duplicateParameters = duplicates(this.parameters.map((parameter) => {
       return parameter.identifier;
     }));
-    if(duplicateParameters.length){
+    if (duplicateParameters.length) {
       this.error(context, `duplicate parameters ${duplicateParameters.join(', ')}`);
     }
   }
 
 
-  public typecheck(context: TypeChecker){
+  public typecheck(context: TypeChecker) {
     // We can't typecheck function declarations that are templated;
     // instead they are typechecked when they are instantiated.
   }
 
   private instantiator(context: TypeChecker, kindchecker: KindChecker, type: Type, typeTable: TypeTable, source: Source): void {
-    if(!this.namespace){
+    if (!this.namespace) {
       throw new InternalError('no namespace');
     }
-    if(!this.block){
+    if (!this.block) {
       throw new InternalError(`unexpected template pre-declaration`);
     }
 
@@ -626,7 +626,7 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
     // Record references found in this function instantiation.
     context = context.forNamespace(this.namespace).forSource(source).recordReferences();
 
-    if(!(type instanceof FunctionType)){
+    if (!(type instanceof FunctionType)) {
       this.error(context, `expected function type, actual ${type}`);
       return;
     }
@@ -634,13 +634,13 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
     // TODO: should we do this in instantiate()?
     type.kindcheck(context, new KindChecker().withTypeTable(kindchecker.typeTable));
     type.argumentTypes.forEach((argumentType) => {
-      if(argumentType.isConvertibleTo(Type.Void)){
+      if (argumentType.isConvertibleTo(Type.Void)) {
         this.error(context, `expected non-void argument, actual ${argumentType}`);
       }
     });
 
     // Don't go too deep!
-    if(context.instantiationDepth > TypeChecker.MAX_INSTANTIATION_DEPTH){
+    if (context.instantiationDepth > TypeChecker.MAX_INSTANTIATION_DEPTH) {
       this.error(context, `too many instantiations`);
       return;
     }
@@ -650,7 +650,7 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
     const instantiation = this.instantiations.find((instantiation) => {
       return identifier === instantiation.identifier;
     });
-    if(instantiation){
+    if (instantiation) {
       return;
     }
 
@@ -671,7 +671,7 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
     );
 
     // Put this function declaration in our namespace.
-    if(this.namespace){
+    if (this.namespace) {
       functionDeclaration.inNamespace(this.namespace);
     }
 
@@ -698,7 +698,7 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
     });
   }
 
-  public toString(){
+  public toString() {
     const args = this.parameters.join(', ');
     return `function ${this.identifier}<${this.typeVariables.join(', ')}>(${args}): ${this.returnType} ${this.block}`;
   }
@@ -713,19 +713,19 @@ class UsingDeclaration extends Declaration {
   }
 
   public kindcheck(context: TypeChecker): void {
-    if(!this.namespace){
+    if (!this.namespace) {
       throw new InternalError('using outside of namespace');
     }
 
     // Make sure this is a fully qualified identifier.
-    if(!NamedDeclaration.isFullyQualified(this.qualifiedIdentifier)){
+    if (!NamedDeclaration.isFullyQualified(this.qualifiedIdentifier)) {
       this.error(context, `expected fully qualified namespace identifier`);
       return;
     }
 
     // Make sure that this using refers to a real namespace.
     const namespaces = this.namespace.root.getNamespaces(this.qualifiedIdentifier);
-    if(namespaces.length === 0){
+    if (namespaces.length === 0) {
       this.error(context, `unknown namespace identifier ${this.identifier}`);
       return;
     }
@@ -733,20 +733,20 @@ class UsingDeclaration extends Declaration {
     // Let's avoid redundant usings; we only check in "our" namespace declaration because
     // that's the only place where our using is in effect.
     this.namespace.usings.forEach((using) => {
-      if(using !== this && using.qualifiedIdentifier === this.qualifiedIdentifier){
+      if (using !== this && using.qualifiedIdentifier === this.qualifiedIdentifier) {
         this.error(context, `duplicate using declaration ${this.qualifiedIdentifier}`);
       }
     });
   }
 
-  public typecheck(context: TypeChecker){}
+  public typecheck(context: TypeChecker) { }
 
   public get qualifiedIdentifier(): string {
     return this.identifier;
   }
 
 
-  public toString(){
+  public toString() {
     return `using ${this.identifier};`
   }
 }
@@ -759,10 +759,10 @@ class NamespaceDeclaration extends NamedDeclaration {
   public constructor(
     identifier: string,
     public readonly declarations: readonly Declaration[],
-  ){
+  ) {
     super(identifier);
 
-    if(this.identifier.indexOf('::') !== -1){
+    if (this.identifier.indexOf('::') !== -1) {
       throw new InternalError('unexpected qualified identifier');
     }
 
@@ -780,7 +780,7 @@ class NamespaceDeclaration extends NamedDeclaration {
   }
 
   public get qualifiedIdentifier(): string {
-    if(this.namespace){
+    if (this.namespace) {
       return `${this.namespace.qualifiedIdentifier}::${this.identifier}`;
     }
 
@@ -813,7 +813,7 @@ class NamespaceDeclaration extends NamedDeclaration {
    *
    * @param identifier a partially qualified value identifier to look up.
    */
-  public lookupValue(context: TypeChecker, identifier: string){
+  public lookupValue(context: TypeChecker, identifier: string) {
     return this.lookup<BaseValueDeclaration>(context, BaseValueDeclaration, identifier);
   }
 
@@ -824,7 +824,7 @@ class NamespaceDeclaration extends NamedDeclaration {
    *
    * @param qualifiedIdentifier the namespace for which to find all declarations.
    */
-  public getNamespaces(qualifiedIdentifier: string) : NamespaceDeclaration[] {
+  public getNamespaces(qualifiedIdentifier: string): NamespaceDeclaration[] {
     // If we aren't the root namespace, build the fully qualified identifier
     // for the given qualified identifier and get all namespace declarations that define
     // the namespace from the root.
@@ -832,35 +832,35 @@ class NamespaceDeclaration extends NamedDeclaration {
     // For instance, if we are looking for `foo::bar` in namespace `bleck::baz`,
     // build the fully qualified identifier `bleck::baz::foo::bar` and ask the
     // root namespace to return all matching declarations.
-    if(this.namespace){
+    if (this.namespace) {
       return this.root.getNamespaces(`${this.qualifiedIdentifier}::${qualifiedIdentifier}`);
     }
     // Now we have a fully qualified identifier and we are the root namespace.
-    if(!NamedDeclaration.isFullyQualified(qualifiedIdentifier)){
+    if (!NamedDeclaration.isFullyQualified(qualifiedIdentifier)) {
       qualifiedIdentifier = `${this.qualifiedIdentifier}::${qualifiedIdentifier}`;
     }
     const parts = qualifiedIdentifier.split('::');
 
     // Special case: `global` always refers to the outermost namespace
     // (which doesn't have a parent), so we just strip it off.
-    if(parts[0] !== LowLevelProgram.GLOBAL_NAMESPACE){
+    if (parts[0] !== LowLevelProgram.GLOBAL_NAMESPACE) {
       throw new InternalError(`expected ${qualifiedIdentifier} to be fully qualified`);
     }
     parts.shift();
 
     // If we are just looking for `global`, we've found it, and there's only 1.
-    if(!parts.length){
-      return [ this ];
+    if (!parts.length) {
+      return [this];
     }
 
     // Now we recurse through the tree of declarations and collect all namespaces that match.
     function get(namespace: NamespaceDeclaration, path: string[]): NamespaceDeclaration[] {
       const namespaces = namespace.declarations.map((dec) => {
-        if(dec instanceof NamespaceDeclaration && dec.identifier === path[0]){
-          if(path.length > 1){
+        if (dec instanceof NamespaceDeclaration && dec.identifier === path[0]) {
+          if (path.length > 1) {
             return get(dec, path.slice(1));
           }
-          return [ dec ]
+          return [dec]
         }
         return [];
       });
@@ -871,7 +871,7 @@ class NamespaceDeclaration extends NamedDeclaration {
 
   private lookup<T extends NamedDeclaration>(context: TypeChecker, cls: Function, qualifiedIdentifier: string): T | undefined {
     // If we are looking up a fully qualified identifier, jump straight to the root.
-    if(NamedDeclaration.isFullyQualified(qualifiedIdentifier)){
+    if (NamedDeclaration.isFullyQualified(qualifiedIdentifier)) {
       return this.root.get<T>(cls, qualifiedIdentifier);
     }
 
@@ -879,7 +879,7 @@ class NamespaceDeclaration extends NamedDeclaration {
     // if `identifier` is `foo::bar`, then look for a namespace named `foo`
     // in `this`, and then an identifier named `bar` in that namespace.
     const object = this.get<T>(cls, qualifiedIdentifier);
-    if(object !== undefined){
+    if (object !== undefined) {
       return object;
     }
 
@@ -890,16 +890,16 @@ class NamespaceDeclaration extends NamedDeclaration {
       const fullyQualifiedIdentifier = `${using.qualifiedIdentifier}::${qualifiedIdentifier}`;
       return this.root.get<T>(cls, fullyQualifiedIdentifier);
     }).filter((object): object is T => !!object);
-    if(objects.length > 1){
+    if (objects.length > 1) {
       this.error(context, `ambiguous identifier ${qualifiedIdentifier} refers to ${objects.map((object) => object.qualifiedIdentifier).join(', ')}`);
       return;
     }
-    else if(objects.length === 1){
+    else if (objects.length === 1) {
       return objects[0];
     }
 
     // Finally, do a recursive lookup the parent, if we have one.
-    if(this.namespace){
+    if (this.namespace) {
       return this.namespace.lookup<T>(context, cls, qualifiedIdentifier);
     }
 
@@ -912,7 +912,7 @@ class NamespaceDeclaration extends NamedDeclaration {
     // qualified identifier's final identifier. For instance, if we are in `baz::bleck`
     // and look up `foo::bar`, we get all namespaces defining `baz::bleck::foo`.
     const parts = qualifiedIdentifier.split('::');
-    if(NamedDeclaration.isFullyQualified(qualifiedIdentifier)){
+    if (NamedDeclaration.isFullyQualified(qualifiedIdentifier)) {
       parts.shift();
     }
     const prefix = parts.slice(0, parts.length - 1).join('::');
@@ -923,8 +923,8 @@ class NamespaceDeclaration extends NamedDeclaration {
     // Now we look up the final identifier in all of the namespace declarations.
     const objects = namespaces.map((namespace) => {
       return namespace.declarations.find((declaration): declaration is T => {
-        if(declaration instanceof cls){
-          if((declaration as T).identifier === identifier){
+        if (declaration instanceof cls) {
+          if ((declaration as T).identifier === identifier) {
             return true;
           }
         }
@@ -932,10 +932,10 @@ class NamespaceDeclaration extends NamedDeclaration {
       });
     }).filter((object): object is T => !!object);
 
-    if(objects.length > 1){
+    if (objects.length > 1) {
       throw new InternalError(`multiple definitions: ${objects.join(', ')}`);
     }
-    else if(objects.length === 1){
+    else if (objects.length === 1) {
       return objects[0];
     }
     else {
@@ -969,7 +969,7 @@ class NamespaceDeclaration extends NamedDeclaration {
     throw new InternalError(`namespace ${this.qualifiedIdentifier} cannot be compiled`);
   }
 
-  public toString(){
+  public toString() {
     return `namespace ${this.identifier} {` +
       indent('\n' + this.declarations.join('\n')) +
       '\n}';
@@ -985,7 +985,7 @@ class NamespaceDeclaration extends NamedDeclaration {
   public static concat(identifier: string, namespaces: NamespaceDeclaration[]): NamespaceDeclaration {
     const declarations: Declaration[] = [...NamespaceDeclaration.builtins];
     namespaces.forEach((namespace) => {
-      if(identifier !== namespace.identifier){
+      if (identifier !== namespace.identifier) {
         throw new InternalError(`unable to concatenate mismatched namespaces; expected ${identifier}, actual ${namespace.identifier}`);
       }
       declarations.push(...namespace.declarations);
@@ -1017,7 +1017,7 @@ class NamespaceDeclaration extends NamedDeclaration {
     const final = parts.pop();
     parts.reverse();
 
-    if(!final){
+    if (!final) {
       throw new InternalError(`invalid identifier ${identifier}`);
     }
 
@@ -1043,7 +1043,7 @@ class LowLevelProgram {
 
   public readonly globalNamespace: NamespaceDeclaration;
 
-  public constructor(namespace: NamespaceDeclaration){
+  public constructor(namespace: NamespaceDeclaration) {
     this.globalNamespace = namespace;
   }
 
@@ -1059,8 +1059,8 @@ class LowLevelProgram {
       this.globalNamespace.kindcheck(context);
       this.globalNamespace.typecheck(context);
     }
-    catch(e){
-      if(e instanceof InternalError){
+    catch (e) {
+      if (e instanceof InternalError) {
         context.error(e.message);
       }
       else {
@@ -1072,7 +1072,7 @@ class LowLevelProgram {
     // checked the entire program.  If we already have a bunch of errors,
     // leave these off because they may well have been caused by
     // the previous errors.
-    if(!context.errors.length){
+    if (!context.errors.length) {
       context.check();
     }
 
@@ -1107,7 +1107,7 @@ class LowLevelProgram {
    * "proper" programs receive one.
    */
   public compile(module: string = 'out', entrypoint: boolean = true): AssemblyProgram {
-    if(!this.typechecked){
+    if (!this.typechecked) {
       throw new InternalError(`program has not been typechecked`);
     }
 
@@ -1115,7 +1115,7 @@ class LowLevelProgram {
     const globalDeclarations: GlobalDeclaration[] = declarations.filter((d): d is GlobalDeclaration => d instanceof GlobalDeclaration);
     const functionDeclarations: FunctionDeclaration[] = declarations.filter((d): d is FunctionDeclaration => d instanceof FunctionDeclaration);
     declarations.forEach((d) => {
-      if(d instanceof TemplateFunctionDeclaration){
+      if (d instanceof TemplateFunctionDeclaration) {
         functionDeclarations.push(...d.functionDeclarations);
       }
     });
@@ -1128,7 +1128,7 @@ class LowLevelProgram {
     const compiler = new Compiler(module);
 
     directives.push(new LabelDirective(compiler.generateReference('program')));
-    if(entrypoint){
+    if (entrypoint) {
       // Emit entrypoint: setup, global init, call main, halt
       directives.push(...this.entrypoint(compiler, globalDeclarations));
     }
@@ -1186,7 +1186,7 @@ class LowLevelProgram {
     return directives;
   }
 
-  public toString(){
+  public toString() {
     // Don't include the outer `namespace global ...`.
     return this.globalNamespace.declarations.join('\n');
   }
@@ -1194,7 +1194,7 @@ class LowLevelProgram {
   /**
    * Returns all of the declarations in the program.
    */
-  public get declarations(){
+  public get declarations() {
     return this.globalNamespace.allDeclarations;
   }
 

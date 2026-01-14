@@ -1,5 +1,5 @@
-import { Immediate } from '../lib/types';
-import { indent, InternalError, Syntax, Location, duplicates, writeOnce, IFileRange, IParseOptions } from '../lib/util';
+import { Immediate } from '@/lib/types';
+import { indent, InternalError, Syntax, Location, duplicates, writeOnce, IFileRange, IParseOptions } from '@/lib/util';
 import { TypeChecker, KindChecker, Source } from './typechecker';
 import { TypeTable } from './tables';
 
