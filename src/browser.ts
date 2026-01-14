@@ -150,18 +150,6 @@ function createBrowserVM(options?: BrowserVMOptions): VM {
   });
 }
 
-// Export to globalThis for browser use
-declare const globalThis: Record<string, unknown>;
-
-if (typeof globalThis !== 'undefined') {
-  globalThis.LowLevelProgram = LowLevelProgram;
-  globalThis.VM = VM;
-  globalThis.BrowserOutputPeripheral = BrowserOutputPeripheral;
-  globalThis.BrowserInputPeripheral = BrowserInputPeripheral;
-  globalThis.createBrowserVM = createBrowserVM;
-  globalThis.stdlib = stdlib;
-}
-
 export {
   LowLevelProgram,
   VM,
