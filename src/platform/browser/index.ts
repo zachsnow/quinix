@@ -10,7 +10,7 @@ import { codePointsToString, stringToCodePoints, release, ResolvablePromise } fr
 
 // Import the bare-metal standard library from the source file.
 // This is embedded at build time by bun.
-import stdlib from '../lib/std.bare.qll' with { type: 'text' };
+import stdlib from '../../../lib/std.bare.qll' with { type: 'text' };
 
 /**
  * A peripheral to write to a DOM element.

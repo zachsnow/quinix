@@ -4,24 +4,6 @@
     "lib": ["ES2022"],
     "types": ["bun-types", "node"]
   },
-  "include": [
-    "./bin/**/*.ts",
-    "./src/lib/fs-util.ts",
-    "./src/lib/cli.ts",
-    "./src/vm/peripherals.ts",
-    "./src/vm/debugger.ts",
-    "./src/lib/util.ts",
-    "./src/lib/base-types.ts",
-    "./src/lib/logger.ts",
-    "./src/vm/vm.ts",
-    "./src/vm/peripheral-base.ts",
-    "./src/vm/instructions.ts",
-    "./src/vm/mmu.ts",
-    "./src/lowlevel/**/*.ts",
-    "./src/assembly/**/*.ts"
-  ],
-  "exclude": [
-    "./src/**/*.test.ts",
-    "./src/**/*.pegjs"
-  ]
+  "include": ["src/**/*.ts", "bin/**/*.ts"],
+  "exclude": ["src/platform/browser/**/*.ts", "src/**/*.test.ts", "src/**/*.pegjs"]
 }

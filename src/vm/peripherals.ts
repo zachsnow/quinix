@@ -292,7 +292,7 @@ class TimerPeripheral extends Peripheral {
   public readonly TIME_ADDR = 0x0;
 
   private milliseconds = 0;
-  private interval?: NodeJS.Timeout;
+  private interval?: ReturnType<typeof setInterval>;
 
   public unmap() {
     if (this.interval) {
@@ -337,7 +337,6 @@ class TimerPeripheral extends Peripheral {
     this.vm.interrupt(this.interrupt);
   }
 }
-
 
 export {
   Peripheral,

@@ -56,7 +56,7 @@ bun run qllc --library --strict lib/std.bare.qll
 
 echo "Building browser bundle..."
 mkdir -p build
-bun build src/browser.ts --target=browser --format=esm --outfile=build/quinix.js
+bun build src/platform/browser/index.ts --target=browser --format=esm --outfile=build/quinix.js
 
 echo "Building CLI tools..."
 for tool in qasm qllc qrun qvm; do
