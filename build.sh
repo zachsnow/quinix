@@ -51,4 +51,10 @@ mkdir -p build
 # the debugger and file peripherals, which don't work in browser environments.
 bun build src/browser.ts --target=browser --format=iife --external=readline --external=fs --outfile=build/quinix.js
 
+echo "Building CLI tools..."
+for tool in qasm qllc qrun qvm; do
+    bun build "bin/${tool}.ts" --target=bun --outfile="build/${tool}"
+    chmod +x "build/${tool}"
+done
+
 echo "Done."
