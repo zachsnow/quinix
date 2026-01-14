@@ -19,8 +19,6 @@ class BrowserOutputPeripheral extends BufferedPeripheral {
   public readonly name = "browser-output";
   public readonly identifier = 0x00000003;
 
-  private outputElement: HTMLElement | null = null;
-
   public constructor(private readonly outputSelector: string = '#output') {
     super();
   }
@@ -28,14 +26,12 @@ class BrowserOutputPeripheral extends BufferedPeripheral {
   protected async onWrite(data: number[]): Promise<void> {
     await release();
 
-    if (!this.outputElement) {
-      this.outputElement = document.querySelector(this.outputSelector);
-    }
+    console.log(data)
 
     const s = codePointsToString(data);
-    if (this.outputElement) {
-      // Use insertAdjacentText to append without clearing existing content.
-      this.outputElement.insertAdjacentText('beforeend', s);
+    const outputElement = document.querySelector(this.outputSelector);
+    if (outputElement) {
+      outputElement.insertAdjacentText('beforeend', s);
     } else {
       console.log(s);
     }
@@ -52,28 +48,29 @@ class BrowserInputPeripheral extends BufferedPeripheral {
 
   private inputElement: HTMLInputElement | null = null;
   private buttonElement: HTMLButtonElement | null = null;
-  private containerElement: HTMLDivElement | null = null;
+  private wrapperElement: HTMLDivElement | null = null;
   private resolvablePromise?: ResolvablePromise<number[]>;
 
-  public constructor(private readonly outputSelector: string = '#output') {
+  public constructor(private readonly inputContainerSelector: string = "#input") {
     super();
   }
 
   private ensureUI(): void {
-    if (this.containerElement) {
+    // Already created.
+    if (this.wrapperElement) {
       return;
     }
 
-    const outputElement = document.querySelector(this.outputSelector);
-    if (!outputElement || !outputElement.parentElement) {
-      return;
+    const container = document.querySelector(this.inputContainerSelector);
+    if (!container) {
+      throw new Error(`container element not found: ${this.inputContainerSelector}`);
     }
 
-    // Create container with flex layout
-    this.containerElement = document.createElement('div');
-    this.containerElement.style.display = 'flex';
-    this.containerElement.style.marginBottom = '8px';
-    this.containerElement.style.gap = '8px';
+    // Create wrapper with flex layout
+    this.wrapperElement = document.createElement('div');
+    this.wrapperElement.style.display = 'flex';
+    this.wrapperElement.style.marginBottom = '8px';
+    this.wrapperElement.style.gap = '8px';
 
     // Create input element
     this.inputElement = document.createElement('input');
@@ -84,6 +81,7 @@ class BrowserInputPeripheral extends BufferedPeripheral {
         this.submitInput();
       }
     });
+    this.wrapperElement.appendChild(this.inputElement);
 
     // Create button element
     this.buttonElement = document.createElement('button');
@@ -91,12 +89,10 @@ class BrowserInputPeripheral extends BufferedPeripheral {
     this.buttonElement.addEventListener('click', () => {
       this.submitInput();
     });
+    this.wrapperElement.appendChild(this.buttonElement);
 
-    this.containerElement.appendChild(this.inputElement);
-    this.containerElement.appendChild(this.buttonElement);
-
-    // Insert before the output element
-    outputElement.parentElement.insertBefore(this.containerElement, outputElement);
+    // Insert wrapper as the first child of the container.
+    container.prepend(this.wrapperElement);
   }
 
   private submitInput(): void {
@@ -133,6 +129,7 @@ class BrowserInputPeripheral extends BufferedPeripheral {
 type BrowserVMOptions = {
   cycles?: number;
   outputSelector?: string;
+  inputContainerSelector?: string;
 };
 
 /**
@@ -140,13 +137,12 @@ type BrowserVMOptions = {
  * Includes browser-specific input and output peripherals.
  */
 function createBrowserVM(options?: BrowserVMOptions): VM {
-  const outputSelector = options?.outputSelector ?? '#output';
 
   return new VM({
     cycles: options?.cycles,
     peripherals: [
-      new BrowserOutputPeripheral(outputSelector),
-      new BrowserInputPeripheral(outputSelector),
+      new BrowserOutputPeripheral(options?.outputSelector),
+      new BrowserInputPeripheral(options?.inputContainerSelector),
     ],
   });
 }
