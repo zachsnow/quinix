@@ -2,7 +2,8 @@
 import fs from 'fs';
 import path from 'path';
 
-import { readFiles, InternalError } from '../src/lib/util';
+import { readFiles } from '../src/lib/fs-util';
+import { InternalError } from '../src/lib/util';
 import { logger } from '../src/lib/logger';
 import { parseArguments } from '../src/lib/cli';
 import { AssemblyProgram } from '../src/assembly/assembly';
@@ -113,7 +114,7 @@ async function main(): Promise<number | undefined> {
 
   // Output.
   if(!argv.assemble){
-    await fs.promises.writeFile(argv.output, program.encode().toBuffer());
+    await fs.promises.writeFile(argv.output, program.encode().toBytes());
     return;
   }
   else {

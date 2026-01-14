@@ -2,7 +2,8 @@
 import fs from 'fs';
 import path from 'path';
 
-import { readFiles, InternalError } from '../src/lib/util';
+import { readFiles } from '../src/lib/fs-util';
+import { InternalError } from '../src/lib/util';
 import { logger } from '../src/lib/logger';
 import { parseArguments } from '../src/lib/cli';
 import { LowLevelProgram } from '../src/lowlevel/lowlevel';

@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": [
+    "./src/lib/globals.d.ts",
+    "./src/lib/util.ts",
+    "./src/lib/base-types.ts",
+    "./src/lib/logger.ts",
+    "./src/vm/vm.ts",
+    "./src/vm/peripheral-base.ts",
+    "./src/vm/instructions.ts",
+    "./src/vm/mmu.ts",
+    "./src/lowlevel/**/*.ts",
+    "./src/assembly/**/*.ts"
+  ],
+  "exclude": [
+    "./src/**/*.test.ts",
+    "./src/**/*.pegjs"
+  ]
+}

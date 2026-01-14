@@ -102,7 +102,7 @@ else {
     console.warn(`warning: non-standard extension ${path.extname(filename)}`);
   }
   const buffer = fs.readFileSync(filename);
-  programData = Memory.fromBuffer(buffer);
+  programData = Memory.fromBytes(buffer);
 }
 log.debug(`loaded binary:\n${programData}\n`);
 

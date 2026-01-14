@@ -95,19 +95,19 @@ class Memory extends Uint32Array {
   }
 
   /**
-   * Converts this memory region to a `Buffer`.
+   * Converts this memory region to bytes.
    */
-  public toBuffer(): Buffer {
-    return Buffer.from(this.buffer);
+  public toBytes(): Uint8Array {
+    return new Uint8Array(this.buffer);
   }
 
   /**
-   * Converts the given buffer to memory.
+   * Converts the given bytes to memory.
    *
-   * @param buffer the buffer to convert to memory.
+   * @param bytes the bytes to convert to memory.
    */
-  public static fromBuffer(buffer: Buffer): Memory {
-    return new Memory(buffer.buffer as ArrayBuffer, buffer.byteOffset, buffer.byteLength / Memory.BYTES_PER_ELEMENT);
+  public static fromBytes(bytes: Uint8Array): Memory {
+    return new Memory(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength / Memory.BYTES_PER_ELEMENT);
   }
 
   /**

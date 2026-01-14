@@ -1,5 +1,3 @@
-import fs from 'fs';
-
 class InternalError extends Error {
   public constructor(message?: string){
     super(message ? `internal: ${message}` : `internal`);
@@ -125,10 +123,6 @@ function unique<T>(array: T[]): T[] {
     }
   });
   return uniques;
-}
-
-async function readFiles(filenames: string[]): Promise<string[]> {
-  return await Promise.all(filenames.map((filename) => fs.promises.readFile(filename, 'utf-8')));
 }
 
 class HasTags {
@@ -373,7 +367,6 @@ export {
   indent,
   duplicates, unique, flatten,
   SymbolTable,
-  readFiles,
   parseFile,
   Syntax,
   Messages,

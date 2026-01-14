@@ -39,8 +39,14 @@ run_peggy src/lowlevel/parser.prelude.ts src/lowlevel/statements-parser.ts "$TMP
 cat src/lowlevel/parser.pegjs src/lowlevel/statements-parser.pegjs src/lowlevel/expressions-parser.pegjs src/lowlevel/types-parser.pegjs src/lowlevel/base-parser.pegjs > "$TMPDIR/parser.pegjs"
 run_peggy src/lowlevel/parser.prelude.ts src/lowlevel/parser.ts "$TMPDIR/parser.pegjs"
 
-echo "Type checking..."
-bunx tsc --noEmit
+echo "Type checking core (no platform deps)..."
+bunx tsc -p tsconfig.core.json --noEmit
+
+echo "Type checking browser..."
+bunx tsc -p tsconfig.browser.json --noEmit
+
+echo "Type checking server..."
+bunx tsc -p tsconfig.server.json --noEmit
 
 echo "Building libraries..."
 (cd lib && ./build.sh)
