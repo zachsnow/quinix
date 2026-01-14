@@ -645,12 +645,10 @@ class VM {
     }
 
     log.debug(`breakpoint ${Immediate.toString(virtualAddress)}`);
-
-    const dbg = this.debuggerFactory(this, this.state, this.memory);
-    this.debugger = dbg;
     try {
-      log.debug('starting debugger')
-      return await dbg.start();
+      log.debug('starting debugger...');
+      this.debugger = this.debuggerFactory(this, this.state, this.memory);
+      return await this.debugger.start();
     }
     finally {
       this.debugger = undefined;

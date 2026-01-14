@@ -51,6 +51,9 @@ bunx tsc -p tsconfig.server.json --noEmit
 echo "Building libraries..."
 (cd lib && ./build.sh)
 
+echo "Type checking std.bare.qll..."
+bun run qllc --library --strict lib/std.bare.qll
+
 echo "Building browser bundle..."
 mkdir -p build
 bun build src/browser.ts --target=browser --format=esm --outfile=build/quinix.js

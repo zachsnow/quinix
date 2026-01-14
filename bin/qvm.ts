@@ -5,7 +5,6 @@ import path from 'path';
 import { logger } from '../src/lib/logger';
 import { parseArguments } from '../src/lib/cli';
 import { VM, Breakpoint } from '../src/vm/vm';
-import type { DebuggerFactory } from '../src/vm/vm';
 import { Memory, Address } from '../src/lib/base-types';
 import { Program } from '../src/vm/instructions';
 import { Compiler } from '../src/lowlevel/compiler';
@@ -17,11 +16,6 @@ import {
   DebugInputPeripheral,
   DebugFilePeripheral,
 } from '../src/vm/peripherals';
-
-// Create a debugger factory for breakpoint support.
-const debuggerFactory: DebuggerFactory = (vm, state, memory) => {
-  return new Debugger(vm, state, memory);
-};
 
 const log = logger('qvm');
 
@@ -41,7 +35,7 @@ const argv = parseArguments<Options>(
   '$0 [binary]',
   'execute the given binary',
   {
-    options:{
+    options: {
       cycles: {
         alias: 'c',
         describe: 'halt after number of cycles',
@@ -76,13 +70,13 @@ const argv = parseArguments<Options>(
 );
 
 const breakpoints: Breakpoint[] = [];
-if(argv.break){
+if (argv.break) {
   breakpoints.push({
     type: 'execute',
     address: Address.parse(argv.break),
   });
 }
-if(argv['break-write']){
+if (argv['break-write']) {
   breakpoints.push({
     type: 'write',
     address: Address.parse(argv['break-write']),
@@ -94,11 +88,11 @@ if(argv['break-write']){
 // 1. Load file as binary, if passed. Otherwise just loads `halt`.
 const filename = argv.binary;
 let programData: Memory;
-if(!filename){
+if (!filename) {
   programData = new Memory();
 }
 else {
-  if(!filename.endsWith('.qbin')){
+  if (!filename.endsWith('.qbin')) {
     console.warn(`warning: non-standard extension ${path.extname(filename)}`);
   }
   const buffer = fs.readFileSync(filename);
@@ -115,7 +109,9 @@ const vm = new VM({
   debug: argv.verbose,
   breakpoints: breakpoints,
   cycles: argv.cycles ? parseInt(argv.cycles, 10) : undefined,
-  debuggerFactory,
+  debuggerFactory: (vm, state, memory) => {
+    return new Debugger(vm, state, memory);
+  },
   peripherals: [
     new TimerPeripheral(),
     new DebugBreakPeripheral(),
@@ -127,7 +123,7 @@ const vm = new VM({
 
 vm.run(programData).then((r) => {
   log.debug(`terminated: ${r}`);
-  switch(r){
+  switch (r) {
     case Compiler.NULL_ERROR:
       console.error('error: NULL_ERROR');
       break;
@@ -141,17 +137,17 @@ vm.run(programData).then((r) => {
   return Promise.resolve(r);
 }, (e) => {
   log.debug(`error: ${e}`);
-  if(argv.verbose){
+  if (argv.verbose) {
     log.debug(`${e.stack}`);
   }
   return Promise.resolve(-1);
 }).then((r) => {
-  if(argv.stats){
+  if (argv.stats) {
     console.info(`\nVM statistics:\n${vm.stats}`);
   }
   process.exit(r);
 });
 
-process.on('SIGINT', function() {
+process.on('SIGINT', function () {
   vm.kill();
 });
