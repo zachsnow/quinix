@@ -1,6 +1,5 @@
 import { release, ResolvablePromise } from '../lib/util';
 import { logger } from '../lib/logger';
-// Debugger is dynamically imported to avoid loading readline in the browser.
 import { Memory, Address, Immediate } from '../lib/base-types';
 import { AccessFlags, IdentityMMU, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
 import type { MMU } from './mmu';
@@ -90,6 +89,18 @@ type Breakpoint = {
   type: BreakpointType,
 };
 
+/**
+ * Interface for an interactive debugger.
+ */
+interface IDebugger {
+  start(): Promise<VMResult | undefined>;
+}
+
+/**
+ * Factory function to create a debugger instance.
+ */
+type DebuggerFactory = (vm: VM, state: State, memory: Memory) => IDebugger;
+
 type VMOptions = {
   size?: number;
   peripheralFrequency?: number;
@@ -98,6 +109,7 @@ type VMOptions = {
   mmu?: MMU;
   breakpoints?: Breakpoint[],
   cycles?: number,
+  debuggerFactory?: DebuggerFactory,
 }
 
 type Interrupt = number;
@@ -178,7 +190,8 @@ class VM {
 
   // Breakpoint addresses.
   private breakpointAddresses: { [address: number]: Breakpoint } = {};
-  private debugger?: { start(): Promise<number | undefined> }; // Interactive debugger.
+  private debugger?: IDebugger;
+  private debuggerFactory?: DebuggerFactory;
 
   public constructor(options?: VMOptions) {
     options = options || {};
@@ -197,6 +210,9 @@ class VM {
 
     // Peripheral frequency.
     this.peripheralFrequency = options.peripheralFrequency ?? this.DEFAULT_PERIPHERAL_FREQUENCY;
+
+    // Debugger factory for breakpoint support.
+    this.debuggerFactory = options.debuggerFactory;
 
     // Breakpoints (just records whether to break on a particular *virtual* address, for now).
     (options.breakpoints || []).forEach((breakpoint) => {
@@ -622,23 +638,18 @@ class VM {
       return;
     }
 
-    // The debugger uses Node.js readline for interactive debugging, which isn't
-    // available in browser environments. Skip debugging in browsers.
-    if (typeof (globalThis as { window?: unknown }).window !== 'undefined') {
-      log.debug(`breakpoint ${Immediate.toString(virtualAddress)} (skipped in browser)`);
+    // No debugger factory provided - skip breakpoints.
+    if (!this.debuggerFactory) {
+      log.debug(`breakpoint ${Immediate.toString(virtualAddress)} (no debugger)`);
       return;
     }
 
     log.debug(`breakpoint ${Immediate.toString(virtualAddress)}`);
 
-    // Dynamically import the debugger to avoid loading readline in the browser.
-    // Use a variable to prevent bundler from analyzing the import.
-    const debuggerModule = './debugger';
-    const { Debugger } = await import(/* @vite-ignore */ debuggerModule);
-    const dbg = new Debugger(this, this.state, this.memory);
+    const dbg = this.debuggerFactory(this, this.state, this.memory);
     this.debugger = dbg;
     try {
-      log.debug('starting debuger')
+      log.debug('starting debugger')
       return await dbg.start();
     }
     finally {
@@ -885,4 +896,4 @@ class VM {
 
 
 export { VM, State };
-export type { VMResult, VMStepResult, Breakpoint, Interrupt, PeripheralMapping };
+export type { VMResult, VMStepResult, Breakpoint, Interrupt, IDebugger, DebuggerFactory };

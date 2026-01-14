@@ -5,9 +5,11 @@ import path from 'path';
 import { logger } from '../src/lib/logger';
 import { parseArguments } from '../src/lib/cli';
 import { VM, Breakpoint } from '../src/vm/vm';
+import type { DebuggerFactory } from '../src/vm/vm';
 import { Memory, Address } from '../src/lib/base-types';
 import { Program } from '../src/vm/instructions';
 import { Compiler } from '../src/lowlevel/compiler';
+import { Debugger } from '../src/vm/debugger';
 import {
   TimerPeripheral,
   DebugBreakPeripheral,
@@ -15,6 +17,11 @@ import {
   DebugInputPeripheral,
   DebugFilePeripheral,
 } from '../src/vm/peripherals';
+
+// Create a debugger factory for breakpoint support.
+const debuggerFactory: DebuggerFactory = (vm, state, memory) => {
+  return new Debugger(vm, state, memory);
+};
 
 const log = logger('qvm');
 
@@ -108,6 +115,7 @@ const vm = new VM({
   debug: argv.verbose,
   breakpoints: breakpoints,
   cycles: argv.cycles ? parseInt(argv.cycles, 10) : undefined,
+  debuggerFactory,
   peripherals: [
     new TimerPeripheral(),
     new DebugBreakPeripheral(),
