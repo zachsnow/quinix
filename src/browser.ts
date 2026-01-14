@@ -34,7 +34,8 @@ class BrowserOutputPeripheral extends BufferedPeripheral {
 
     const s = codePointsToString(data);
     if (this.outputElement) {
-      this.outputElement.textContent += s;
+      // Use insertAdjacentText to append without clearing existing content.
+      this.outputElement.insertAdjacentText('beforeend', s);
     } else {
       console.log(s);
     }
