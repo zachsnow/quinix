@@ -1,17 +1,12 @@
 import { release, ResolvablePromise } from '../lib/util';
 import { logger } from '../lib/logger';
-import type { Debugger } from './debugger';
+// Debugger is dynamically imported to avoid loading readline in the browser.
 import { Memory, Address, Immediate } from '../lib/base-types';
 import { AccessFlags, IdentityMMU, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
 import type { MMU } from './mmu';
 import { Program, Operation, Instruction, Register } from './instructions';
-import {
-  Peripheral,
-  TimerPeripheral,
-  DebugOutputPeripheral, DebugInputPeripheral, DebugBreakPeripheral,
-  DebugFilePeripheral,
-} from './peripherals';
-import type { PeripheralMapping } from './peripherals';
+import { Peripheral } from './peripheral-base';
+import type { PeripheralMapping } from './peripheral-base';
 import { Compiler } from '../lowlevel/compiler';
 
 const log = logger('vm');
@@ -183,7 +178,7 @@ class VM {
 
   // Breakpoint addresses.
   private breakpointAddresses: { [address: number]: Breakpoint } = {};
-  private debugger?: Debugger; // Interactive debugger.
+  private debugger?: { start(): Promise<number | undefined> }; // Interactive debugger.
 
   public constructor(options?: VMOptions) {
     options = options || {};
@@ -197,16 +192,8 @@ class VM {
     const mmu = new ListPageTablePeripheral(this.memory);
     this.mmu = mmu;
 
-    // Peripherals.
-    this.peripherals = options.peripherals ?? [
-      mmu,
-      new TimerPeripheral(),
-      new DebugBreakPeripheral(),
-      new DebugOutputPeripheral(),
-      new DebugInputPeripheral(),
-      new DebugFilePeripheral(),
-
-    ];
+    // Peripherals. The MMU is always included.
+    this.peripherals = [mmu, ...(options.peripherals ?? [])];
 
     // Peripheral frequency.
     this.peripheralFrequency = options.peripheralFrequency ?? this.DEFAULT_PERIPHERAL_FREQUENCY;
@@ -645,11 +632,14 @@ class VM {
     log.debug(`breakpoint ${Immediate.toString(virtualAddress)}`);
 
     // Dynamically import the debugger to avoid loading readline in the browser.
-    const { Debugger } = await import('./debugger');
-    this.debugger = new Debugger(this, this.state, this.memory);
+    // Use a variable to prevent bundler from analyzing the import.
+    const debuggerModule = './debugger';
+    const { Debugger } = await import(/* @vite-ignore */ debuggerModule);
+    const dbg = new Debugger(this, this.state, this.memory);
+    this.debugger = dbg;
     try {
       log.debug('starting debuger')
-      return await this.debugger.start();
+      return await dbg.start();
     }
     finally {
       this.debugger = undefined;

@@ -1,7 +1,7 @@
 import { IdentityMMU, AccessFlags, TwoLevelPageTablePeripheral, ListPageTablePeripheral } from './mmu';
 import { Memory } from '../lib/base-types';
 import { VM } from './vm';
-import type { PeripheralMapping } from './peripherals';
+import type { PeripheralMapping } from './peripheral-base';
 
 describe('MMU', () => {
 

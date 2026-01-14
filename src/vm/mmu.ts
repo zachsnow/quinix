@@ -1,7 +1,7 @@
 import { logger } from '../lib/logger';
 
 import { Memory, Address, Immediate, Offset } from '../lib/base-types';
-import { Peripheral } from './peripherals';
+import { Peripheral } from './peripheral-base';
 
 const log = logger('vm:mmu');
 

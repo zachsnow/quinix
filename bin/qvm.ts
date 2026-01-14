@@ -8,6 +8,13 @@ import { VM, Breakpoint } from '../src/vm/vm';
 import { Memory, Address } from '../src/lib/base-types';
 import { Program } from '../src/vm/instructions';
 import { Compiler } from '../src/lowlevel/compiler';
+import {
+  TimerPeripheral,
+  DebugBreakPeripheral,
+  DebugOutputPeripheral,
+  DebugInputPeripheral,
+  DebugFilePeripheral,
+} from '../src/vm/peripherals';
 
 const log = logger('qvm');
 
@@ -101,6 +108,13 @@ const vm = new VM({
   debug: argv.verbose,
   breakpoints: breakpoints,
   cycles: argv.cycles ? parseInt(argv.cycles, 10) : undefined,
+  peripherals: [
+    new TimerPeripheral(),
+    new DebugBreakPeripheral(),
+    new DebugOutputPeripheral(),
+    new DebugInputPeripheral(),
+    new DebugFilePeripheral(),
+  ],
 });
 
 vm.run(programData).then((r) => {
