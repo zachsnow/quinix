@@ -1,5 +1,5 @@
 class InternalError extends Error {
-  public constructor(message?: string){
+  public constructor(message?: string) {
     super(message ? `internal: ${message}` : `internal`);
   }
 }
@@ -10,8 +10,8 @@ class SymbolTable<T> {
 
   public constructor(
     private readonly parent?: SymbolTable<T>,
-  ){
-    if(parent){
+  ) {
+    if (parent) {
       this.id = parent.id + 1;
     }
   }
@@ -19,7 +19,6 @@ class SymbolTable<T> {
   public extend(): SymbolTable<T> {
     return new SymbolTable<T>(this);
   }
-
   private identify(identifier: string): string {
     return `${identifier}$${this.id}`;
   }
@@ -31,7 +30,7 @@ class SymbolTable<T> {
    * @param identifier
    */
   public lookup(identifier: string): { value: T, identity: string } | undefined {
-    if(this.has(identifier)){
+    if (this.has(identifier)) {
       return this.get(identifier);
     }
   }
@@ -45,13 +44,13 @@ class SymbolTable<T> {
    */
   public get(identifier: string): { value: T, identity: string } {
     const value = this.symbols[identifier];
-    if(value !== undefined){
+    if (value !== undefined) {
       return {
         identity: this.identify(identifier),
         value,
       };
     }
-    if(this.parent !== undefined){
+    if (this.parent !== undefined) {
       return this.parent.get(identifier);
     }
     throw new InternalError(`unknown identifier ${identifier}`);
@@ -66,7 +65,7 @@ class SymbolTable<T> {
    * @param value the value to set.
    */
   public set(identifier: string, value: T): string {
-    if(this.symbols[identifier] !== undefined){
+    if (this.symbols[identifier] !== undefined) {
       throw new InternalError(`identifier redefinition ${identifier}: ${this.symbols[identifier]}`);
     }
     this.symbols[identifier] = value;
@@ -80,10 +79,10 @@ class SymbolTable<T> {
    */
   public has(qualifiedIdentifier: string): boolean {
     const value = this.symbols[qualifiedIdentifier];
-    if(value !== undefined){
+    if (value !== undefined) {
       return true;
     }
-    if(this.parent !== undefined){
+    if (this.parent !== undefined) {
       return this.parent.has(qualifiedIdentifier);
     }
     return false;
@@ -108,7 +107,7 @@ function flatten<T>(array: readonly T[][]): T[] {
 function duplicates<T>(array: readonly T[]): T[] {
   const duplicates: T[] = [];
   array.forEach((s, index) => {
-    if(array.indexOf(s) !== index){
+    if (array.indexOf(s) !== index) {
       duplicates.push(s);
     }
   });
@@ -118,7 +117,7 @@ function duplicates<T>(array: readonly T[]): T[] {
 function unique<T>(array: T[]): T[] {
   const uniques: T[] = [];
   array.forEach((s, index) => {
-    if(array.indexOf(s) === index){
+    if (array.indexOf(s) === index) {
       uniques.push(s);
     }
   });
@@ -161,9 +160,9 @@ class HasTags {
 }
 
 class Location {
-  public constructor(private filename: string, private line: number, private column: number, private text: string){}
+  public constructor(private filename: string, private line: number, private column: number, private text: string) { }
 
-  public toString(){
+  public toString() {
     const parts = this.text.split('\n');
     const text = parts.length > 1 ? `${parts[0]}...` : this.text;
     return `${this.filename}(${this.line})[${this.column}]: ${text}`;
@@ -191,10 +190,10 @@ class Syntax extends HasTags {
   public at(location?: Location): this;
   public at(range: IFileRange, text: string, options?: IParseOptions): this;
   public at(locationOrRange?: Location | IFileRange, text?: string, options?: IParseOptions): this {
-    if(locationOrRange === undefined){
+    if (locationOrRange === undefined) {
       this.location = undefined;
     }
-    else if(locationOrRange instanceof Location){
+    else if (locationOrRange instanceof Location) {
       this.location = locationOrRange;
     }
     else {
@@ -215,8 +214,8 @@ class Syntax extends HasTags {
     // Nothin' for now.
   }
 
-  public withLocation(s: string){
-    if(!this.location){
+  public withLocation(s: string) {
+    if (!this.location) {
       return s;
     }
     return `${this.location}: ${s}`;
@@ -231,14 +230,14 @@ class Message {
   public readonly location?: Location;
   public readonly text: string;
 
-  public constructor(type: MessageType, text: string, location?: Location){
+  public constructor(type: MessageType, text: string, location?: Location) {
     this.type = type;
     this.text = text;
     this.location = location;
   }
 
-  public toString(){
-    if(this.location !== undefined){
+  public toString() {
+    if (this.location !== undefined) {
       return `${this.type}: ${this.location}: ${this.text}`;
     }
     return `${this.type}: ${this.text}`;
@@ -248,11 +247,11 @@ class Message {
 class Messages {
   protected messages: Message[] = [];
 
-  public error(message: string, location?: Location){
+  public error(message: string, location?: Location) {
     this.messages.push(new Message('error', message, location));
   }
 
-  public warning(message: string, location?: Location){
+  public warning(message: string, location?: Location) {
     this.messages.push(new Message('warning', message, location));
   }
 
@@ -264,7 +263,7 @@ class Messages {
     return this.messages.filter((message) => message.type === 'warning');
   }
 
-  public toString(){
+  public toString() {
     return this.messages.join('\n');
   }
 
@@ -278,18 +277,18 @@ class ResolvablePromise<T> {
   private rejecter!: (e: any) => void;
   public readonly promise: Promise<T>;
 
-  public constructor(){
+  public constructor() {
     this.promise = new Promise((resolve, reject) => {
       this.resolver = resolve;
       this.rejecter = reject;
     });
   }
 
-  public resolve(result: T){
+  public resolve(result: T) {
     this.resolver(result);
   }
 
-  public reject(e: any){
+  public reject(e: any) {
     this.rejecter(e);
   }
 }
@@ -314,9 +313,9 @@ function parseFile<T>(parser: (text: string, options: IParseOptions) => T, text:
   try {
     return parser(text, options);
   }
-  catch(e: any){
+  catch (e: any) {
     // Attach filename to any error with a location (syntax errors from Peggy).
-    if(e.location){
+    if (e.location) {
       e.location.filename = filename;
     }
     throw e;
@@ -333,27 +332,27 @@ function codePointsToString(codePoints: number[]) {
 
 function range(i: number, j: number): number[] {
   const l = [];
-  for(let x = i; x < j; x++){
+  for (let x = i; x < j; x++) {
     l.push(x);
   }
   return l;
 }
 
 type Constructor<T> = Function & { prototype: T }
-function writeOnce<K, F extends Constructor<K>>(cls: F, key: string, allowUndefined: boolean = false){
+function writeOnce<K, F extends Constructor<K>>(cls: F, key: string, allowUndefined: boolean = false) {
   const backingKey = `.${key}`;
   Object.defineProperty(cls.prototype, key, {
-    get: function(){
+    get: function () {
       const value = this[backingKey];
-      if(!allowUndefined && value === undefined){
+      if (!allowUndefined && value === undefined) {
         debugger;
         throw new InternalError(`write-once property ${key} of ${this.constructor.name} not set`);
       }
       return value;
     },
-    set: function(value){
+    set: function (value) {
       const previousValue = this[backingKey];
-      if(this[backingKey] !== undefined && value !== previousValue){
+      if (this[backingKey] !== undefined && value !== previousValue) {
         throw new InternalError(`write-once property ${key} of ${this} already set to ${previousValue}, cannot set to ${value}`);
       }
       this[backingKey] = value;
