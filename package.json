@@ -1,6 +1,6 @@
 {
   "name": "quinix",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A 32-bit RISC virtual machine, assembly language, and C-like high-level language",
   "private": true,
   "type": "module",
@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "build": "./build.sh",
-    "watch": "./bin/watch.sh",
+    "watch": "./watch.sh",
     "test": "bun test",
     "types": "tsc --noEmit",
     "qasm": "bun run bin/qasm.ts",
