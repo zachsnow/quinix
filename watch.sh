@@ -6,5 +6,8 @@ set -euo pipefail
 echo "Watching..."
 fswatch -e "parser\\.ts$" -e "lib/bin/" src lib bin | while read -r file; do
   echo "Change detected: $file"
+
   ./build.sh
+
+  echo "Watching..."
 done
