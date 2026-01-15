@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "build": "./build.sh",
-    "watch": "bun run bin/watch.ts",
+    "watch": "./bin/watch.sh",
     "test": "bun test",
     "types": "tsc --noEmit",
     "qasm": "bun run bin/qasm.ts",
