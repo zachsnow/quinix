@@ -19,6 +19,7 @@ class SymbolTable<T> {
   public extend(): SymbolTable<T> {
     return new SymbolTable<T>(this);
   }
+
   private identify(identifier: string): string {
     return `${identifier}$${this.id}`;
   }
