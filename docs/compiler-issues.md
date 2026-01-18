@@ -245,19 +245,23 @@ std::ilist::remove(&tasks, task);  // ERROR: unable to infer template instantiat
 - ~~#1: Nested namespace resolution~~ (not a bug)
 - ~~#2: Negation on arrays~~ (fixed 2026-01-18)
 - ~~#3: Delete on sized arrays~~ (fixed 2026-01-18)
+- ~~#5: Vector null initialization~~ (not a bug - use `std::slice<T>` struct type)
 - ~~#6: Delete on vectors~~ (fixed 2026-01-18)
 - ~~#7: Delete on strings~~ (fixed 2026-01-18)
 - ~~#8: Delete on struct array fields~~ (fixed 2026-01-18)
 - ~~#9: Unsafe indexing on generic pointers~~ (not a bug - intentional design)
 
-### Critical (blocking kernel development):
-- #5: Vector null initialization
+### Remaining Issues (Priority Order):
 
-### Medium Priority:
-- #10: Template inference for intrusive lists
+**1. Medium Priority** - #10: Template inference for intrusive lists
+   - Blocks ergonomic use of generic intrusive list operations
+   - Workaround: Explicit type parameters `std::ilist::remove<* task>(&tasks, task)`
+   - Would improve kernel code readability
 
-### Low Priority (has workaround):
-- #4: Cast byte to array type
+**2. Low Priority** - #4: Cast byte to array type
+   - Has workaround: cast to pointer first
+   - Rarely needed in practice
+   - Minor convenience issue
 
 ---
 
