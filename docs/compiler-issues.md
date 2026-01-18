@@ -82,73 +82,75 @@ global processes: vector<* process> = null;
 
 ---
 
-## 6. Delete on Vectors
+## 6. ~~Delete on Vectors~~ (FIXED)
 
-**Issue**: Cannot delete vectors even though they're heap-allocated.
+**Status**: Fixed as of 2026-01-18.
 
-**Example**:
+**Solution**: Extended `delete` to accept SliceType. When deleting a slice:
+1. Frees the heap memory pointed to by `slice.pointer`
+2. Zeros out the slice descriptor (pointer=null, length=0, capacity=0)
+3. Requires the slice expression to be an l-value (assignable)
+
+**Example** (now works):
 ```qll
-function _increase_capacity<T>(vec: * vector<T>): void {
-  var v = new T[2 * capacity *vec];
-  // ... copy data ...
-  delete *vec;  // ERROR: expected array or pointer type, actual (vector)<T>
-  *vec = v;
+type vector<T> = T[];
+
+function destroy<T>(vec: * vector<T>): void {
+  delete *vec;  // ✓ Works! Frees heap data and zeros the slice
 }
+
+// After delete:
+// - vec.pointer is null
+// - vec.length is 0
+// - vec.capacity is 0
+// - Double-delete is safe (deleting null is a no-op)
 ```
 
-**Error**: `delete *vec: expected array or pointer type, actual (vector)<* process>`
-
-**Expected**: Should be able to delete heap-allocated vectors.
-
-**Note**: This is critical for the standard library vector implementation.
+**Test**: `tests/compiler-issues/06-delete-vector.qll`
 
 ---
 
-## 7. Delete on Strings
+## 7. ~~Delete on Strings~~ (FIXED)
 
-**Issue**: Cannot delete strings even though they're heap-allocated.
+**Status**: Fixed as of 2026-01-18 (same fix as #6).
 
-**Example**:
+**Solution**: Since `string` is convertible to `byte[]` (SliceType), delete now works on strings.
+
+**Example** (now works):
 ```qll
 type file = struct {
   path: string;
   handle: byte;
 };
 
-function destroy_file(file: file): void {
-  delete file.path;  // ERROR: expected array or pointer type, actual string
+function destroy_file(f: * file): void {
+  delete f->path;  // ✓ Works! Frees the string data and zeros the slice
 }
 ```
 
-**Error**: `delete file.path: expected array or pointer type, actual string`
-
-**Expected**: Should be able to delete heap-allocated strings.
+**Test**: `tests/compiler-issues/07-delete-string.qll`
 
 ---
 
-## 8. Delete on Struct Array Fields
+## 8. ~~Delete on Struct Array Fields~~ (FIXED)
 
-**Issue**: Cannot delete array fields from structs.
+**Status**: Fixed as of 2026-01-18 (same fix as #6).
 
-**Example**:
+**Solution**: Slice fields in structs can now be deleted, which frees the heap data and zeros the field.
+
+**Example** (now works):
 ```qll
-type page = struct {
-  address: byte;
-};
-
 type table = struct {
   pages: page[];
 };
 
-function destroy_table(table: * table): void {
-  delete table->pages;  // ERROR: expected array or pointer type, actual page[]
-  delete table;
+function destroy_table(t: * table): void {
+  delete t->pages;  // ✓ Works! Frees the array and zeros the field
+  delete t;
 }
 ```
 
-**Error**: `delete table->pages: expected array or pointer type, actual page[]`
-
-**Expected**: Should be able to delete heap-allocated array fields.
+**Test**: `tests/compiler-issues/08-delete-struct-array-field.qll`
 
 ---
 
@@ -210,14 +212,12 @@ std::ilist::remove(&tasks, task);  // ERROR: unable to infer template instantiat
 - ~~#1: Nested namespace resolution~~ (not a bug)
 - ~~#2: Negation on arrays~~ (fixed 2026-01-18)
 - ~~#3: Delete on sized arrays~~ (fixed 2026-01-18)
+- ~~#6: Delete on vectors~~ (fixed 2026-01-18)
+- ~~#7: Delete on strings~~ (fixed 2026-01-18)
+- ~~#8: Delete on struct array fields~~ (fixed 2026-01-18)
 
 ### Critical (blocking kernel development):
 - #5: Vector null initialization
-- #6: Delete on vectors (breaks std lib)
-- #8: Delete on struct array fields
-
-### High Priority:
-- #7: Delete on strings
 
 ### Medium Priority:
 - #9: Unsafe indexing on generic pointers
