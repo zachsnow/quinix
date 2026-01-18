@@ -706,14 +706,62 @@ class DeleteStatement extends Statement {
     const type = this.expression.typecheck(context);
     const cType = type.resolve();
 
-    if (!(cType instanceof PointerType) && !(cType instanceof ArrayType)) {
-      this.error(context, `expected array or pointer type, actual ${type}`);
+    if (!(cType instanceof PointerType) && !(cType instanceof ArrayType) && !(cType instanceof SliceType)) {
+      this.error(context, `expected array, slice, or pointer type, actual ${type}`);
+    }
+
+    // For slices, we need to zero out the descriptor fields, so it must be assignable
+    if (cType instanceof SliceType && !this.expression.assignable) {
+      this.error(context, `cannot delete non-assignable slice expression ${this.expression}`);
     }
   }
 
   public compile(compiler: Compiler): void {
     const dr = this.expression.compile(compiler);
-    compiler.emitDelete(dr);
+    const cType = this.expression.concreteType.resolve();
+
+    if (cType instanceof SliceType) {
+      // For slices, we need to:
+      // 1. Load the pointer field (first word of the slice descriptor)
+      // 2. Delete the heap memory pointed to by that pointer
+      // 3. Zero out all three fields (pointer, length, capacity)
+
+      // Load the pointer field (word 0)
+      const ptrReg = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(
+          Instruction.createOperation(Operation.LOAD, ptrReg, dr)
+        ).comment('load slice.pointer'),
+      ]);
+
+      // Delete the heap memory
+      compiler.emitDelete(ptrReg, 'delete slice data');
+      compiler.deallocateRegister(ptrReg);
+
+      // Zero out the slice descriptor fields
+      const zeroReg = compiler.allocateRegister();
+      compiler.emit([
+        new ConstantDirective(zeroReg, new ImmediateConstant(0)).comment('zero'),
+      ]);
+
+      // Store 0 to pointer field (offset 0)
+      compiler.emitStaticStore(dr, zeroReg, 1, 'slice.pointer = null');
+
+      // Store 0 to length field (offset 1)
+      compiler.emitIncrement(dr, 1);
+      compiler.emitStaticStore(dr, zeroReg, 1, 'slice.length = 0');
+
+      // Store 0 to capacity field (offset 2)
+      compiler.emitIncrement(dr, 1);
+      compiler.emitStaticStore(dr, zeroReg, 1, 'slice.capacity = 0');
+
+      compiler.deallocateRegister(zeroReg);
+      compiler.deallocateRegister(dr);
+    }
+    else {
+      // For pointers and arrays, delete directly
+      compiler.emitDelete(dr);
+    }
   }
 
   public returns(): boolean {
