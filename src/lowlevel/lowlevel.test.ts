@@ -496,13 +496,13 @@ describe('QLLC typechecking', () => {
       `)).toContain(`break outside of for or while`);
     });
 
-    // With slices, initializer can be smaller than capacity (valid)
-    // and initializer can be larger than capacity (also valid, but truncates)
+    // With slices, initializer can be smaller than cap (valid)
+    // and initializer can be larger than cap (also valid, but truncates)
     // These tests are no longer applicable since byte[] is now a slice
     test('heap allocate array, initializer too short - now valid with slices', () => {
       return expect(errors(`
         function main(): byte {
-          var ps = new byte[3] = [1,2];
+          var ps: byte[] = new byte[3] = [1,2];
           return ps[0];
         }
       `)).toEqual([]);
@@ -511,7 +511,7 @@ describe('QLLC typechecking', () => {
     test('heap allocate array, initializer too long - now valid with slices', () => {
       return expect(errors(`
         function main(): byte {
-          var ps = new byte[2] = [1,2,3];
+          var ps: byte[] = new byte[2] = [1,2,3];
           return ps[0];
         }
       `)).toEqual([]);
@@ -1424,7 +1424,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(10, `
       function main(): byte {
         var ar: byte[10];
-        return capacity ar;
+        return cap ar;
       }
     `);
   });
@@ -1453,7 +1453,7 @@ describe('QLLC end-to-end', () => {
       function main(): byte {
         var ar: byte[10];
         len ar = 5;
-        return capacity ar;
+        return cap ar;
       }
     `);
   });
@@ -1605,7 +1605,7 @@ describe('QLLC end-to-end', () => {
       function main(): byte {
         var b: byte[] = new byte [10];
         b[5] = 10;
-        return capacity b;
+        return cap b;
       }
     `, true);
   });
@@ -1613,7 +1613,7 @@ describe('QLLC end-to-end', () => {
   test('heap allocate array (infer)', () => {
     return expectRunToBe(13, `
       function main(): byte {
-        var b  = new byte [10];
+        var b: byte[] = new byte [10];
         b[3] = 13;
         return b[3];
       }
@@ -1657,7 +1657,7 @@ describe('QLLC end-to-end', () => {
       function main(): byte {
         var ps: Point[] = new Point[13];
         ps[3].x = 4;
-        return capacity ps;
+        return cap ps;
       }
     `, true, 2000);
   });
@@ -1976,7 +1976,7 @@ describe('QLLC end-to-end', () => {
       function main(): byte {
         var arr: byte[5];
         var s: byte[] = arr[1:3];
-        return capacity s;
+        return cap s;
       }
     `);
   });

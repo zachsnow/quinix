@@ -22,7 +22,12 @@ namespace kernel {
       var process = process::current_process();
 
       if(handle == handle::INPUT){
-        return std::buffered::read(&peripherals::debug_input->control, peripherals::debug_input->buffer, data);
+        return std::buffered::read(
+          &peripherals::debug_input->control,
+          &peripherals::debug_input->size,
+          &peripherals::debug_input->buffer[0],
+          data
+        );
       }
 
       var index = std::vector::find_by(process->files, _find_file, handle);
@@ -30,17 +35,32 @@ namespace kernel {
         return false;
       }
       var file = process->files[index];
-      if(!std::buffered::write(&peripherals::debug_file->control, peripherals::debug_file->buffer, file.path)){
+      if(!std::buffered::write(
+        &peripherals::debug_file->control,
+        &peripherals::debug_file->size,
+        &peripherals::debug_file->buffer[0],
+        file.path
+      )){
         return false;
       }
-      return std::buffered::read(&peripherals::debug_file->control, peripherals::debug_file->buffer, data);
+      return std::buffered::read(
+        &peripherals::debug_file->control,
+        &peripherals::debug_file->size,
+        &peripherals::debug_file->buffer[0],
+        data
+      );
     }
 
     function write(handle: handle, data: byte[]): bool {
       var process = process::current_process();
 
       if(handle == handle::OUTPUT){
-        return std::buffered::write(&peripherals::debug_output->control, peripherals::debug_output->buffer, data);
+        return std::buffered::write(
+          &peripherals::debug_output->control,
+          &peripherals::debug_output->size,
+          &peripherals::debug_output->buffer[0],
+          data
+        );
       }
 
       var index = std::vector::find_by(process->files, _find_file, handle);
@@ -48,10 +68,20 @@ namespace kernel {
         return false;
       }
       var file = process->files[index];
-      if(!std::buffered::write(&peripherals::debug_file->control, peripherals::debug_file->buffer, file.path)){
+      if(!std::buffered::write(
+        &peripherals::debug_file->control,
+        &peripherals::debug_file->size,
+        &peripherals::debug_file->buffer[0],
+        file.path
+      )){
         return false;
       }
-      return std::buffered::write(&peripherals::debug_file->control, peripherals::debug_file->buffer, data);
+      return std::buffered::write(
+        &peripherals::debug_file->control,
+        &peripherals::debug_file->size,
+        &peripherals::debug_file->buffer[0],
+        data
+      );
     }
 
     function open(path: string): handle {
@@ -81,7 +111,7 @@ namespace kernel {
         return;
       }
 
-      destroy_file(process->files[i]);
+      _destroy_file(process->files[i]);
 
       std::vector::remove(process->files, i);
     }

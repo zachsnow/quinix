@@ -66,19 +66,40 @@ type entry = struct { id: byte; };
 
 ---
 
-## 5. Vector Null Initialization
+## 5. ~~Vector Null Initialization~~ (NOT A BUG)
 
-**Issue**: Cannot initialize vectors (which are type aliases for arrays) with null.
+**Status**: This works by using `std::slice<T>` instead of `T[]` as the vector definition.
 
-**Example**:
+**Solution**: The `std::slice<T>` struct type is structurally identical to `T[]` but supports struct literal initialization syntax.
+
+**Example** (working approach):
 ```qll
-type vector<T> = T[];
-global processes: vector<* process> = null;
+namespace std {
+  type slice<T> = struct {
+    pointer: * T;
+    length: byte;
+    capacity: byte;
+  };
+}
+
+// Use std::slice<T>, not T[]
+type vector<T> = std::slice<T>;
+
+// Now this works!
+global processes: vector<* process> = vector<* process> {
+  pointer = null,
+  length = 0,
+  capacity = 0,
+};
 ```
 
-**Error**: `null: expected contextual pointer or unsized array type for null, actual (std::vector)<* process>`
+**Why This Works**:
+- `T[]` (SliceType) doesn't support struct literal syntax
+- `std::slice<T>` (StructType) is structurally identical but supports literals
+- Both support the same operators: `len`, `cap`, indexing, `delete`, etc.
+- This is actually better than `= null` because it's explicit about all three fields
 
-**Expected**: Vectors (array types) should be nullable and initializable with null.
+**Test**: `tests/compiler-issues/05-vector-null-init.qll`
 
 ---
 

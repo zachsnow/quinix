@@ -14,10 +14,20 @@ namespace kernel {
     .constant global peripheral_table: peripheral_table_entry[] = <unsafe peripheral_table_entry[]> 0x0100;
 
     //
+    // Hardware timer.
+    //
+    .constant global timer_identifier: byte = 0x1;
+    global timer: * byte = null;
+
+    function _init_timer(entry: * peripheral_table_entry): void {
+      timer = entry->address;
+    }
+
+    //
     // Debug output.
     //
-    .constant global debug_output_identifier: byte = 0x1;
-    .constant global debug_output: * buffered_peripheral = null;
+    .constant global debug_output_identifier: byte = 0x3;
+    global debug_output: * buffered_peripheral = null;
 
     function _init_debug_output(entry: * peripheral_table_entry): void {
       debug_output = <unsafe * buffered_peripheral>entry->address;
@@ -26,7 +36,7 @@ namespace kernel {
     //
     // Debug input.
     //
-    global debug_input_identifier: byte = 0x2;
+    .constant global debug_input_identifier: byte = 0x4;
     global debug_input: * buffered_peripheral = null;
 
     function _init_debug_input(entry: * peripheral_table_entry): void {
@@ -34,23 +44,13 @@ namespace kernel {
     }
 
     //
-    // Debug file acccess.
+    // Debug file access.
     //
-    global debug_file_identifier: byte = 0x11;
+    .constant global debug_file_identifier: byte = 0x11;
     global debug_file: * buffered_peripheral = null;
 
     function _init_debug_file(entry: * peripheral_table_entry): void {
       debug_file = <unsafe * buffered_peripheral>entry->address;
-    }
-
-    //
-    // Hardware timer.
-    //
-    global timer_identifier: byte = 0x10;
-    global timer: * byte = null;
-
-    function _init_timer(entry: * peripheral_table_entry): void {
-      timer = entry->address;
     }
 
     //
@@ -73,16 +73,16 @@ namespace kernel {
 
     global init_table: init_table_entry[] = [
       init_table_entry {
+        identifier = timer_identifier,
+        init = _init_timer,
+      },
+      init_table_entry {
         identifier = debug_output_identifier,
         init = _init_debug_output,
       },
       init_table_entry {
         identifier = debug_input_identifier,
         init = _init_debug_input,
-      },
-      init_table_entry {
-        identifier = timer_identifier,
-        init = _init_timer,
       },
       init_table_entry {
         identifier = debug_file_identifier,
@@ -100,6 +100,7 @@ namespace kernel {
         var peripheral = peripheral_table[i];
         if(peripheral.identifier == entry.identifier){
           (entry.init)(&peripheral);
+          return;
         }
       }
       kernel::panic('peripherals: peripheral not found.');
@@ -110,6 +111,8 @@ namespace kernel {
     //
     type buffered_peripheral = struct {
       control: byte;
+      capacity: byte;
+      size: byte;
       buffer: byte[0];
     };
 

@@ -40,5 +40,31 @@ namespace std {
 
       return *control == READY;
     }
+
+    function read_size(control: *byte, size: *byte): byte {
+      return *size;
+    }
+
+    function read(control: *byte, size: *byte, buffer: *byte, data: byte[]): bool {
+      *control = READ;
+
+      while(*control == PENDING){}
+
+      if(*control != READY){
+        return false;
+      }
+
+      var read_size = *size;
+      if(read_size > cap data){
+        read_size = cap data;
+      }
+
+      for(var i = 0; i < read_size; i = i + 1){
+        data[i] = buffer[unsafe i];
+      }
+      len data = read_size;
+
+      return true;
+    }
   }
 }

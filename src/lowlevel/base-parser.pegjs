@@ -64,7 +64,7 @@ Tokens
   / GlobalToken / TypeToken / FunctionToken
 
 LenToken = tok:"len" !Identifier { return tok; }
-CapacityToken = tok:"capacity" !Identifier { return tok; }
+CapacityToken = tok:"cap" !Identifier { return tok; }
 NullToken = tok:"null" !Identifier { return tok; }
 ByteToken = tok:"byte" !Identifier { return tok; }
 VoidToken = tok:"void" !Identifier { return tok; }

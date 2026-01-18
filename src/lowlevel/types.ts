@@ -503,8 +503,16 @@ class TemplateInstantiationType extends Type {
     return this.instantiatedType.evaluate();
   }
 
+  public resolve(): Type {
+    return this.instantiatedType.resolve();
+  }
+
   public get scalar(): boolean {
     return false;
+  }
+
+  public get size(): number {
+    return this.instantiatedType.size;
   }
 
   public toString() {
