@@ -2,6 +2,17 @@
 // Quinix Standard Library
 ///////////////////////////////////////////////////////////////////////
 namespace std {
+  //
+  // Slice type - structurally equivalent to the built-in T[] type.
+  // Allows explicit initialization: slice<T> { pointer: null, length: 0, capacity: 0 }
+  //
+  // Note: The operator keyword is `cap`, but struct field names use descriptive "capacity".
+  type slice<T> = struct {
+    pointer: * T;
+    length: byte;
+    capacity: byte;
+  };
+
   namespace math {
     function max(i: byte, j: byte): byte {
       return i > j ? i : j;
@@ -35,8 +46,9 @@ namespace std {
 
     function remove<T>(ilist: T, el: T): void {
       if(!ilist){
-        return false;
+        return;
       }
+      // TODO: implement actual removal
     }
 
     function next<T>(ilist: T, el: T): T {
@@ -72,7 +84,7 @@ namespace std {
   type vector<T> = T[];
   namespace vector {
     function _increase_capacity<T>(vec: * vector<T>): void {
-      var v = new T[2 * capacity *vec];
+      var v: T[] = new T[2 * cap *vec];
       len v = len *vec;
       for(var i = 0; i < len v; i = i + 1){
         v[i] = (*vec)[i];
@@ -82,7 +94,7 @@ namespace std {
     }
 
     function create<T>(n: byte): vector<T> {
-      var v = new T[n];
+      var v: T[] = new T[n];
       len v = 0;
       return v;
     }
@@ -96,7 +108,7 @@ namespace std {
     }
 
     function add<T>(vec: * vector<T>, element: T): void {
-      if(len *vec == capacity *vec){
+      if(len *vec == cap *vec){
         _increase_capacity(vec);
       }
       var i = len *vec;
@@ -107,7 +119,7 @@ namespace std {
     function remove<T>(vec: vector<T>, index: byte): void {
       var n = len vec - 1;
       for(var i = index; i < n; i = i + 1){
-        v[i] = v[i + 1];
+        vec[i] = vec[i + 1];
       }
       len vec = n;
     }
@@ -129,7 +141,7 @@ namespace std {
       return -1;
     }
 
-    function find_by<T, C>(vec: vector<T>, fn: (T, C) => bool, context: C): T {
+    function find_by<T, C>(vec: vector<T>, fn: (T, C) => bool, context: C): byte {
       for(var i = 0; i < len vec; i = i + 1){
         var el = vec[i];
         if(fn(el, context)){
@@ -149,7 +161,7 @@ namespace std {
 
   namespace str {
     function from_string(s: string): string {
-      var new_s = new byte[len s];
+      var new_s: byte[] = new byte[len s];
       std::copy(new_s, s);
       return <string>new_s;
     }
@@ -164,10 +176,10 @@ namespace std {
     }
 
     function ntoa(number: byte, buffer: string, base: byte, allowNegative: bool): bool {
-      len buffer = capacity buffer;
+      len buffer = cap buffer;
 
       // We always need at least 1 byte.
-      if(capacity buffer < 1){
+      if(cap buffer < 1){
         return false;
       }
 
@@ -303,7 +315,7 @@ namespace std {
   }
 
   function copy<T>(destination: T[], source: T[]): void {
-    var length = math::min(capacity destination, len source);
+    var length = math::min(cap destination, len source);
     for(var i = 0; i < length; i = i + 1){
       destination[i] = source[i];
     }

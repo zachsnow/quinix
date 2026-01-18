@@ -189,32 +189,21 @@ class VarStatement extends Statement {
       return;
     }
 
-    const er = this.expression.compile(compiler);
+    let er = this.expression.compile(compiler);
 
     // Get the address of the local.
     const r = compiler.allocateRegister();
     compiler.emitIdentifier(this.identity, 'local', r, false);
 
-    // Handle array-to-slice conversion.
-    const cVarType = this.inferredType.resolve();
-    const cExprType = this.expression.concreteType.resolve();
-    if (cVarType instanceof SliceType && cExprType instanceof ArrayType) {
-      if (!(compiler instanceof StorageCompiler)) {
-        throw new InternalError('expected storage compiler for slice conversion');
-      }
-      const sliceReg = compiler.emitArrayToSlice(er);
-      compiler.emitStaticCopy(r, sliceReg, 3, 'copy slice descriptor');
-      compiler.deallocateRegister(sliceReg);
-      compiler.deallocateRegister(r);
-      return;
-    }
+    // Handle type conversions (e.g., array-to-slice, pointer-to-array-to-slice).
+    er = compiler.emitConversion(er, this.expression.concreteType, this.inferredType);
 
     // Store to that address.
     if (this.inferredType.integral) {
       compiler.emitStaticStore(r, er, 1, `${this}`);
     }
     else {
-      compiler.emitStaticCopy(r, er, this.expression.concreteType.size, `${this}`);
+      compiler.emitStaticCopy(r, er, this.inferredType.size, `${this}`);
     }
 
     compiler.deallocateRegister(er);
@@ -260,7 +249,7 @@ class AssignmentStatement extends Statement {
     const actualType = this.expression.typecheck(context, expectedType);
 
     // Allow conversion.
-    if (!expectedType.isConvertibleTo(actualType)) {
+    if (!actualType.isConvertibleTo(expectedType)) {
       this.error(context, `expected ${expectedType}, actual ${actualType}`);
     }
 
@@ -277,7 +266,10 @@ class AssignmentStatement extends Statement {
 
   public compile(compiler: Compiler): void {
     const ar = this.assignable.compile(compiler, true);
-    const er = this.expression.compile(compiler);
+    let er = this.expression.compile(compiler);
+
+    // Handle type conversions (e.g., array-to-slice, pointer-to-array-to-slice).
+    er = compiler.emitConversion(er, this.expression.concreteType, this.assignable.concreteType);
 
     // Special case: if we are assigning to `len` we need to ensure
     // that the length we are assigning is less than or equal to the capacity
@@ -630,13 +622,9 @@ class ReturnStatement extends Statement {
     const expression = this.expression || new IntLiteralExpression(0);
     let r = expression.compile(compiler);
 
-    // Handle array-to-slice conversion.
+    // Handle type conversions (e.g., array-to-slice, pointer-to-array-to-slice).
     if (this.expression) {
-      const cReturnType = this.returnType.resolve();
-      const cExprType = this.expression.concreteType.resolve();
-      if (cReturnType instanceof SliceType && cExprType instanceof ArrayType) {
-        r = compiler.emitArrayToSlice(r);
-      }
+      r = compiler.emitConversion(r, this.expression.concreteType, this.returnType);
     }
 
     if (!this.returnType.integral && !this.returnType.isConvertibleTo(Type.Void)) {

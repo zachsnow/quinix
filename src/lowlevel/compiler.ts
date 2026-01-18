@@ -9,7 +9,7 @@ import {
   Reference,
 } from '@/assembly/assembly';
 import { Register, Instruction, Operation, Immediate } from '@/vm/instructions';
-import { Storage } from './types';
+import { Storage, Type, SliceType, ArrayType, PointerType } from './types';
 
 class RegisterAllocator {
   private unallocatedCallerSave: Register[];
@@ -779,6 +779,21 @@ class Compiler {
     this.deallocateRegister(cr);
     this.deallocateRegister(er);
   }
+
+  /**
+   * Emits code to convert a value from one type to another, if needed.
+   * Default implementation performs no conversion.
+   * Subclasses can override to implement type-specific conversions.
+   *
+   * @param sourceReg Register containing the source value. May be deallocated.
+   * @param sourceType The type of the source value.
+   * @param destType The desired destination type.
+   * @returns Register containing the converted value (may be the same as sourceReg if no conversion needed).
+   */
+  public emitConversion(sourceReg: Register, sourceType: Type, destType: Type): Register {
+    // Default: no conversion
+    return sourceReg;
+  }
 }
 
 abstract class StorageCompiler extends Compiler {
@@ -831,6 +846,55 @@ abstract class StorageCompiler extends Compiler {
     this.deallocateRegister(arrayReg);
 
     return sliceReg;
+  }
+
+  /**
+   * Emits code to convert a pointer to an array to a slice descriptor.
+   * The pointer already points to the array structure [length][data...], so we
+   * can convert it directly to a slice without dereferencing.
+   *
+   * @param ptrReg Register containing pointer to array (points to length header).
+   * @returns Register containing the address of a new slice descriptor.
+   */
+  public emitPointerToArrayToSlice(ptrReg: Register): Register {
+    // The pointer already points to the array structure [length][data...].
+    // We can convert it directly to a slice descriptor.
+    return this.emitArrayToSlice(ptrReg);
+  }
+
+  /**
+   * Emits code to convert a value from one type to another, if needed.
+   * Handles all supported implicit conversions.
+   *
+   * @param sourceReg Register containing the source value. May be deallocated.
+   * @param sourceType The type of the source value.
+   * @param destType The desired destination type.
+   * @returns Register containing the converted value (may be the same as sourceReg if no conversion needed).
+   */
+  public emitConversion(sourceReg: Register, sourceType: Type, destType: Type): Register {
+    // If either type is undefined or missing, no conversion can be done
+    if (!sourceType || !destType) {
+      return sourceReg;
+    }
+
+    const cSource = sourceType.resolve();
+    const cDest = destType.resolve();
+
+    // T[N] → T[] (array to slice)
+    if (cDest instanceof SliceType && cSource instanceof ArrayType) {
+      return this.emitArrayToSlice(sourceReg);
+    }
+
+    // * T[N] → T[] (pointer to array to slice)
+    if (cDest instanceof SliceType && cSource instanceof PointerType) {
+      const deref = cSource.dereference().resolve();
+      if (deref instanceof ArrayType) {
+        return this.emitPointerToArrayToSlice(sourceReg);
+      }
+    }
+
+    // No conversion needed - return original register
+    return sourceReg;
   }
 }
 

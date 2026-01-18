@@ -840,6 +840,15 @@ class PointerType extends Type {
     if (type instanceof PointerType) {
       return this.type.isUnifiableWith(type.type, nominal);
     }
+
+    // Pointers to arrays are convertible to slices: * T[N] → T[]
+    if (type instanceof SliceType) {
+      const deref = this.type.resolve();
+      if (deref instanceof ArrayType) {
+        return deref.index().isUnifiableWith(type.index(), nominal);
+      }
+    }
+
     return false;
   }
 
@@ -922,6 +931,78 @@ class SliceType extends Type {
     super();
   }
 
+  /**
+   * Check if a type is slice-like (either a SliceType or a struct with the
+   * canonical slice shape: { pointer: * T; length: byte; capacity: byte; }).
+   *
+   * Note: Uses full field names "length" and "capacity" to avoid keyword conflicts.
+   * The `cap` keyword is the operator; struct fields use descriptive names.
+   */
+  public static isSliceLike(type: Type): boolean {
+    type = type.resolve();
+
+    if (type instanceof SliceType) {
+      return true;
+    }
+
+    if (type instanceof StructType) {
+      if (type.members.length !== 3) {
+        return false;
+      }
+
+      const pointer = type.members[0];
+      const length = type.members[1];
+      const capacity = type.members[2];
+
+      if (pointer.identifier !== 'pointer' ||
+          length.identifier !== 'length' ||
+          capacity.identifier !== 'capacity') {
+        return false;
+      }
+
+      const pointerType = pointer.type.resolve();
+      if (!(pointerType instanceof PointerType)) {
+        return false;
+      }
+
+      // Don't need to check element type unification here, just shape
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Get slice field information for a slice-like type.
+   * Returns undefined if the type is not slice-like.
+   */
+  public static getSliceInfo(type: Type): { elementType: Type; lengthOffset: number; capacityOffset: number; } | undefined {
+    type = type.resolve();
+
+    if (type instanceof SliceType) {
+      // Slice layout: [pointer][length][capacity]
+      return {
+        elementType: type.type,
+        lengthOffset: 1,
+        capacityOffset: 2,
+      };
+    }
+
+    if (type instanceof StructType && this.isSliceLike(type)) {
+      // Struct layout: compute offsets from member positions
+      const pointer = type.members[0];
+      const pointerType = pointer.type.resolve() as PointerType;
+
+      return {
+        elementType: pointerType.dereference(),
+        lengthOffset: type.members[0].type.size,  // After pointer field
+        capacityOffset: type.members[0].type.size + type.members[1].type.size,  // After pointer + length
+      };
+    }
+
+    return undefined;
+  }
+
   public kindcheck(context: TypeChecker, kindchecker: KindChecker) {
     // Slices contain a pointer, so recursive references are valid.
     this.type.kindcheck(context, kindchecker.pointer());
@@ -938,6 +1019,41 @@ class SliceType extends Type {
     // Slices unify with slices of the same element type.
     if (type instanceof SliceType) {
       return this.type.isUnifiableWith(type.type, nominal);
+    }
+
+    // Slices also unify with structs that have the same shape:
+    // struct { pointer: * T; length: byte; capacity: byte; }
+    if (type instanceof StructType) {
+      if (type.members.length !== 3) {
+        return false;
+      }
+
+      const pointer = type.members[0];
+      const length = type.members[1];
+      const capacity = type.members[2];
+
+      if (pointer.identifier !== 'pointer' ||
+          length.identifier !== 'length' ||
+          capacity.identifier !== 'capacity') {
+        return false;
+      }
+
+      // Check types: pointer should be * elementType, length and capacity should be byte
+      const pointerType = pointer.type.resolve();
+      if (!(pointerType instanceof PointerType)) {
+        return false;
+      }
+
+      if (!pointerType.dereference().isUnifiableWith(this.type, nominal)) {
+        return false;
+      }
+
+      if (!length.type.isUnifiableWith(Type.Byte, nominal) ||
+          !capacity.type.isUnifiableWith(Type.Byte, nominal)) {
+        return false;
+      }
+
+      return true;
     }
 
     return false;
@@ -998,9 +1114,10 @@ class StructType extends Type {
       type = type.unify(this);
     }
 
+    type = type.resolve();
+
     // Struct types have structural equality. They should have the
     // exact same number, order, and type of members.
-    type = type.resolve();
     if (type instanceof StructType) {
       const structType = type;
 
@@ -1017,6 +1134,40 @@ class StructType extends Type {
       });
 
       return matches.indexOf(false) === -1;
+    }
+
+    // Structs with the shape { pointer: * T; length: byte; capacity: byte; }
+    // unify with SliceType T[].
+    if (type instanceof SliceType) {
+      if (this.members.length !== 3) {
+        return false;
+      }
+
+      const pointer = this.members[0];
+      const length = this.members[1];
+      const capacity = this.members[2];
+
+      if (pointer.identifier !== 'pointer' ||
+          length.identifier !== 'length' ||
+          capacity.identifier !== 'capacity') {
+        return false;
+      }
+
+      const pointerType = pointer.type.resolve();
+      if (!(pointerType instanceof PointerType)) {
+        return false;
+      }
+
+      if (!pointerType.dereference().isUnifiableWith(type.index(), nominal)) {
+        return false;
+      }
+
+      if (!length.type.isUnifiableWith(Type.Byte, nominal) ||
+          !capacity.type.isUnifiableWith(Type.Byte, nominal)) {
+        return false;
+      }
+
+      return true;
     }
 
     return false;

@@ -1633,7 +1633,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(15, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var ps = new Point[10];
+        var ps: Point[] = new Point[10];
         ps[3].x = 15;
         return ps[3].x;
       }
@@ -1644,7 +1644,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(13, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var ps = new Point[13];
+        var ps: Point[] = new Point[13];
         ps[3].x = 4;
         return len ps;
       }
@@ -1655,7 +1655,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(13, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var ps = new Point[13];
+        var ps: Point[] = new Point[13];
         ps[3].x = 4;
         return capacity ps;
       }
@@ -1666,7 +1666,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(55, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var ps = new Point[10] ... Point {
+        var ps: Point[] = new Point[10] ... Point {
           x = 55,
           y = 66,
         };
@@ -1679,7 +1679,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(4, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var ps = new Point[] = [
+        var ps: Point[] = new Point[] = [
           Point {
             x = 1,
             y = 2,
@@ -1698,7 +1698,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(2, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var ps = new Point[] = [
+        var ps: Point[] = new Point[] = [
           Point {
             x = 1,
             y = 2,
@@ -1717,7 +1717,7 @@ describe('QLLC end-to-end', () => {
     return expectRunToBe(55, `
       type Point = struct { x: byte; y: byte; };
       function main(): byte {
-        var ps = new Point[10] ... Point {
+        var ps: Point[] = new Point[10] ... Point {
           x = 55,
           y = 66,
         };
