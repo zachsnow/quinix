@@ -154,24 +154,36 @@ function destroy_table(t: * table): void {
 
 ---
 
-## 9. Unsafe Indexing on Generic Pointers
+## 9. ~~Unsafe Indexing on Generic Pointers~~ (NOT A BUG)
 
-**Issue**: Indexing on `* T` requires explicit unsafe annotation even in unsafe context.
+**Status**: This is intentional behavior, not a bug.
+
+**Design Decision**: Indexing raw pointers (`* T`) is intentionally verbose to discourage unsafe pointer arithmetic. Users should prefer:
+- Slices (`T[]`) for dynamic arrays with bounds checking
+- Sized arrays (`T[N]`) for fixed-size arrays with known length
 
 **Example**:
 ```qll
+// Discouraged: raw pointer indexing (requires explicit unsafe)
 function unsafe_copy<T>(destination: * T, source: * T, length: byte): void {
   for(var i = 0; i < length; i = i + 1){
-    destination[i] = source[i];  // ERROR: unsafe index on * byte
+    destination[unsafe i] = source[unsafe i];  // Explicit unsafe required
+  }
+}
+
+// Preferred: use slices with proper bounds
+function safe_copy(destination: byte[], source: byte[]): void {
+  var n = len source;
+  if (n > cap destination) {
+    n = cap destination;
+  }
+  for(var i = 0; i < n; i = i + 1){
+    destination[i] = source[i];  // Safe - bounds are known
   }
 }
 ```
 
-**Error**: `destination[i]: unsafe index on * byte`
-
-**Expected**: Indexing on raw pointers should be allowed (it's already unsafe by nature).
-
-**Workaround**: Use `destination[unsafe i]` syntax.
+**Rationale**: Raw pointer indexing is dangerous (no bounds, can corrupt memory). The explicit `unsafe` annotation makes it clear where the danger is.
 
 ---
 
@@ -215,12 +227,12 @@ std::ilist::remove(&tasks, task);  // ERROR: unable to infer template instantiat
 - ~~#6: Delete on vectors~~ (fixed 2026-01-18)
 - ~~#7: Delete on strings~~ (fixed 2026-01-18)
 - ~~#8: Delete on struct array fields~~ (fixed 2026-01-18)
+- ~~#9: Unsafe indexing on generic pointers~~ (not a bug - intentional design)
 
 ### Critical (blocking kernel development):
 - #5: Vector null initialization
 
 ### Medium Priority:
-- #9: Unsafe indexing on generic pointers
 - #10: Template inference for intrusive lists
 
 ### Low Priority (has workaround):
