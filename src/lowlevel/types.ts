@@ -96,7 +96,6 @@ abstract class Type extends Syntax {
     return (
       cType instanceof PointerType ||
       cType instanceof FunctionType ||
-      (cType instanceof ArrayType && cType.length === undefined) ||
       (cType instanceof BuiltinType)
     );
   }
