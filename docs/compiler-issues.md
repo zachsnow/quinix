@@ -281,3 +281,101 @@ std::ilist::remove(&tasks, task);  // ERROR: unable to infer template instantiat
 ## Test Cases
 
 See `tests/compiler-issues/` for minimal test cases for each issue.
+
+---
+
+## Future Enhancement: Runtime-Sized Arrays `T[*]`
+
+**Status**: Not implemented. This is a potential future enhancement.
+
+### Motivation
+
+Currently we have three array-like types:
+- `byte[5]` - Sized array with compile-time known length
+- `byte[]` - Slice (3-word descriptor pointing to heap data)
+- Need: Runtime-sized array with unknown compile-time length
+
+### Use Case
+
+Memory-mapped regions where the size is stored at runtime but you don't want slice semantics:
+
+```qll
+// Current workaround - must specify max size
+global peripheral_table: entry[128] = <unsafe entry[128]> 0x0200;
+
+// Desired - no max size, just runtime length
+global peripheral_table: entry[*] = <unsafe entry[*]> 0x0200;
+```
+
+### Proposed Syntax
+
+- `T[N]` - Sized array, length known at compile time
+- `T[*]` - Runtime-sized array, length stored in memory
+- `T[]` - Slice (descriptor with pointer/length/capacity)
+
+### Memory Layout
+
+All would use the same memory layout for data:
+```
+[length: byte][elem0: T][elem1: T]...[elemN-1: T]
+```
+
+Difference is in how they're stored:
+- `T[N]`: Inline, `1 + N * sizeof(T)` bytes
+- `T[*]`: Address to the layout (1 word)
+- `T[]`: 3-word descriptor `[pointer][length][capacity]` pointing to heap
+
+### Type System Changes
+
+**Parser** (`src/lowlevel/base-parser.pegjs`):
+- Add `T[*]` syntax alongside `T[N]` and `T[]`
+
+**Types** (`src/lowlevel/types.ts`):
+- Add `RuntimeArrayType` class or add optional `runtime: boolean` flag to `ArrayType`
+- Make `T[*]` integral (like unsized arrays were before slices)
+- Size calculation: 1 word (stores address)
+
+**Casts** (`src/lowlevel/expressions.ts`):
+- Already works with current fix: `byte` → `T[*]` is integral → integral
+- No changes needed
+
+**Operations**:
+- `len arr` - Load from `arr` (address), read byte at address
+- `arr[i]` - Load address, skip length header, index into data
+- `cap arr` - Same as `len` (no capacity distinction for non-slices)
+
+### Implementation Plan
+
+1. **Phase 1: Parser**
+   - Add `[*]` token to base-parser.pegjs
+   - Modify array type parsing to distinguish `[N]`, `[*]`, `[]`
+
+2. **Phase 2: Type System**
+   - Add `RuntimeArrayType` or flag to `ArrayType`
+   - Mark as integral in `Type.integral` getter
+   - Set size to 1 (stores address)
+
+3. **Phase 3: Code Generation**
+   - `len`/`cap`: Generate same code as sized arrays (load address, read first byte)
+   - Indexing: Generate same code as sized arrays
+   - Storage: 1-word allocation
+
+4. **Phase 4: Testing**
+   - Test memory-mapped I/O scenarios
+   - Test with casts from byte addresses
+   - Verify `len`, indexing work correctly
+
+### Benefits
+
+- More precise typing: Don't need to specify arbitrary max size
+- Cleaner syntax for memory-mapped regions
+- Distinguishes "runtime-sized array" from "slice descriptor"
+
+### Alternative: Don't Add It
+
+The current workaround (specifying max size like `entry[128]`) works fine:
+- Provides compile-time bounds checking
+- Clear maximum capacity
+- One less type construct to maintain
+
+Decision: Evaluate after more kernel development to see if the need arises.
