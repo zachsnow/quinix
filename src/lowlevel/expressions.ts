@@ -473,7 +473,7 @@ class ArrayLiteralExpression extends Expression {
       }
     });
 
-    return new ArrayType(actualElementType, this.expressions?.length);
+    return new ArrayType(actualElementType, this.expressions.length);
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
@@ -629,10 +629,9 @@ class NullExpression extends Expression {
       return contextual;
     }
 
+    // ArrayType is always sized - only SliceType can be used with null
     if (cType instanceof ArrayType) {
-      if (cType.length !== undefined) {
-        this.error(context, `expected contextual unsized array type for null, actual ${contextual}`);
-      }
+      this.error(context, `expected contextual pointer or slice type for null, actual ${contextual}`);
       return contextual;
     }
 
@@ -640,7 +639,7 @@ class NullExpression extends Expression {
       return contextual;
     }
 
-    this.error(context, `expected contextual pointer or unsized array type for null, actual ${contextual}`);
+    this.error(context, `expected contextual pointer or slice type for null, actual ${contextual}`);
     return contextual;
   }
 
@@ -761,15 +760,11 @@ class NewExpression extends Expression {
     const cType = this.type.resolve();
     if (cType instanceof ArrayType) {
       // This should have been constructed as a new array expression, but we couldn't
-      // see that at parse time.  The type *must* be a sized array or we won't
-      // know how much memory to allocate.
-      if (cType.length === undefined) {
-        this.error(context, `expected sized array type, actual ${this.type}`);
-      }
-
+      // see that at parse time. ArrayType is always sized (SliceType is used for
+      // unsized arrays), so we can use its length directly.
       this.newArrayExpression = new NewArrayExpression(
         this.type,
-        new IntLiteralExpression(cType.length || 0),
+        new IntLiteralExpression(cType.length),
         this.expression,
         this.ellipsis,
       ).at(this.location);
