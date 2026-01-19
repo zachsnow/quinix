@@ -48,21 +48,38 @@ delete binary;  // ✓ Works: can delete pointers
 
 ---
 
-## 4. Cast Byte to Array Type
+## 4. ~~Cast Byte to Array Type~~ (FIXED)
 
-**Issue**: Cannot cast a byte constant to an array type.
+**Status**: Fixed as of 2026-01-18.
 
-**Example**:
+**Solution**: Allow unsafe casts from integral types to sized arrays for memory-mapped I/O.
+
+**Example** (now works):
 ```qll
-type entry = struct { id: byte; };
-.constant global table: entry[] = <unsafe entry[]> 0x0100;
+type entry = struct { id: byte; address: * byte; };
+
+// VM peripheral table at 0x0200 with max 128 entries
+.constant global peripheral_table: entry[128] = <unsafe entry[128]> 0x0200;
+
+// Usage:
+for(var i = 0; i < len peripheral_table; i = i + 1) {
+  var peripheral = peripheral_table[i];
+  // Process peripheral...
+}
 ```
 
-**Error**: `<unsafe peripheral_table_entry[]> 0x0100: expected convertible to peripheral_table_entry[], actual byte`
+**How it works**:
+- Sized arrays (`T[N]`) have layout: `[length: byte][data...]`
+- Cast stores the address as the global's value
+- `len` reads the length from memory at that address
+- Indexing reads from `address + 1 + i * sizeof(T)`
+- Max size `N` provides compile-time bounds checking
 
-**Expected**: Unsafe cast should allow treating a memory address as an array.
+**Key difference from slices**:
+- `entry[128]` is a sized array (casts from byte now work)
+- `entry[]` is a slice (3-word descriptor, can't cast from byte directly)
 
-**Workaround**: Cast to pointer first, then dereference.
+**Test**: `tests/compiler-issues/04-cast-byte-to-array.qll`
 
 ---
 
@@ -245,6 +262,7 @@ std::ilist::remove(&tasks, task);  // ERROR: unable to infer template instantiat
 - ~~#1: Nested namespace resolution~~ (not a bug)
 - ~~#2: Negation on arrays~~ (fixed 2026-01-18)
 - ~~#3: Delete on sized arrays~~ (fixed 2026-01-18)
+- ~~#4: Cast byte to array type~~ (fixed 2026-01-18)
 - ~~#5: Vector null initialization~~ (not a bug - use `std::slice<T>` struct type)
 - ~~#6: Delete on vectors~~ (fixed 2026-01-18)
 - ~~#7: Delete on strings~~ (fixed 2026-01-18)
@@ -257,11 +275,6 @@ std::ilist::remove(&tasks, task);  // ERROR: unable to infer template instantiat
    - Blocks ergonomic use of generic intrusive list operations
    - Workaround: Explicit type parameters `std::ilist::remove<* task>(&tasks, task)`
    - Would improve kernel code readability
-
-**2. Low Priority** - #4: Cast byte to array type
-   - Has workaround: cast to pointer first
-   - Rarely needed in practice
-   - Minor convenience issue
 
 ---
 

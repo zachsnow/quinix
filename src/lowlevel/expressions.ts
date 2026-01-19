@@ -1166,6 +1166,16 @@ class CastExpression extends Expression {
       return this.type;
     }
 
+    // We can unsafely cast an integral to a sized array for memory-mapped I/O.
+    // This treats the address as pointing to array layout: [length][data...]
+    const targetType = this.type.resolve();
+    if (type.integral && targetType instanceof ArrayType) {
+      if (!this.unsafe) {
+        this.error(context, `unsafe cast from ${type} to ${this.type} requires unsafe`);
+      }
+      return this.type;
+    }
+
     // Otherwise we can't.
     this.error(context, `expected convertible to ${this.type}, actual ${type}`);
     return this.type;
