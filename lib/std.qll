@@ -44,11 +44,26 @@ namespace std {
       return true;
     }
 
-    function remove<T>(ilist: T, el: T): void {
-      if(!ilist){
+    function remove<T>(ilist: *T, el: T): void {
+      if(!ilist || !*ilist){
         return;
       }
-      // TODO: implement actual removal
+
+      // If removing the head
+      if(*ilist == el){
+        *ilist = (*ilist)->next;
+        return;
+      }
+
+      // Otherwise traverse to find the element
+      var prev = *ilist;
+      while(prev->next){
+        if(prev->next == el){
+          prev->next = el->next;
+          return;
+        }
+        prev = prev->next;
+      }
     }
 
     function next<T>(ilist: T, el: T): T {

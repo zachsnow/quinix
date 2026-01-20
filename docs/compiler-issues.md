@@ -225,40 +225,71 @@ function safe_copy(destination: byte[], source: byte[]): void {
 
 ---
 
-## 10. Template Inference for Intrusive Lists
+## 10. ~~Template Inference for Intrusive Lists~~ (FIXED)
 
-**Issue**: Template inference fails for intrusive list operations.
+**Status**: Fixed as of 2026-01-18.
 
-**Example**:
+**Root Cause**: Incorrect function signature, not a template inference bug.
+
+**The Problem**:
 ```qll
-namespace std {
-  namespace ilist {
-    function remove<T>(ilist: T, el: T): void {
-      // ...
-    }
-  }
-}
-
-// Usage:
-type task = struct {
-  next: * task;
-};
-
-global tasks: * task = null;
-var task: * task = /* ... */;
-
-std::ilist::remove(&tasks, task);  // ERROR: unable to infer template instantiation
+// WRONG signature - can't infer when passed different pointer levels
+function remove<T>(ilist: T, el: T): void
 ```
 
-**Error**: `std::ilist::remove(&tasks, task): unable to infer template instantiation, actual <T>(T, T) => void`
+When called as:
+```qll
+global tasks: * task = null;
+var t: * task = null;
+std::ilist::remove(&tasks, t);  // ERROR!
+```
 
-**Expected**: Should infer `T = * task` from the arguments.
+Template inference tries to unify:
+- `&tasks` has type `* (* task)` → requires `T = * (* task)`
+- `t` has type `* task` → requires `T = * task`
+- Conflict! Can't unify different pointer levels
+
+**The Solution**:
+```qll
+// CORRECT signature - matches the add<T>(ilist: *T, el: T) pattern
+function remove<T>(ilist: *T, el: T): void {
+  if (!ilist || !*ilist) {
+    return;
+  }
+
+  // If removing the head
+  if (*ilist == el) {
+    *ilist = (*ilist)->next;
+    return;
+  }
+
+  // Traverse to find and unlink element
+  var prev = *ilist;
+  while (prev->next) {
+    if (prev->next == el) {
+      prev->next = el->next;
+      return;
+    }
+    prev = prev->next;
+  }
+}
+```
+
+Now template inference succeeds:
+- `&tasks` has type `* (* task)`, so `*T = * (* task)` → `T = * task` ✓
+- `t` has type `* task`, so `T = * task` ✓
+- Both match! Inference succeeds
+
+**Why the signature needs `*T`**:
+Intrusive lists store the head pointer, so functions need `*T` to modify it (remove head, set empty list, etc.).
+
+**Test**: `tests/compiler-issues/10-template-inference-ilist.qll`
 
 ---
 
 ## Summary
 
-### Fixed:
+### All Issues Fixed:
 - ~~#1: Nested namespace resolution~~ (not a bug)
 - ~~#2: Negation on arrays~~ (fixed 2026-01-18)
 - ~~#3: Delete on sized arrays~~ (fixed 2026-01-18)
@@ -268,13 +299,7 @@ std::ilist::remove(&tasks, task);  // ERROR: unable to infer template instantiat
 - ~~#7: Delete on strings~~ (fixed 2026-01-18)
 - ~~#8: Delete on struct array fields~~ (fixed 2026-01-18)
 - ~~#9: Unsafe indexing on generic pointers~~ (not a bug - intentional design)
-
-### Remaining Issues (Priority Order):
-
-**1. Medium Priority** - #10: Template inference for intrusive lists
-   - Blocks ergonomic use of generic intrusive list operations
-   - Workaround: Explicit type parameters `std::ilist::remove<* task>(&tasks, task)`
-   - Would improve kernel code readability
+- ~~#10: Template inference for intrusive lists~~ (fixed 2026-01-18 - was incorrect function signature)
 
 ---
 
