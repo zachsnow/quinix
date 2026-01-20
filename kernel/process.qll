@@ -53,7 +53,8 @@ namespace kernel {
       // the QLLC stack pointer, which initialize to the top of the stack.
       var task = scheduler::create_task();
       task->state.ip = executable_base;
-      task->state.registers[63] = table->pages[2].physical_address + table->pages[2].size;
+      // Stack is page index 2: set stack pointer to top of stack
+      task->state.registers[63] = (*table)[2].physical_address + (*table)[2].size;
 
       // Create a process.
       var process = new process = process {
@@ -66,9 +67,9 @@ namespace kernel {
 
       std::vector::add(&processes, process);
 
-      // Copy the binary into memory.
+      // Copy the binary into memory (page index 0 is the executable section).
       std::unsafe_copy(
-        <unsafe * byte>(<byte>table->pages[0].physical_address),
+        <unsafe * byte>(<byte>(*table)[0].physical_address),
         &binary[0],
         len binary,
       );

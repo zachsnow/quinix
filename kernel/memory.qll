@@ -23,20 +23,20 @@ namespace kernel::memory {
   }
 
   // Pages represent *allocated* memory.
+  // Layout must match VM's ListPageTablePeripheral: [virt][phys][size][flags]
   type page = struct {
     virtual_address: byte;
     physical_address: byte;
-    program_base: byte;
     size: byte;
     flags: flags;
   };
 
-  type table = struct {
-    pages: page[];
-  };
+  // Page table is a runtime-sized array of pages.
+  // Layout in memory: [count][page0][page1]... which matches VM's expected format.
+  type table = page[*];
 
-  // All active tables.
-  global tables: std::vector<table>;
+  // All active tables (currently unused - processes track their own tables).
+  // global tables: std::vector<* table>;
 
   // Chunks represet physical memory.
   type chunk = byte;
@@ -83,75 +83,81 @@ namespace kernel::memory {
     // unmapped in case we "run off the end"; leave some space between the
     // heap and the stack so we can tell if we run out of space.
     var heap_base = executable_base + executable_size + 0x1000;
-    var stack_base = heap_base + 0x1000;
+    var stack_base = heap_base + heap_size + 0x1000;
 
     // Find an available physical location.
     var base = allocate_physical_memory(executable_size + heap_size + stack_size);
 
-    // We map 3 pages: executable, heap, andstack. We leave low addresses
+    // We map 3 pages: executable, heap, and stack. We leave low addresses
     // unmapped so that a null pointer access will raise.
-    //
-    // TODO: maybe we also want some "static" memory somewhere?
-    var pages = new page[] = [
-      page {
-        virtual_address = executable_base,
-        physical_address = base,
-        size = executable_size,
-        flags = flags::PRESENT | flags::READ | flags::EXECUTE,
-      },
-      page {
-        virtual_address = heap_base,
-        physical_address = base + executable_size,
-        size = heap_size,
-        flags = flags::PRESENT | flags::READ | flags::WRITE,
-      },
-      page {
-        virtual_address = stack_base,
-        physical_address = base + executable_size + heap_size,
-        size = stack_size,
-        flags = flags::PRESENT | flags::READ | flags::WRITE,
-      },
-    ];
-    return new table = table {
-      pages = pages,
+    var pages: * table = new page[3];
+    if (!pages) {
+      return null;
+    }
+
+    (*pages)[0] = page {
+      virtual_address = executable_base,
+      physical_address = base,
+      size = executable_size,
+      flags = flags::PRESENT | flags::READ | flags::EXECUTE,
     };
+    (*pages)[1] = page {
+      virtual_address = heap_base,
+      physical_address = base + executable_size,
+      size = heap_size,
+      flags = flags::PRESENT | flags::READ | flags::WRITE,
+    };
+    (*pages)[2] = page {
+      virtual_address = stack_base,
+      physical_address = base + executable_size + heap_size,
+      size = stack_size,
+      flags = flags::PRESENT | flags::READ | flags::WRITE,
+    };
+
+    return pages;
   }
 
-  function destroy_table(table: * table): void {
-    delete table->pages;
-    delete table;
+  function destroy_table(t: * table): void {
+    delete t;
   }
 
-  type mmu = struct {
-    enabled: bool;
-    table: * table;
-  };
-
-  global mmu: * mmu = null;
+  // The MMU peripheral has a single IO word: the address of the page table.
+  // Writing to it triggers the MMU to rebuild its internal page cache.
+  // The page table format must be: [count][page0][page1]... where each page is
+  // [virtual_address][physical_address][size][flags].
+  global mmu_base_address: * byte = null;
+  global current_table: * table = null;
 
   function enable(): void {
-    mmu->enabled = true;
+    // MMU is enabled when a non-null table is set.
     log('memory: enabled mmu');
   }
 
   function disable(): void {
-    mmu->enabled = false;
+    // Setting table to null disables translation.
+    use_table(null);
     log('memory: disabled mmu');
   }
 
-  function use_table(table: * table): void {
-    mmu->table = table;
+  function use_table(t: * table): void {
+    current_table = t;
+    // Write the table address to the MMU peripheral.
+    // This triggers the VM's MMU to rebuild its page cache.
+    *mmu_base_address = <unsafe byte>t;
   }
 
-  function translate(table: * table, p: * byte): * byte {
+  function translate(t: * table, p: * byte): * byte {
     // `p` is a virtual address. Translate it against
     // the given table and return the physical address,
     // or return `null`.
+    if (!t) {
+      return null;
+    }
     var addr = <unsafe byte>p;
-    for(var i = 0; i < len table->pages; i = i + 1){
-      var page = table->pages[i];
-      if(addr >= page.virtual_address && addr < page.virtual_address + page.size){
-        return <unsafe * byte>(page.physical_address + (addr - page.virtual_address));
+    for (var i = 0; i < len *t; i = i + 1) {
+      var pg = (*t)[i];
+      if (addr >= pg.virtual_address && addr < pg.virtual_address + pg.size) {
+        return <unsafe * byte>(pg.physical_address + (addr - pg.virtual_address));
       }
     }
     return null;
@@ -175,12 +181,12 @@ namespace kernel::memory {
     log('memory: user pool size');
 
     // Initialize MMU peripheral
-    mmu = <unsafe * mmu>kernel::peripherals::mmu;
-    if(!mmu){
+    mmu_base_address = <unsafe * byte>kernel::peripherals::mmu;
+    if (!mmu_base_address) {
       panic('memory: mmu not mapped');
     }
 
-    disable();
+    // Start with MMU disabled (no page table)
     use_table(null);
 
     log('memory: initialized');
