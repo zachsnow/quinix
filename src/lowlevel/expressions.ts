@@ -760,11 +760,14 @@ class NewExpression extends Expression {
     const cType = this.type.resolve();
     if (cType instanceof ArrayType) {
       // This should have been constructed as a new array expression, but we couldn't
-      // see that at parse time. ArrayType is always sized (SliceType is used for
-      // unsized arrays), so we can use its length directly.
+      // see that at parse time (e.g., `new T` where T is a type alias for an array).
+      if (cType.isRuntimeSized) {
+        // Can't allocate T[*] without specifying size - need `new T[n]` syntax.
+        this.error(context, `cannot allocate runtime-sized array ${cType} without specifying size`);
+      }
       this.newArrayExpression = new NewArrayExpression(
         this.type,
-        new IntLiteralExpression(cType.length),
+        new IntLiteralExpression(cType.length as number),
         this.expression,
         this.ellipsis,
       ).at(this.location);
@@ -915,20 +918,19 @@ class NewArrayExpression extends Expression {
     }
 
     // `new T[N]` returns a pointer to the heap-allocated array T[N].
+    // `new T[n]` (variable) returns a pointer to a runtime-sized array T[*].
     // This allows proper null checking and is consistent with `new` for other types.
     // When needed, automatic conversion from `* T[N]` to `T[]` (slice) happens
     // at assignment, call arguments, and return statements.
 
-    // Construct the sized array type from the element type and computed size.
-    // We need to evaluate the size expression to get a compile-time constant.
-    let arrayLength: number;
+    // Construct the array type from the element type and computed size.
+    let arrayLength: number | undefined;
     if (this.size instanceof IntLiteralExpression) {
       arrayLength = this.size.immediate;
     }
     else {
-      // For dynamic sizes, we can't determine the exact length at compile time.
-      // We'll use a placeholder value - the actual length is stored at runtime.
-      arrayLength = 0;
+      // For dynamic sizes, use undefined to indicate runtime-sized array (T[*]).
+      arrayLength = undefined;
     }
 
     const arrayType = new ArrayType(this.elementType, arrayLength);
@@ -1586,10 +1588,20 @@ class UnaryExpression extends Expression {
         const er = this.expression.compile(compiler);
 
         if (exprType instanceof ArrayType) {
-          // Array capacity is a compile-time constant (the array's declared length).
-          compiler.emit([
-            new ConstantDirective(er, new ImmediateConstant(exprType.length)).comment(`array capacity ${exprType.length}`),
-          ]);
+          if (exprType.isRuntimeSized) {
+            // Runtime-sized array: capacity equals length, read from memory at offset 0.
+            if (this.dereference(lvalue)) {
+              compiler.emit([
+                new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
+              ]);
+            }
+          }
+          else {
+            // Sized array: capacity is a compile-time constant.
+            compiler.emit([
+              new ConstantDirective(er, new ImmediateConstant(exprType.length as number)).comment(`array capacity ${exprType.length}`),
+            ]);
+          }
         }
         else {
           // Slice or slice-like struct
@@ -1639,22 +1651,30 @@ class UnaryExpression extends Expression {
         const exprType = this.expression.concreteType.resolve();
 
         if (exprType instanceof ArrayType) {
-          // Array capacity is a compile-time constant.
-          // Check: vr <= capacity (i.e., vr > capacity is an error)
-          const endRef = compiler.generateReference('capacity_check_end');
-          const cr = compiler.allocateRegister();
-          const er = compiler.allocateRegister();
-          compiler.emit([
-            new ConstantDirective(cr, new ImmediateConstant(exprType.length)).comment(`array capacity ${exprType.length}`),
-            new InstructionDirective(Instruction.createOperation(Operation.GT, cr, vr, cr)).comment('compare capacity with new len'),
-            new ConstantDirective(er, new ReferenceConstant(endRef)),
-            new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, er)),
-            new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.CAPACITY_ERROR)).comment('capacity error'),
-            new InstructionDirective(Instruction.createOperation(Operation.HALT)),
-            new LabelDirective(endRef),
-          ]);
-          compiler.deallocateRegister(cr);
-          compiler.deallocateRegister(er);
+          if (exprType.isRuntimeSized) {
+            // Runtime-sized array: capacity equals length, read from memory.
+            // lr is the address of length (offset 0 from array base).
+            // For T[*], capacity = length, so we read capacity from lr.
+            compiler.emitCapacityCheck(lr, vr);
+          }
+          else {
+            // Sized array: capacity is a compile-time constant.
+            // Check: vr <= capacity (i.e., vr > capacity is an error)
+            const endRef = compiler.generateReference('capacity_check_end');
+            const cr = compiler.allocateRegister();
+            const er = compiler.allocateRegister();
+            compiler.emit([
+              new ConstantDirective(cr, new ImmediateConstant(exprType.length as number)).comment(`array capacity ${exprType.length}`),
+              new InstructionDirective(Instruction.createOperation(Operation.GT, cr, vr, cr)).comment('compare capacity with new len'),
+              new ConstantDirective(er, new ReferenceConstant(endRef)),
+              new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, er)),
+              new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.CAPACITY_ERROR)).comment('capacity error'),
+              new InstructionDirective(Instruction.createOperation(Operation.HALT)),
+              new LabelDirective(endRef),
+            ]);
+            compiler.deallocateRegister(cr);
+            compiler.deallocateRegister(er);
+          }
         }
         else if (exprType instanceof SliceType) {
           // Slice layout: [pointer][length][capacity]

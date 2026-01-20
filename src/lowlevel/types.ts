@@ -522,7 +522,7 @@ writeOnce(TemplateInstantiationType, 'instantiatedType', true);
 
 type Suffix = {
   identifier?: string;
-  size?: number;
+  size?: number | 'runtime';  // 'runtime' for T[*] syntax
   range: IFileRange;
   text: string;
   options?: IParseOptions
@@ -533,6 +533,10 @@ class SuffixType {
     return suffixes.reduce((type, suffix) => {
       if (suffix.identifier !== undefined) {
         return new DotType(type, suffix.identifier).at(suffix.range, suffix.text, suffix.options);
+      }
+      else if (suffix.size === 'runtime') {
+        // T[*] - runtime-sized array with unknown compile-time length
+        return new ArrayType(type, undefined).at(suffix.range, suffix.text, suffix.options);
       }
       else if (suffix.size !== undefined) {
         return new ArrayType(type, suffix.size).at(suffix.range, suffix.text, suffix.options);
@@ -877,9 +881,16 @@ class PointerType extends Type {
 class ArrayType extends Type {
   public constructor(
     private type: Type,
-    public readonly length: number,
+    public readonly length: number | undefined,
   ) {
     super();
+  }
+
+  /**
+   * Whether this is a runtime-sized array (T[*]).
+   */
+  public get isRuntimeSized(): boolean {
+    return this.length === undefined;
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker) {
@@ -895,9 +906,17 @@ class ArrayType extends Type {
 
     type = nominal ? type.evaluate() : type.resolve();
 
-    // Arrays unify with arrays of same element type and exact same length.
+    // Arrays unify with arrays of same element type.
     if (type instanceof ArrayType) {
       if (this.type.isUnifiableWith(type.type, nominal)) {
+        // T[n] unifies with T[n] (exact match)
+        // T[*] unifies with T[*]
+        // T[n] → T[*] is OK (converting sized to runtime-sized)
+        // T[*] → T[n] is NOT OK (would need to assert length at runtime)
+        if (this.length === undefined || type.length === undefined) {
+          // Allow if target is runtime-sized (forgetting compile-time length is safe)
+          return type.length === undefined;
+        }
         return this.length === type.length;
       }
     }
@@ -915,6 +934,11 @@ class ArrayType extends Type {
   }
 
   public get size(): number {
+    // Runtime-sized arrays have unknown compile-time size.
+    // They can only exist behind a pointer.
+    if (this.length === undefined) {
+      throw new InternalError(`cannot compute size of runtime-sized array ${this}`);
+    }
     // Layout: [length][elem0][elem1]...[elemN-1]
     return 1 + this.length * this.type.size;
   }
@@ -927,6 +951,9 @@ class ArrayType extends Type {
   }
 
   public toString() {
+    if (this.length === undefined) {
+      return `${this.type}[*]`;
+    }
     return `${this.type}[${Immediate.toString(this.length, 1)}]`;
   }
 }
@@ -1111,6 +1138,11 @@ class StructType extends Type {
       member.type.kindcheck(context, nestedKindchecker);
       if (member.type.isConvertibleTo(Type.Void)) {
         this.error(context, `invalid void struct member`);
+      }
+      // Runtime-sized arrays (T[*]) cannot be struct members - they can only exist behind a pointer.
+      const resolved = member.type.resolve();
+      if (resolved instanceof ArrayType && resolved.isRuntimeSized) {
+        this.error(context, `cannot have struct member of runtime-sized array type ${member.type}; use pointer (* ${member.type}) instead`);
       }
     });
   }
