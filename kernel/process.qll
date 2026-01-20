@@ -55,6 +55,8 @@ namespace kernel {
       task->state.ip = executable_base;
       // Stack is page index 2: set stack pointer to top of stack
       task->state.registers[63] = (*table)[2].physical_address + (*table)[2].size;
+      // Set the task's page table for context switching
+      task->table = table;
 
       // Create a process.
       var process = new process = process {
