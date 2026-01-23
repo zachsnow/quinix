@@ -51,6 +51,20 @@ namespace kernel {
       );
     }
 
+    // Write a single byte to a handle (used by syscalls)
+    function write_byte(handle: handle, ch: byte): bool {
+      if(handle == handle::OUTPUT){
+        // Write directly to debug output buffer
+        peripherals::debug_output->buffer[0] = ch;
+        peripherals::debug_output->size = 1;
+        peripherals::debug_output->control = std::buffered::WRITE;
+        while(peripherals::debug_output->control == std::buffered::PENDING){}
+        return peripherals::debug_output->control == std::buffered::READY;
+      }
+      // For other handles, not implemented
+      return false;
+    }
+
     function write(handle: handle, data: byte[]): bool {
       var process = process::current_process();
 
