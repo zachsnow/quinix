@@ -257,6 +257,26 @@ class DebugFilePeripheral extends BufferedPeripheral {
       throw new Error('no path');
     }
     log.debug(`${this.name}: reading path ${this.path}`);
+
+    // Check if this is a binary file (e.g., .qbin extension or no extension)
+    const isBinary = !this.path.includes('.') ||
+                     this.path.endsWith('.qbin') ||
+                     this.path.endsWith('.bin');
+
+    if (isBinary) {
+      // Read as binary - each 4 bytes becomes a 32-bit word
+      const buffer = await fs.promises.readFile(this.path);
+      const words: number[] = [];
+      for (let i = 0; i + 3 < buffer.length; i += 4) {
+        // Little-endian 32-bit integer
+        const word = buffer[i] | (buffer[i + 1] << 8) | (buffer[i + 2] << 16) | (buffer[i + 3] << 24);
+        words.push(word >>> 0); // Convert to unsigned
+      }
+      log.debug(`${this.name}: read ${words.length} words from binary file`);
+      return words;
+    }
+
+    // Read as text
     const text = await fs.promises.readFile(this.path, 'utf-8');
     log.debug(`${this.name}: read complete`);
     return stringToCodePoints(text);
