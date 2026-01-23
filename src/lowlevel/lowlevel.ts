@@ -319,24 +319,24 @@ class GlobalDeclaration extends BaseValueDeclaration {
   /**
    * Returns the initialization code for this global (runs at startup).
    */
-  public compileInit(): Directive[] {
+  private compileInitCompiler(): GlobalCompiler | null {
     // Global pre-declarations don't need initialization.
     if (!this.expression) {
-      return [];
+      return null;
     }
 
     // String literals in arrays are handled statically in compileData().
     if (this.expression instanceof StringLiteralExpression) {
       const cType = this.type.resolve();
       if (cType instanceof ArrayType) {
-        return [];
+        return null;
       }
     }
 
     // Constants are handled statically in compileData().
     const constant = this.expression.constant();
     if (constant !== undefined) {
-      return [];
+      return null;
     }
 
     // Otherwise, we need to compile initialization code.
@@ -364,7 +364,20 @@ class GlobalDeclaration extends BaseValueDeclaration {
       compiler.emitStaticCopy(dr, sr, this.type.size, `store to global ${this.qualifiedIdentifier}`);
     }
 
-    return compiler.compile();
+    return compiler;
+  }
+
+  public compileInit(): Directive[] {
+    const compiler = this.compileInitCompiler();
+    return compiler ? compiler.compile() : [];
+  }
+
+  public compileInitSeparate(): { code: Directive[], data: Directive[] } {
+    const compiler = this.compileInitCompiler();
+    if (!compiler) {
+      return { code: [], data: [] };
+    }
+    return { code: compiler.compileCode(), data: compiler.compileData() };
   }
 
   /**
@@ -1179,10 +1192,15 @@ class LowLevelProgram {
     ]);
     directives.push(...compiler.compile());
 
-    // Emit global initialization code
+    // Emit global initialization code (code first, then data to avoid executing data as code)
+    const initCode: Directive[] = [];
+    const initData: Directive[] = [];
     globalDeclarations.forEach((declaration) => {
-      directives.push(...declaration.compileInit());
+      const { code, data } = declaration.compileInitSeparate();
+      initCode.push(...code);
+      initData.push(...data);
     });
+    directives.push(...initCode);
 
     // Call main (use a fresh compiler since we already compiled the setup)
     const mainCompiler = new Compiler('entrypoint');
@@ -1196,6 +1214,9 @@ class LowLevelProgram {
       new InstructionDirective(Instruction.createOperation(Operation.HALT)),
     ]);
     directives.push(...mainCompiler.compile());
+
+    // Emit global initializer temporary data after halt (so it's not executed as code)
+    directives.push(...initData);
 
     return directives;
   }

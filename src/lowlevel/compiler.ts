@@ -949,13 +949,19 @@ class GlobalCompiler extends StorageCompiler {
     }
   }
 
-  public compile(): Directive[] {
-    const directives: Directive[] = [];
+  public compileData(): Directive[] {
     if (this.temporaryStorage) {
-      directives.push(new DataDirective(this.temporaryReference, new ImmediatesData(new Array(this.temporaryStorage).fill(0))));
+      return [new DataDirective(this.temporaryReference, new ImmediatesData(new Array(this.temporaryStorage).fill(0)))];
     }
-    directives.push(...super.compile());
-    return directives;
+    return [];
+  }
+
+  public compileCode(): Directive[] {
+    return super.compile();
+  }
+
+  public compile(): Directive[] {
+    return [...this.compileCode(), ...this.compileData()];
   }
 }
 
