@@ -16,12 +16,15 @@ namespace kernel {
       arg2: byte;
     };
 
+    // Syscall handler function type
+    type handler = (syscall) => byte;
+
     // interrupt 0x80 handler.
-    .interrupt function _syscall_interrupt(): byte {
+    .interrupt function _syscall_interrupt(): void {
       log('syscall: interrupt');
 
       // Arguments are passed in r0...r3.
-      var syscall = syscall {
+      var sc = syscall {
         syscall = interrupts::state->registers[0],
         arg0 = interrupts::state->registers[1],
         arg1 = interrupts::state->registers[2],
@@ -29,17 +32,19 @@ namespace kernel {
       };
 
       // For now if we make an invalid syscall, we just exit.
-      if(syscall.syscall < 0 || syscall.syscall >= len syscalls){
+      if(sc.syscall < 0 || sc.syscall >= len syscalls){
         log('syscall: invalid syscall');
-        _exit(syscall);
-        return 0;
+        _exit(sc);
+        return;
       }
 
-      var fn = syscalls[syscall.syscall];
-      return fn(syscall);
+      var fn = syscalls[sc.syscall];
+      var result = fn(sc);
+      // Put result in r0 for return to user
+      interrupts::state->registers[0] = result;
     }
 
-    global syscalls: syscall[] = [
+    global syscalls: handler[] = [
       _exit,
       _read,
       _write,
@@ -55,23 +60,37 @@ namespace kernel {
       return <unsafe * T>memory::translate(current_process->table, p);
     }
 
-    function _translate_array<T>(p: * byte): T {
-      var current_process = process::current_process();
-      return <unsafe T>memory::translate(current_process->table, p);
+    // Translate a user virtual address to physical
+    function _translate(p: * byte): * byte {
+      var current = process::current_process();
+      return memory::translate(current->table, p);
+    }
+
+    // Get the data pointer from a user-space slice (translated to physical)
+    function _get_slice_data(slice_addr: * byte): * byte {
+      var physical_slice = _translate(slice_addr);
+      if(!physical_slice){
+        return null;
+      }
+      var data_virt = physical_slice[unsafe 0];  // Virtual address of data
+      return _translate(<unsafe * byte>data_virt);
+    }
+
+    // Get the length from a user-space slice
+    function _get_slice_len(slice_addr: * byte): byte {
+      var physical_slice = _translate(slice_addr);
+      if(!physical_slice){
+        return 0;
+      }
+      return physical_slice[unsafe 1];  // Length field
     }
 
     function _validate_pointer(p: * byte): bool {
-      var current = process::current_process();
-      return memory::translate(current->table, p) != null;
+      return _translate(p) != null;
     }
 
-    function _validate_array<T>(p: * byte): bool {
-      if(!_validate_pointer(p)){
-        return false;
-      }
-      var arr = <unsafe T[]>p;
-      var arr_cap = cap arr;
-      return _validate_pointer(<unsafe byte>p + arr_cap);
+    function _validate_slice(p: * byte): bool {
+      return _get_slice_data(p) != null;
     }
 
     function _exit(sc: syscall): byte {
@@ -81,25 +100,36 @@ namespace kernel {
     }
 
     function _write(sc: syscall): byte {
-      var handle = <unsafe fs::handle>sc.arg0;
+      var handle = <fs::handle>sc.arg0;
+      var slice_addr = <unsafe * byte>sc.arg1;
 
-      if(!_validate_array<byte[]>(<unsafe * byte>sc.arg1)){
+      if(!_validate_slice(slice_addr)){
         return 0;
       }
-      var data = _translate_array<byte[]>(<unsafe * byte>sc.arg1);
 
-      return fs::write(handle, data);
+      var data_ptr = _get_slice_data(slice_addr);
+      var data_len = _get_slice_len(slice_addr);
+
+      // Write data byte by byte through the filesystem
+      for(var i = 0; i < data_len; i = i + 1){
+        var ch = data_ptr[unsafe i];
+        fs::write_byte(handle, ch);
+      }
+
+      return 1;
     }
 
     function _read(sc: syscall): byte {
-      var handle = <unsafe fs::handle>sc.arg0;
+      var handle = <fs::handle>sc.arg0;
+      var slice_addr = <unsafe * byte>sc.arg1;
 
-      if(!_validate_array<byte[]>(<unsafe * byte>sc.arg1)){
+      if(!_validate_slice(slice_addr)){
         return 0;
       }
-      var data = _translate_array<byte[]>(<unsafe * byte>sc.arg1);
 
-      return fs::read(handle, data);
+      // For now, read is not implemented
+      // TODO: implement proper read syscall
+      return 0;
     }
 
     function _open(sc: syscall): byte {
@@ -123,11 +153,7 @@ namespace kernel {
     }
 
     function _spawn(sc: syscall): byte {
-      if(!_validate_array<byte[]>(<unsafe * byte>sc.arg0)){
-        return 0;
-      }
-      var path = _translate_array<byte[]>(<unsafe * byte>sc.arg0);
-      // TODO: load binary from filesystem using path
+      // TODO: implement spawn syscall
       // For now, just return 0 (not implemented)
       return 0;
     }
