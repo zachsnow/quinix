@@ -26,7 +26,8 @@ PostfixExpression
 
 PostfixExpressionSuffix
     = _ "[" _ lo:Expression? _ ":" _ hi:Expression? _ "]" { return SuffixExpression.createSlice(lo || undefined, hi || undefined, location(), text(), options); }
-    / _ "[" _ u:UnsafeToken? _ e:Expression _ "]" { return SuffixExpression.createIndex(e, !!u, location(), text(), options); }
+    / _ "[" _ u:UnsafeToken? _ e:Expression _ "]" { return SuffixExpression.createIndex(e, !!u, false, location(), text(), options); }
+    / _ "->" _ "[" _ u:UnsafeToken? _ e:Expression _ "]" { return SuffixExpression.createIndex(e, !!u, true, location(), text(), options); }
     / _ "." _ id:Identifier { return SuffixExpression.createMember(id, false, location(), text(), options); }
     / _ "->" _ id:Identifier { return SuffixExpression.createMember(id, true, location(), text(), options); }
     / _ "(" _ args:ExpressionList? _ ")" { return SuffixExpression.createCall(args || [], location(), text(), options); }

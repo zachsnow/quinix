@@ -1834,6 +1834,7 @@ writeOnce(CallExpression, 'argumentTypes');
 type Suffix = {
   index?: Expression;
   unsafe?: boolean;
+  deref?: boolean;
   identifier?: string;
   pointer?: boolean;
   expressions?: readonly Expression[];
@@ -1868,6 +1869,9 @@ abstract class SuffixExpression extends Expression {
         return new SliceExpression(expression, suffix.lo, suffix.hi).at(suffix.range, suffix.text, suffix.options);
       }
       if (suffix.index !== undefined) {
+        if (suffix.deref) {
+          expression = new UnaryExpression('*', expression).at(suffix.range, suffix.text, suffix.options);
+        }
         return new IndexExpression(expression, suffix.index, suffix.unsafe).at(suffix.range, suffix.text, suffix.options);
       }
       if (suffix.expressions !== undefined) {
@@ -1877,8 +1881,8 @@ abstract class SuffixExpression extends Expression {
     }, expression);
   }
 
-  public static createIndex(index: Expression, unsafe: boolean, range: IFileRange, text: string, options?: IParseOptions): Suffix {
-    return { index, unsafe, range, text, options };
+  public static createIndex(index: Expression, unsafe: boolean, deref: boolean, range: IFileRange, text: string, options?: IParseOptions): Suffix {
+    return { index, unsafe, deref, range, text, options };
   }
 
   public static createMember(identifier: string, pointer: boolean, range: IFileRange, text: string, options?: IParseOptions): Suffix {
