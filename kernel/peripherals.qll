@@ -12,9 +12,8 @@ namespace kernel {
     };
 
     // VM peripheral table is at 0x0200 (see vm.ts:175)
-    // Layout: [count: byte][id1: byte][addr1: byte][id2: byte][addr2: byte]...
-    // Max 128 entries (256 bytes / 2 bytes per entry)
-    .constant global peripheral_table: peripheral_table_entry[128] = <unsafe peripheral_table_entry[128]> 0x0200;
+    // Layout: [count: byte][entry0: peripheral_table_entry][entry1: ...]...
+    .constant global peripheral_table: *peripheral_table_entry[*] = <unsafe *peripheral_table_entry[*]> 0x0200;
 
     //
     // Hardware timer.
@@ -99,10 +98,9 @@ namespace kernel {
 
     // Find and initialize the peripheral.
     function init_peripheral(entry: init_table_entry): void {
-      for(var i = 0; i < len peripheral_table; i = i + 1){
-        var peripheral = peripheral_table[i];
-        if(peripheral.identifier == entry.identifier){
-          (entry.init)(&peripheral);
+      for(var i = 0; i < len *peripheral_table; i = i + 1){
+        if((*peripheral_table)[i].identifier == entry.identifier){
+          (entry.init)(&(*peripheral_table)[i]);
           return;
         }
       }
