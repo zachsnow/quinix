@@ -2,154 +2,215 @@
 
 A pre-emptive multitasking kernel with memory isolation for the Quinix VM.
 
+## Architecture Overview
+
+```
+Kernel Boot (kernel.qll:main)
+  → peripherals::init()  - find hardware in VM peripheral table
+  → memory::init()       - set up bump allocator, MMU pointer
+  → process::init()      - create process vector, register error handler
+  → syscall::init()      - register interrupt 0x80 handler
+  → scheduler::init()    - create task 0, register timer handler
+  → load test programs   - read binaries, create processes
+  → enable interrupts    - start scheduling
+  → idle loop            - wait for interrupts
+```
+
 ## Current State
 
-### Working
+### What Works
 
-- **Memory Management** (`memory.qll`)
-  - Bump allocator for physical memory (user pool)
-  - Separate kernel heap allocation
-  - Page table creation with 3-page layout (executable, heap, stack)
-  - MMU integration: writes table address to MMU peripheral
-  - Virtual-to-physical address translation
+**Peripherals** (`peripherals.qll`)
+- Reads VM peripheral table at 0x200
+- Initializes: timer, debug_output, debug_input, debug_file, mmu
+- Buffered peripheral abstraction for I/O
 
-- **Process Management** (`process.qll`)
-  - Process creation with PID assignment
-  - Parent/child tracking via `parent_id`
-  - Recursive child killing on parent death
-  - Process limit enforcement (MAX_PROCESSES = 32)
-  - Error interrupt handler kills faulting process
+**Memory** (`memory.qll`)
+- Bump allocator for user memory pool (0x20000 - 0xFFFFF)
+- Kernel heap allocator (0x10000 - 0x1FFFF)
+- Page table creation with 3 pages: executable (0x1000), heap (0x3000), stack (0xC000)
+- Virtual-to-physical translation via linear scan
+- MMU table switching via `use_table()`
 
-- **Scheduler** (`scheduler.qll`)
-  - Round-robin scheduling via linked list
-  - Timer interrupt-driven preemption (100 cycle interval)
-  - Context switching: saves/restores registers, switches MMU tables
-  - Task 0 created at init as idle/kernel task
+**Process** (`process.qll`)
+- Process struct with id, parent_id, task, table, files
+- `create_process()` allocates memory, creates task, copies binary, enqueues
+- `destroy_process()` recursively kills children, cleans up resources
+- Error interrupt handler kills faulting process
 
-- **Syscall Framework** (`syscall.qll`)
-  - Interrupt 0x80 handler
-  - Dispatch table for syscall numbers
-  - User pointer validation and translation
-  - EXIT: destroys current process
-  - WRITE: writes bytes to handle (OUTPUT handle works)
+**Scheduler** (`scheduler.qll`)
+- Linked list of tasks, round-robin scheduling
+- Timer interrupt every 100 cycles triggers context switch
+- `_schedule_task()` saves state, advances to next task, restores state + MMU table
+- `destroy_task()` safely handles destroying current task
 
-- **Filesystem** (`fs.qll`)
-  - Handle abstraction (OUTPUT=1, INPUT=2)
-  - Per-process file tracking
-  - Debug peripheral proxy for actual I/O
+**Syscalls** (`syscall.qll`)
+- Interrupt 0x80 handler extracts args from r0-r3
+- Dispatch table maps syscall number to handler
+- Pointer validation via `_translate()` against current process's page table
+- Slice access via `_get_slice_data()` / `_get_slice_len()`
 
-- **Peripherals** (`peripherals.qll`)
-  - Timer, debug I/O, debug file, MMU all initialized from VM peripheral table
+**Filesystem** (`fs.qll`)
+- Handle abstraction: OUTPUT=0x1, INPUT=0x2
+- `write_byte()` writes single byte to debug_output peripheral
+- Per-process file table for open files
 
-- **Kernel Boot** (`kernel.qll`)
-  - Loads two test programs via debug file peripheral
-  - Initializes all subsystems
-  - Enters idle loop with interrupts enabled
+**User Library** (`lib/lib.qll` + `lib/support.qasm`)
+- `lib::print(text)` → `lib::write(output, text)` → `syscall2(WRITE, handle, text)`
+- `lib::exit(code)` → `syscall1(EXIT, code)`
+- Assembly stubs trigger `int 0x80` with args in registers
 
-### Not Working / Incomplete
+### What's Broken
 
-- **User-space syscall library** - Test programs reference `lib::print` and `lib::exit` which don't exist
-- **SPAWN syscall** - Stubbed, returns 0
-- **READ syscall** - Stubbed, returns 0
-- **OPEN/CLOSE/CREATE/DESTROY syscalls** - Stubbed
-- **Shell** (`shell.qll`) - Incomplete, references undefined functions
+**Handle Value Mismatch**
+- `lib/lib.qll:33-34`: `input = 0x1`, `output = 0x2`
+- `kernel/fs.qll:5-6`: `OUTPUT = 0x1`, `INPUT = 0x2`
+- When user calls `lib::print()`, it passes handle 0x2, but kernel expects 0x1 for output
+- **Fix**: Change one to match the other
 
-## Phase 1: Single Process Execution
+**Assembly Calling Convention** (`lib/support.qasm:48-72`)
+- `syscall2` reads arguments from stack at hardcoded offsets (+4, +3, +2)
+- These offsets may not match how qllc passes function arguments
+- Needs verification against actual qllc output
 
-**Goal**: One process loads, runs, prints output, exits cleanly.
+**Task 0 Has No Page Table**
+- `scheduler::init()` creates task 0 as idle task
+- Task 0's `table` field is never set (null)
+- If scheduler switches back to task 0, MMU gets null table
+- May cause issues when all user tasks exit
 
-### 1.1 Create User-Space Library
+**Binary Size Not Validated** (`process.qll:73-77`)
+- Binary copied to executable region without size check
+- Executable region is 0x1000 (4KB)
+- If binary > 4KB, overwrites heap region
+- Test binaries are ~5KB (`hello-a` is 5080 bytes)
 
-Create `kernel/lib.qll` with syscall wrappers:
+**Unused Memory Constants** (`memory.qll:43-44`)
+- `chunk_size = 0x4000` and `max_chunks = 0x400` are defined but never used
+- Actual chunk size is `CHUNK_SIZE = 0x1000`
+- Dead code that may cause confusion
 
+### What's Stubbed
+
+| Syscall | Number | Status |
+|---------|--------|--------|
+| EXIT | 0x0 | Working |
+| READ | 0x1 | Stub (returns 0) |
+| WRITE | 0x2 | Working |
+| OPEN | 0x3 | Stub |
+| CLOSE | 0x4 | Stub |
+| CREATE | 0x5 | Stub |
+| DESTROY | 0x6 | Stub |
+| SPAWN | 0x7 | Stub |
+
+**Shell** (`shell.qll`)
+- References undefined: `lib::spawn`, `print`, `read_command`, `parse_command`, `find_command`
+- Non-functional placeholder
+
+## Phase 1: Single Process Prints Output
+
+**Goal**: Kernel loads one process, process prints text, process exits.
+
+### 1.1 Fix Handle Mismatch
+
+In `lib/lib.qll`, swap handle values to match kernel:
 ```qll
-namespace lib {
-  function _syscall(num: byte, arg0: byte, arg1: byte, arg2: byte): byte;
-
-  function exit(code: byte): void {
-    _syscall(0, code, 0, 0);  // EXIT = 0
-  }
-
-  function print(message: byte[]): void {
-    _syscall(2, 1, <unsafe byte>&message, 0);  // WRITE = 2, OUTPUT = 1
-  }
+namespace handle {
+  .constant global input: handle = 0x2;   // was 0x1
+  .constant global output: handle = 0x1;  // was 0x2
 }
 ```
 
-### 1.2 Implement Syscall Assembly Support
+### 1.2 Verify Assembly Calling Convention
 
-Create `kernel/lib.qasm` with the `_syscall` function that:
-1. Loads arguments into r0-r3
-2. Triggers `int 0x80`
-3. Returns result from r0
+Examine qllc output for a simple syscall call. Check if `lib/support.qasm` stack offsets match.
 
-### 1.3 Fix Test Programs
+If broken, rewrite assembly to use correct offsets or switch to register-based argument passing.
 
-Update `kernel/tests/hello-a.qll` and `hello-b.qll` to use correct paths:
-- Change `lib::print` to use proper syscall
-- Change `lib::exit` to use proper syscall
+### 1.3 Fix Binary Size
 
-### 1.4 Verification
+Either:
+- Increase DEFAULT_EXECUTABLE_SIZE in `process.qll` to 0x2000 (8KB)
+- Or add binary size validation and reject oversized binaries
+
+### 1.4 Test
 
 ```bash
+cd kernel/tests && ./build.sh hello-a.qll
+cd ../..
 ./build.sh
 bun run bin/qvm.ts kernel/kernel.qbin
 ```
 
-Expected: Both test programs print their letters interleaved, then exit.
+Expected: See "A" printed repeatedly, then clean exit.
 
-## Phase 2: Multi-Process with SPAWN
+## Phase 2: Multiple Processes with Context Switching
 
-**Goal**: Process can spawn child processes; parent death kills children.
+**Goal**: Two processes run concurrently with interleaved output.
 
-### 2.1 Implement SPAWN Syscall
+### 2.1 Fix Task 0 Page Table
 
-In `syscall.qll`, implement `_spawn`:
-1. Validate path pointer from user space
-2. Read binary from debug file peripheral
-3. Call `process::create_process` with current process as parent
-4. Return child PID (or 0 on failure)
+Option A: Give task 0 a valid kernel page table
+Option B: Never schedule task 0 (skip it in round-robin)
+
+### 2.2 Verify Context Switching
+
+With handle mismatch fixed, both hello-a and hello-b should print. Output should interleave:
+```
+A
+B
+A
+B
+...
+```
+
+### 2.3 Verify Process Exit
+
+When a process calls `lib::exit()`:
+1. Syscall handler calls `process::destroy_process()`
+2. Process removed from list, task destroyed
+3. Scheduler picks next task
+4. No crash or hang
+
+## Phase 3: SPAWN Syscall
+
+**Goal**: Process can spawn child processes.
+
+### 3.1 Implement _spawn
 
 ```qll
 function _spawn(sc: syscall): byte {
+  // Validate and translate path from user space
   var path_addr = <unsafe * byte>sc.arg0;
   if (!_validate_slice(path_addr)) {
     return 0;
   }
-
   var path_data = _get_slice_data(path_addr);
   var path_len = _get_slice_len(path_addr);
 
-  // Copy path to kernel buffer (null-terminated)
+  // Copy to kernel buffer
   var path = new byte[path_len + 1];
   for (var i = 0; i < path_len; i = i + 1) {
     path[i] = path_data[unsafe i];
   }
   path[path_len] = 0;
 
-  // Load binary via debug file peripheral
-  if (!std::buffered::write(
-    &peripherals::debug_file->control,
-    &peripherals::debug_file->size,
-    &peripherals::debug_file->buffer[0],
-    path
-  )) {
+  // Load binary via debug_file peripheral
+  if (!std::buffered::write(&peripherals::debug_file->control,
+      &peripherals::debug_file->size, &peripherals::debug_file->buffer[0], path)) {
     delete path;
     return 0;
   }
 
-  var binary = new byte[0x1000];
-  if (!std::buffered::read(
-    &peripherals::debug_file->control,
-    &peripherals::debug_file->size,
-    &peripherals::debug_file->buffer[0],
-    binary
-  )) {
+  var binary = new byte[0x2000];
+  if (!std::buffered::read(&peripherals::debug_file->control,
+      &peripherals::debug_file->size, &peripherals::debug_file->buffer[0], binary)) {
     delete path;
     delete binary;
     return 0;
   }
 
+  // Create child process with current as parent
   var parent = process::current_process();
   var child_pid = process::create_process(binary, parent->id);
 
@@ -159,115 +220,63 @@ function _spawn(sc: syscall): byte {
 }
 ```
 
-### 2.2 Add spawn() to User Library
+### 3.2 Add lib::spawn
 
+In `lib/lib.qll`:
 ```qll
-function spawn(path: byte[]): byte {
-  return _syscall(7, <unsafe byte>&path, 0, 0);  // SPAWN = 7
+function spawn(path: string): byte {
+  return <byte>support::syscall1(support::SPAWN_SYSCALL, <unsafe byte>path);
 }
 ```
 
-### 2.3 Create Spawn Test Programs
+### 3.3 Test Parent/Child
 
-**kernel/tests/spawn-parent.qll**:
-```qll
-function main(): byte {
-  lib::print('Parent: spawning child...\n');
-  var pid = lib::spawn('tests/spawn-child');
-  if (!pid) {
-    lib::print('Parent: spawn failed\n');
-    lib::exit(1);
-  }
-  lib::print('Parent: child spawned\n');
+Create test programs that spawn children and verify:
+- Child runs concurrently with parent
+- Parent exit kills children (recursive kill)
 
-  var i = 0;
-  while (i < 5) {
-    lib::print('Parent working\n');
-    i = i + 1;
-  }
+## File Reference
 
-  lib::print('Parent: exiting\n');
-  lib::exit(0);
-  return 0;
-}
-```
-
-**kernel/tests/spawn-child.qll**:
-```qll
-function main(): byte {
-  var i = 0;
-  while (i < 5) {
-    lib::print('Child working\n');
-    i = i + 1;
-  }
-  lib::print('Child: exiting\n');
-  lib::exit(0);
-  return 0;
-}
-```
-
-### 2.4 Test Recursive Kill
-
-**kernel/tests/kill-parent.qll** - spawns child, then exits (child should be killed)
-**kernel/tests/kill-child.qll** - infinite loop (should be killed when parent exits)
-
-### 2.5 Verification
-
-1. Run spawn-parent: should see interleaved Parent/Child output
-2. Run kill-parent: child should be terminated when parent exits
-3. Spawn 5+ processes: verify they all run concurrently
-
-## Success Criteria
-
-### Phase 1 Complete
-- [ ] `./build.sh` succeeds
-- [ ] Kernel boots and initializes all subsystems
-- [ ] Test program loads and runs
-- [ ] Output appears via WRITE syscall
-- [ ] Process exits cleanly via EXIT syscall
-- [ ] No panics during execution
-
-### Phase 2 Complete
-- [ ] SPAWN syscall creates child processes
-- [ ] Multiple processes run concurrently (interleaved output)
-- [ ] Memory isolation works (processes can't access each other)
-- [ ] Parent death kills all descendants
-- [ ] Process limit enforcement works
-
-## File Summary
-
-| File | Purpose |
-|------|---------|
-| `kernel.qll` | Boot, init, main loop |
-| `memory.qll` | Physical memory allocator, page tables, MMU |
-| `process.qll` | Process creation/destruction, PID management |
-| `scheduler.qll` | Round-robin scheduler, context switching |
-| `syscall.qll` | System call dispatch and handlers |
-| `fs.qll` | File handle abstraction |
-| `peripherals.qll` | Hardware peripheral initialization |
+| File | Description |
+|------|-------------|
+| `kernel.qll` | Boot sequence, main loop, log/panic |
+| `memory.qll` | Bump allocator, page tables, MMU |
+| `process.qll` | Process lifecycle, parent/child tracking |
+| `scheduler.qll` | Round-robin scheduler, context switch |
+| `syscall.qll` | Syscall dispatch and handlers |
+| `fs.qll` | File handles, debug peripheral I/O |
+| `peripherals.qll` | Hardware initialization |
 | `support.qll` | Assembly function declarations |
-| `lib.qll` | User-space syscall wrappers (TODO) |
-| `tests/*.qll` | Test programs |
+| `support.qasm` | Assembly: halt, wait, interrupt setup |
+| `lib/lib.qll` | User-space syscall wrappers |
+| `lib/support.qasm` | User-space syscall assembly |
 
 ## Memory Layout
 
+**Physical Memory**
 ```
-0x00000 - 0x001FF   Reserved (null protection, interrupt vectors)
-0x00200 - 0x0FFFF   Kernel code and data
+0x00000 - 0x001FF   Interrupt vectors, VM state
+0x00200 - 0x0FFFF   Kernel code/data, peripheral table
 0x10000 - 0x1FFFF   Kernel heap (64KB)
-0x20000 - 0xFFFFF   User memory pool (896KB)
+0x20000 - 0xFFFFF   User pool (896KB, bump allocated)
 ```
 
-Each process gets:
-- Executable: 4KB at virtual 0x1000
-- Heap: 32KB at virtual 0x3000
-- Stack: 4KB at virtual 0xC000
+**Per-Process Virtual Memory**
+```
+0x00000 - 0x00FFF   Unmapped (null pointer protection)
+0x01000 - 0x01FFF   Executable (4KB, RX)
+0x02000 - 0x02FFF   Unmapped (underrun protection)
+0x03000 - 0x0AFFF   Heap (32KB, RW)
+0x0B000 - 0x0BFFF   Unmapped (overflow protection)
+0x0C000 - 0x0CFFF   Stack (4KB, RW)
+```
 
-## Deferred Work
+## Deferred
 
-- Real memory allocator (free list instead of bump)
-- Binary format with size headers
-- WAIT syscall for parent to wait on child
-- IPC mechanisms
-- Proper shell implementation
-- Additional syscalls (OPEN, CLOSE, CREATE, DESTROY)
+- READ syscall implementation
+- OPEN/CLOSE/CREATE/DESTROY syscalls
+- Real memory allocator (free list)
+- Binary format with size/entry headers
+- WAIT syscall
+- Shell implementation
+- IPC
