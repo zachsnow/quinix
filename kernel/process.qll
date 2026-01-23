@@ -70,11 +70,11 @@ namespace kernel {
       std::vector::add(&processes, process);
 
       // Copy the binary into memory (page index 0 is the executable section).
-      std::unsafe_copy(
-        <unsafe * byte>(<byte>(*table)[0].physical_address),
-        &binary[0],
-        len binary,
-      );
+      var dest = <unsafe * byte>(<byte>(*table)[0].physical_address);
+      var src = &binary[0];
+      for(var i = 0; i < len binary; i = i + 1){
+        dest[unsafe i] = src[unsafe i];
+      }
 
       // Add the task to the task queue.
       scheduler::enqueue_task(process->task);
