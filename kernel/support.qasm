@@ -1,3 +1,17 @@
+; Disable interrupts (write false to address 0x0).
+@global::kernel::support::disable_interrupts:
+  constant r1 0x0000        ; Address 0x0 is interrupt enable flag.
+  constant r2 0x0000        ; false
+  store r1 r2
+  jmp r0                    ; Return.
+
+; Enable interrupts (write true to address 0x0).
+@global::kernel::support::enable_interrupts:
+  constant r1 0x0000        ; Address 0x0 is interrupt enable flag.
+  constant r2 0x0001        ; true
+  store r1 r2
+  jmp r0                    ; Return.
+
 ; Halt the machine.
 @global::kernel::support::halt:
   mov r1 r0               ; Put return address in r1 for reference.

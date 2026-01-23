@@ -23,15 +23,6 @@ namespace kernel {
 
     global state: * state = <unsafe * state>0x2;
 
-    global _enabled: .notnull * bool = null; // Lives at 0x0000.
-
-    function disable(): void {
-      *_enabled = false;
-    }
-
-    function enable(): void {
-      *_enabled = true;
-    }
   }
 
   function log(message: byte[]): void {
@@ -79,45 +70,60 @@ namespace kernel {
   }
 }
 
-function main(): void {
-  kernel::interrupts::disable();
-  kernel::init();
-
-  // Load the shell and create a task for it.
-  // First write the path to set it on the peripheral
+// Load a program from the file peripheral and create a process for it.
+function _load_program(path: byte[], parent_id: byte): byte {
+  // Set the file path
   if(!std::buffered::write(
     &kernel::peripherals::debug_file->control,
     &kernel::peripherals::debug_file->size,
     &kernel::peripherals::debug_file->buffer[0],
-    'shell'
+    path
   )){
-    kernel::panic('unable to write shell path');
+    kernel::panic('unable to write program path');
   }
 
-  // Now read the file contents
   // Allocate a buffer to hold the file
-  var binary = new byte[0x1000];  // 4KB should be enough for shell
+  var binary = new byte[0x1000];  // 4KB should be enough
   if(!binary){
-    kernel::panic('unable to allocate memory for shell');
+    kernel::panic('unable to allocate memory for program');
   }
 
+  // Read the file contents
   if(!std::buffered::read(
     &kernel::peripherals::debug_file->control,
     &kernel::peripherals::debug_file->size,
     &kernel::peripherals::debug_file->buffer[0],
     binary
   )){
-    kernel::panic('unable to read shell');
+    kernel::panic('unable to read program');
   }
 
-  var shell_pid = kernel::process::create_process(binary, 0);  // 0 = no parent
-  if(!shell_pid){
-    kernel::panic('unable to create shell task');
+  // Create process
+  var pid = kernel::process::create_process(binary, parent_id);
+  if(!pid){
+    kernel::panic('unable to create process');
   }
 
   delete binary;
+  return pid;
+}
 
-  kernel::interrupts::enable();
+function main(): void {
+  kernel::support::disable_interrupts();
+  kernel::init();
+
+  kernel::log('loading test programs...\n');
+
+  // Load test program A
+  var pid_a = _load_program('tests/hello-a', 0);
+  kernel::log('loaded hello-a\n');
+
+  // Load test program B
+  var pid_b = _load_program('tests/hello-b', 0);
+  kernel::log('loaded hello-b\n');
+
+  kernel::log('starting scheduler...\n');
+  kernel::support::enable_interrupts();
   while(true){
     kernel::support::wait();
   }
