@@ -216,8 +216,8 @@ class VM {
     const mmu = new ListPageTablePeripheral(this.memory);
     this.mmu = mmu;
 
-    // Peripherals. If none are provided, just include the MMU.
-    this.peripherals = options.peripherals ?? [mmu];
+    // Peripherals. Always include the MMU so it can receive notify calls.
+    this.peripherals = options.peripherals ? [...options.peripherals, mmu] : [mmu];
 
     // Peripheral frequency.
     this.peripheralFrequency =
