@@ -761,13 +761,9 @@ class NewExpression extends Expression {
     if (cType instanceof ArrayType) {
       // This should have been constructed as a new array expression, but we couldn't
       // see that at parse time (e.g., `new T` where T is a type alias for an array).
-      if (cType.isRuntimeSized) {
-        // Can't allocate T[*] without specifying size - need `new T[n]` syntax.
-        this.error(context, `cannot allocate runtime-sized array ${cType} without specifying size`);
-      }
       this.newArrayExpression = new NewArrayExpression(
         this.type,
-        new IntLiteralExpression(cType.length as number),
+        new IntLiteralExpression(cType.length),
         this.expression,
         this.ellipsis,
       ).at(this.location);
@@ -1523,8 +1519,13 @@ class UnaryExpression extends Expression {
       return true;
     }
 
-    // `len x` is assignable as like writing to x[-1], basically.
+    // `len x` is assignable for slices (writes to length field).
+    // For fixed-size arrays, length is a compile-time constant and not assignable.
     if (this.operator === 'len') {
+      const exprType = this.expression.concreteType.resolve();
+      if (exprType instanceof ArrayType) {
+        return false;
+      }
       return true;
     }
 
@@ -1588,20 +1589,10 @@ class UnaryExpression extends Expression {
         const er = this.expression.compile(compiler);
 
         if (exprType instanceof ArrayType) {
-          if (exprType.isRuntimeSized) {
-            // Runtime-sized array: capacity equals length, read from memory at offset 0.
-            if (this.dereference(lvalue)) {
-              compiler.emit([
-                new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
-              ]);
-            }
-          }
-          else {
-            // Sized array: capacity is a compile-time constant.
-            compiler.emit([
-              new ConstantDirective(er, new ImmediateConstant(exprType.length as number)).comment(`array capacity ${exprType.length}`),
-            ]);
-          }
+          // Fixed-size array: capacity is a compile-time constant.
+          compiler.emit([
+            new ConstantDirective(er, new ImmediateConstant(exprType.length)).comment(`array capacity ${exprType.length}`),
+          ]);
         }
         else {
           // Slice or slice-like struct
@@ -1650,33 +1641,12 @@ class UnaryExpression extends Expression {
       case 'len': {
         const exprType = this.expression.concreteType.resolve();
 
+        // Fixed-size arrays are not assignable (checked in assignable getter).
         if (exprType instanceof ArrayType) {
-          if (exprType.isRuntimeSized) {
-            // Runtime-sized array: capacity equals length, read from memory.
-            // lr is the address of length (offset 0 from array base).
-            // For T[*], capacity = length, so we read capacity from lr.
-            compiler.emitCapacityCheck(lr, vr);
-          }
-          else {
-            // Sized array: capacity is a compile-time constant.
-            // Check: vr <= capacity (i.e., vr > capacity is an error)
-            const endRef = compiler.generateReference('capacity_check_end');
-            const cr = compiler.allocateRegister();
-            const er = compiler.allocateRegister();
-            compiler.emit([
-              new ConstantDirective(cr, new ImmediateConstant(exprType.length as number)).comment(`array capacity ${exprType.length}`),
-              new InstructionDirective(Instruction.createOperation(Operation.GT, cr, vr, cr)).comment('compare capacity with new len'),
-              new ConstantDirective(er, new ReferenceConstant(endRef)),
-              new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, er)),
-              new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.CAPACITY_ERROR)).comment('capacity error'),
-              new InstructionDirective(Instruction.createOperation(Operation.HALT)),
-              new LabelDirective(endRef),
-            ]);
-            compiler.deallocateRegister(cr);
-            compiler.deallocateRegister(er);
-          }
+          throw new InternalError(`cannot assign length of fixed-size array`);
         }
-        else if (exprType instanceof SliceType) {
+
+        if (exprType instanceof SliceType) {
           // Slice layout: [pointer][length][capacity]
           // lr is the address of length (offset 1 from slice base)
           // Capacity is at offset 2, which is lr + 1
