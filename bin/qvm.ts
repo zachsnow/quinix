@@ -25,6 +25,7 @@ const log = logger("qvm");
 interface Options {
   binary: string;
   cycles?: string;
+  size?: string;
   break: string;
   "break-write": string;
   stats: boolean;
@@ -39,6 +40,11 @@ const argv = parseArguments<Options>(
       cycles: {
         alias: "c",
         describe: "halt after number of cycles",
+        type: "string",
+      },
+      size: {
+        alias: "m",
+        describe: "memory size in bytes (e.g. 0x100000 for 1MB)",
         type: "string",
       },
       break: {
@@ -108,6 +114,7 @@ const vm = new VM({
   debug: argv.verbose,
   breakpoints: breakpoints,
   cycles: argv.cycles ? parseInt(argv.cycles, 10) : undefined,
+  size: argv.size ? parseInt(argv.size, 10) : undefined,
   debuggerFactory: (vm, state, memory) => {
     return new Debugger(vm, state, memory);
   },
