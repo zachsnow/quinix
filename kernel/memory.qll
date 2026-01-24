@@ -31,9 +31,22 @@ namespace kernel::memory {
     flags: flags;
   };
 
-  // Page table is a runtime-sized array of pages.
-  // Layout in memory: [count][page0][page1]... which matches VM's expected format.
-  type table = page[*];
+  // Page table is a pointer to memory laid out as [count][page0][page1]...
+  // This matches the VM's expected format for the MMU peripheral.
+  // We manage this layout manually since slices have a different format.
+  type table = byte;  // Raw pointer to the table memory
+
+  // Helper to get the count from a table
+  function table_count(t: * table): byte {
+    return <byte>*t;
+  }
+
+  // Helper to get a page from a table
+  function table_page(t: * table, i: byte): * page {
+    // Skip count byte, then offset by i pages
+    var base = <unsafe byte>t + 1;
+    return <unsafe * page>(base + i * sizeof page);
+  }
 
   // All active tables (currently unused - processes track their own tables).
   // global tables: std::vector<* table>;
@@ -88,37 +101,46 @@ namespace kernel::memory {
     // Find an available physical location.
     var base = allocate_physical_memory(executable_size + heap_size + stack_size);
 
-    // We map 3 pages: executable, heap, and stack. We leave low addresses
-    // unmapped so that a null pointer access will raise.
-    var pages: * table = new page[3];
-    if (!pages) {
+    // Allocate table memory: [count: 1 word][page0][page1][page2]
+    // We map 3 pages: executable, heap, and stack.
+    var page_count: byte = 3;
+    var table_size = 1 + page_count * sizeof page;
+    var t: * table = <unsafe * table>allocate_kernel_memory(table_size);
+    if (!t) {
       return null;
     }
 
-    (*pages)[0] = page {
+    // Set count
+    *t = page_count;
+
+    // Set pages
+    *table_page(t, 0) = page {
       virtual_address = executable_base,
       physical_address = base,
       size = executable_size,
       flags = flags::PRESENT | flags::READ | flags::EXECUTE,
     };
-    (*pages)[1] = page {
+    *table_page(t, 1) = page {
       virtual_address = heap_base,
       physical_address = base + executable_size,
       size = heap_size,
       flags = flags::PRESENT | flags::READ | flags::WRITE,
     };
-    (*pages)[2] = page {
+    *table_page(t, 2) = page {
       virtual_address = stack_base,
       physical_address = base + executable_size + heap_size,
       size = stack_size,
       flags = flags::PRESENT | flags::READ | flags::WRITE,
     };
 
-    return pages;
+    return t;
   }
 
   function destroy_table(t: * table): void {
-    delete t;
+    // Table was allocated from kernel heap, which uses bump allocation.
+    // No actual deallocation needed for now.
+    // TODO: implement kernel heap deallocation if needed.
+    return;
   }
 
   // The MMU peripheral has a single IO word: the address of the page table.
@@ -154,8 +176,9 @@ namespace kernel::memory {
       return null;
     }
     var addr = <unsafe byte>p;
-    for (var i = 0; i < len *t; i = i + 1) {
-      var pg = (*t)[i];
+    var count = table_count(t);
+    for (var i: byte = 0; i < count; i = i + 1) {
+      var pg = *table_page(t, i);
       if (addr >= pg.virtual_address && addr < pg.virtual_address + pg.size) {
         return <unsafe * byte>(pg.physical_address + (addr - pg.virtual_address));
       }

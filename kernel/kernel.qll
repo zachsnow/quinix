@@ -84,7 +84,7 @@ function _load_program(path: byte[], parent_id: byte): byte {
 
   // Allocate a buffer to hold the file
   var binary = new byte[0x1000];  // 4KB should be enough
-  if(!binary){
+  if (len binary == 0) {
     kernel::panic('unable to allocate memory for program');
   }
 

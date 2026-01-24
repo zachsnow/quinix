@@ -13,7 +13,9 @@ namespace kernel {
 
     // VM peripheral table is at 0x0200 (see vm.ts:175)
     // Layout: [count: byte][entry0: peripheral_table_entry][entry1: ...]...
-    .constant global peripheral_table: *peripheral_table_entry[*] = <unsafe *peripheral_table_entry[*]> 0x0200;
+    // We access this directly via pointer arithmetic since it's a hardware-defined layout.
+    .constant global peripheral_table_base: * byte = <unsafe * byte>0x0200;
+    .constant global peripheral_table_data: * peripheral_table_entry = <unsafe * peripheral_table_entry>0x0201;
 
     //
     // Hardware timer.
@@ -97,10 +99,14 @@ namespace kernel {
     ];
 
     // Find and initialize the peripheral.
+    // Uses unsafe pointer indexing because the peripheral table
+    // is a hardware-defined memory layout.
     function init_peripheral(entry: init_table_entry): void {
-      for(var i = 0; i < len *peripheral_table; i = i + 1){
-        if(peripheral_table->[i].identifier == entry.identifier){
-          (entry.init)(&peripheral_table->[i]);
+      var count = *peripheral_table_base;
+      for (var i: byte = 0; i < count; i = i + 1) {
+        var p = &peripheral_table_data[unsafe i];
+        if (p->identifier == entry.identifier) {
+          (entry.init)(p);
           return;
         }
       }

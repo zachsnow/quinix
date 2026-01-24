@@ -54,7 +54,8 @@ namespace kernel {
       var task = scheduler::create_task();
       task->state.ip = executable_base;
       // Stack is page index 2: set stack pointer to top of stack
-      task->state.registers[63] = (*table)[2].physical_address + (*table)[2].size;
+      var stack_page = memory::table_page(table, 2);
+      task->state.registers[63] = stack_page->physical_address + stack_page->size;
       // Set the task's page table for context switching
       task->table = table;
 
@@ -70,7 +71,8 @@ namespace kernel {
       std::vector::add(&processes, process);
 
       // Copy the binary into memory (page index 0 is the executable section).
-      var dest = <unsafe * byte>(<byte>(*table)[0].physical_address);
+      var exec_page = memory::table_page(table, 0);
+      var dest = <unsafe * byte>(<byte>exec_page->physical_address);
       var src = &binary[0];
       for(var i = 0; i < len binary; i = i + 1){
         dest[unsafe i] = src[unsafe i];
