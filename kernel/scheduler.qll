@@ -13,6 +13,7 @@ namespace kernel {
 
     function _restore_current_task(): void {
       log('scheduler: restoring state');
+      log('scheduler: task ip');
       *interrupts::state = current_task->state;
       log('scheduler: using table');
       memory::use_table(current_task->table);
