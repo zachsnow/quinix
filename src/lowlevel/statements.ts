@@ -135,12 +135,6 @@ class VarStatement extends Statement {
     if (this.type) {
       this.type.kindcheck(context, new KindChecker());
       this.inferredType = this.type.evaluate();
-
-      // Runtime-sized arrays (T[*]) cannot be stack-allocated - they can only exist behind a pointer.
-      const resolved = this.inferredType.resolve();
-      if (resolved instanceof ArrayType && resolved.isRuntimeSized) {
-        this.error(context, `cannot declare variable of runtime-sized array type ${this.inferredType}; use pointer (* ${this.inferredType}) instead`);
-      }
     }
 
     // Check that the expression has the same type as the variable we are defining.
@@ -181,16 +175,6 @@ class VarStatement extends Statement {
         new ConstantDirective(r, new ImmediateConstant(0)),
       ]);
       compiler.emitStaticStore(vr, r, this.inferredType.size, 'zero out');
-
-      // Initialize length header for sized arrays.
-      // (Runtime-sized arrays T[*] are rejected in typecheck, so this is always sized.)
-      if (this.inferredType instanceof ArrayType) {
-        // Array layout: [length][data...]
-        compiler.emit([
-          new ConstantDirective(r, new ImmediateConstant(this.inferredType.length as number)).comment('array length'),
-        ]);
-        compiler.emitStaticStore(vr, r, 1, 'initialize array length');
-      }
 
       compiler.deallocateRegister(vr);
       compiler.deallocateRegister(r);

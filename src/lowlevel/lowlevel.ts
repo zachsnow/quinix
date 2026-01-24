@@ -251,12 +251,6 @@ class GlobalDeclaration extends BaseValueDeclaration {
 
   public kindcheck(context: TypeChecker) {
     this.type.kindcheck(context, new KindChecker());
-
-    // Runtime-sized arrays (T[*]) cannot be allocated statically - they can only exist behind a pointer.
-    const resolved = this.type.resolve();
-    if (resolved instanceof ArrayType && resolved.isRuntimeSized) {
-      this.error(context, `cannot declare global of runtime-sized array type ${this.type}; use pointer (* ${this.type}) instead`);
-    }
   }
 
   public typecheck(context: TypeChecker) {
@@ -446,14 +440,6 @@ class FunctionDeclaration extends BaseValueDeclaration {
     }));
     if (duplicateParameters.length) {
       this.error(context, `duplicate parameters ${duplicateParameters.join(', ')}`);
-    }
-
-    // Check that no parameters are runtime-sized arrays (they can only exist behind a pointer).
-    for (const parameter of this.parameters) {
-      const resolved = parameter.type.resolve();
-      if (resolved instanceof ArrayType && resolved.isRuntimeSized) {
-        this.error(context, `cannot have parameter of runtime-sized array type ${parameter.type}; use pointer (* ${parameter.type}) instead`);
-      }
     }
   }
 
