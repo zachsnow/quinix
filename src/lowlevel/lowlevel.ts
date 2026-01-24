@@ -347,7 +347,7 @@ class GlobalDeclaration extends BaseValueDeclaration {
     const cGlobalType = this.type.resolve();
     const cExprType = this.expression.concreteType.resolve();
     if (cGlobalType instanceof SliceType && cExprType instanceof ArrayType) {
-      const sliceReg = compiler.emitArrayToSlice(sr);
+      const sliceReg = compiler.emitArrayToSlice(sr, cExprType.length);
       compiler.emitStaticCopy(dr, sliceReg, 3, 'copy slice descriptor');
       compiler.deallocateRegister(sliceReg);
     }

@@ -2035,11 +2035,11 @@ class IndexExpression extends SuffixExpression {
     }
 
     // If the expression is an array or slice, we should insert bounds checks.
-    // Array layout: [length][data...] - length at offset 0
+    // Array layout: [elem0][elem1]... - length is compile-time constant
     // Slice layout: [pointer][length][capacity] - length at offset 1
     const exprType = this.expression.concreteType.resolve();
     if (exprType instanceof ArrayType && !this.unsafe) {
-      compiler.emitBoundsCheck(er, ir, 0);
+      compiler.emitStaticBoundsCheck(ir, exprType.length);
     }
     else if (exprType instanceof SliceType && !this.unsafe) {
       compiler.emitBoundsCheck(er, ir, 1);
@@ -2057,12 +2057,9 @@ class IndexExpression extends SuffixExpression {
       compiler.deallocateRegister(sr);
     }
 
-    // For arrays: skip the length header (1 word) to get to data.
-    // For slices: load the pointer (first word) which points directly to data.
-    if (exprType instanceof ArrayType) {
-      compiler.emitIncrement(er, 1, 'array data start');
-    }
-    else if (exprType instanceof SliceType) {
+    // For arrays: data starts at offset 0 (no length header).
+    // For slices: load the pointer (first word) which points to data.
+    if (exprType instanceof SliceType) {
       compiler.emit([
         new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment('slice data pointer'),
       ]);

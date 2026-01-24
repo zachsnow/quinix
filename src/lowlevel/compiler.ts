@@ -754,6 +754,35 @@ class Compiler {
   }
 
   /**
+   * Emits a bounds check against a compile-time constant length.
+   * Used for fixed-size arrays where the length is known at compile time.
+   *
+   * @param ir the register holding the index, in elements.
+   * @param length the compile-time length of the array.
+   */
+  public emitStaticBoundsCheck(ir: Register, length: number): void {
+    const sr = this.allocateRegister();
+    const er = this.allocateRegister();
+    const endRef = this.generateReference('bounds_check_end');
+
+    // VM comparison ops return 0 for true, 1 for false (inverted from C semantics)
+    // LT(index, length) returns 0 if index < length
+    // JZ jumps if condition is 0, so it jumps when index < length (skip bounds error)
+    this.emit([
+      new ConstantDirective(sr, new ImmediateConstant(length)).comment(`array length ${length}`),
+      new InstructionDirective(Instruction.createOperation(Operation.LT, sr, ir, sr)),
+      new ConstantDirective(er, new ReferenceConstant(endRef)),
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, sr, er)),
+      new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.BOUNDS_ERROR)).comment('bounds error'),
+      new InstructionDirective(Instruction.createOperation(Operation.HALT)),
+      new LabelDirective(endRef),
+    ]);
+
+    this.deallocateRegister(er);
+    this.deallocateRegister(sr);
+  }
+
+  /**
    * Emits a check that the new length for an array fits within
    * the array's capacity.
    *
@@ -805,9 +834,10 @@ abstract class StorageCompiler extends Compiler {
    * Slice layout: [pointer][length][capacity]
    *
    * @param arrayReg Register containing the array address. Deallocated after use.
+   * @param length The compile-time length of the array.
    * @returns Register containing the address of a new slice descriptor.
    */
-  public emitArrayToSlice(arrayReg: Register): Register {
+  public emitArrayToSlice(arrayReg: Register, length: number): Register {
     // Allocate temporary storage for slice descriptor (3 words).
     const tempId = this.generateIdentifier('slice_temp');
     this.allocateStorage(tempId, 3);
@@ -815,22 +845,13 @@ abstract class StorageCompiler extends Compiler {
     const sliceReg = this.allocateRegister();
     this.emitIdentifier(tempId, 'local', sliceReg, false);
 
-    // Store pointer: array address + 1 (skip length header).
-    const ptrReg = this.allocateRegister();
-    this.emit([
-      new InstructionDirective(
-        Instruction.createOperation(Operation.ADD, ptrReg, arrayReg, Compiler.ONE)
-      ).comment('slice.pointer = array + 1'),
-    ]);
-    this.emitStaticStore(sliceReg, ptrReg, 1, 'slice.pointer');
-    this.deallocateRegister(ptrReg);
+    // Store pointer: array address directly (no length header).
+    this.emitStaticStore(sliceReg, arrayReg, 1, 'slice.pointer');
 
-    // Load array length and store as slice length and capacity.
+    // Use compile-time length for slice length and capacity.
     const lenReg = this.allocateRegister();
     this.emit([
-      new InstructionDirective(
-        Instruction.createOperation(Operation.LOAD, lenReg, arrayReg)
-      ).comment('load array length'),
+      new ConstantDirective(lenReg, new ImmediateConstant(length)).comment(`array length ${length}`),
     ]);
 
     this.emitIncrement(sliceReg, 1);
@@ -850,16 +871,13 @@ abstract class StorageCompiler extends Compiler {
 
   /**
    * Emits code to convert a pointer to an array to a slice descriptor.
-   * The pointer already points to the array structure [length][data...], so we
-   * can convert it directly to a slice without dereferencing.
    *
-   * @param ptrReg Register containing pointer to array (points to length header).
+   * @param ptrReg Register containing pointer to array.
+   * @param length The compile-time length of the array.
    * @returns Register containing the address of a new slice descriptor.
    */
-  public emitPointerToArrayToSlice(ptrReg: Register): Register {
-    // The pointer already points to the array structure [length][data...].
-    // We can convert it directly to a slice descriptor.
-    return this.emitArrayToSlice(ptrReg);
+  public emitPointerToArrayToSlice(ptrReg: Register, length: number): Register {
+    return this.emitArrayToSlice(ptrReg, length);
   }
 
   /**
@@ -882,14 +900,14 @@ abstract class StorageCompiler extends Compiler {
 
     // T[N] → T[] (array to slice)
     if (cDest instanceof SliceType && cSource instanceof ArrayType) {
-      return this.emitArrayToSlice(sourceReg);
+      return this.emitArrayToSlice(sourceReg, cSource.length);
     }
 
     // * T[N] → T[] (pointer to array to slice)
     if (cDest instanceof SliceType && cSource instanceof PointerType) {
       const deref = cSource.dereference().resolve();
       if (deref instanceof ArrayType) {
-        return this.emitPointerToArrayToSlice(sourceReg);
+        return this.emitPointerToArrayToSlice(sourceReg, deref.length);
       }
     }
 
