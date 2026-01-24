@@ -522,7 +522,7 @@ writeOnce(TemplateInstantiationType, 'instantiatedType', true);
 
 type Suffix = {
   identifier?: string;
-  size?: number | 'runtime';  // 'runtime' for T[*] syntax
+  size?: number;
   range: IFileRange;
   text: string;
   options?: IParseOptions
@@ -533,10 +533,6 @@ class SuffixType {
     return suffixes.reduce((type, suffix) => {
       if (suffix.identifier !== undefined) {
         return new DotType(type, suffix.identifier).at(suffix.range, suffix.text, suffix.options);
-      }
-      else if (suffix.size === 'runtime') {
-        // T[*] - runtime-sized array with unknown compile-time length
-        return new ArrayType(type, undefined).at(suffix.range, suffix.text, suffix.options);
       }
       else if (suffix.size !== undefined) {
         return new ArrayType(type, suffix.size).at(suffix.range, suffix.text, suffix.options);

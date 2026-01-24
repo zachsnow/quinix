@@ -24,9 +24,6 @@ PostfixTypeSuffix
     = _ "." _ id:Identifier {
         return { identifier: id, range: location(), text: text(), options };
     }
-    / _ "[" _ "*" _ "]" {
-        return { size: 'runtime', range: location(), text: text(), options };
-    }
     / _ "[" _ i:IntLiteral? _ "]" {
         return { size: i !== null ? i : undefined, range: location(), text: text(), options };
     }
