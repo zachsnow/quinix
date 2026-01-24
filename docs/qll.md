@@ -79,24 +79,24 @@ The slice descriptor is separate from the data it references. The data may be on
 
 ## Passing Semantics
 
-QLL uses **pass-by-value** for all types. The distinction is what "value" means:
+QLL uses **pass-by-value** for all types. All arguments are passed on the stack (cdecl-style).
 
 ### Integral Types (size = 1)
 
-Passed directly in registers:
+Pushed as a single word:
 - `byte`, `bool`
 - Pointers (`* T`)
 - Single-word structs
 
 ```qll
 function increment(x: byte): byte {
-  return x + 1;  // x is a copy
+  return x + 1;  // x is a copy on the stack
 }
 ```
 
 ### Non-Integral Types (size > 1)
 
-Passed by copying onto the stack:
+Copied onto the stack as multiple words:
 - Multi-word structs
 - Fixed-size arrays
 - Slices (3 words)
@@ -316,6 +316,15 @@ var f: feet = <feet>m;  // explicit cast required
 
 ## Calling Convention
 
+### Argument Passing
+
+All arguments are passed on the stack, pushed right-to-left (first argument at lowest address). Arguments are computed into registers, then pushed before the call. The callee reads arguments from the stack.
+
+### Return Values
+
+- **Integral types (size = 1)**: Returned in register R0
+- **Non-integral types (size > 1)**: Caller allocates storage and passes a pointer as a hidden first argument; callee writes to this address
+
 ### Stack Frame Layout
 
 ```
@@ -344,14 +353,14 @@ stack frame address : address of return address on stack
 For functions returning multi-word values, a destination pointer is passed as the first argument:
 
 ```
-return destination  : pointer to caller-allocated storage for return value
+$return             : pointer to caller-allocated storage for return value
 argument 1          : the first function argument
 ...
 argument n          : the last function argument
 ...
 ```
 
-The function writes the return value to the destination pointer before returning.
+The callee writes the return value to `$return` before returning. The caller then reads from its allocated storage.
 
 ## Pointer Syntax
 
