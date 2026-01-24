@@ -310,7 +310,7 @@ type LiteralExpression = {
   expression?: Expression;
 }
 
-function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpressions: readonly LiteralExpression[], length?: number): Register {
+function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpressions: readonly LiteralExpression[]): Register {
   // We can only compile non-integral literals when our compiler supports storage.
   if (!(compiler instanceof StorageCompiler)) {
     throw new InternalError(`expected storage when compiling literal expression`);
@@ -318,9 +318,8 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
 
   const identifier = compiler.generateIdentifier(hint);
 
-  // Allocate local storage; include 1 word for length header if length is specified.
-  // New layout: [length][data...]
-  let bytes = length === undefined ? 0 : 1;
+  // Allocate local storage for the data (no length header).
+  let bytes = 0;
   literalExpressions.forEach((literalExpression) => {
     bytes += literalExpression.type.size;
   });
@@ -331,17 +330,6 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
 
   compiler.emitIdentifier(identifier, 'local', r, false);
   compiler.emitMove(ri, r, 'initialize destination pointer');
-
-  // Emit the length header if specified.
-  if (length !== undefined) {
-    const sr = compiler.allocateRegister();
-    compiler.emit([
-      new ConstantDirective(sr, new ImmediateConstant(length)).comment(`length ${length}`),
-    ]);
-    compiler.emitStaticStore(ri, sr, 1, `store length`);
-    compiler.emitIncrement(ri, 1, 'array[0]');
-    compiler.deallocateRegister(sr);
-  }
 
   // Evaluate each value (if there is one) and store it in the data.
   literalExpressions.forEach((literalExpression, i) => {
@@ -400,7 +388,7 @@ class StringLiteralExpression extends Expression {
         type: Type.Byte,
       };
     });
-    return compileLiteralExpressions('string_literal', compiler, expressions, this.length);
+    return compileLiteralExpressions('string_literal', compiler, expressions);
   }
 
   public get length(): number {
@@ -484,7 +472,7 @@ class ArrayLiteralExpression extends Expression {
         type,
       }
     });
-    return compileLiteralExpressions('array_literal', compiler, expressions, expressions.length);
+    return compileLiteralExpressions('array_literal', compiler, expressions);
   }
 
   public toString() {
