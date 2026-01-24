@@ -53,9 +53,10 @@ namespace kernel {
       // the QLLC stack pointer, which initialize to the top of the stack.
       var task = scheduler::create_task();
       task->state.ip = executable_base;
-      // Stack is page index 2: set stack pointer to top of stack
-      var stack_page = memory::table_page(table, 2);
-      task->state.registers[63] = stack_page->physical_address + stack_page->size;
+      // Stack pointer uses virtual address (must match create_table's layout)
+      var heap_base = executable_base + executable_size + 0x1000;
+      var stack_base = heap_base + heap_size + 0x1000;
+      task->state.registers[63] = stack_base + stack_size;
       // Set the task's page table for context switching
       task->table = table;
 
