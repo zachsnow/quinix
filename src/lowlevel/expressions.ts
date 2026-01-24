@@ -913,31 +913,21 @@ class NewArrayExpression extends Expression {
       }
     }
 
-    // `new T[N]` returns a pointer to the heap-allocated array T[N].
-    // `new T[n]` (variable) returns a pointer to a runtime-sized array T[*].
-    // This allows proper null checking and is consistent with `new` for other types.
-    // When needed, automatic conversion from `* T[N]` to `T[]` (slice) happens
-    // at assignment, call arguments, and return statements.
-
-    // Construct the array type from the element type and computed size.
-    let arrayLength: number | undefined;
-    if (this.size instanceof IntLiteralExpression) {
-      arrayLength = this.size.immediate;
-    }
-    else {
-      // For dynamic sizes, use undefined to indicate runtime-sized array (T[*]).
-      arrayLength = undefined;
-    }
-
-    const arrayType = new ArrayType(this.elementType, arrayLength);
-    return new PointerType(arrayType);
+    // `new T[n]` returns a slice T[] pointing to heap-allocated memory.
+    // The slice carries the runtime length, which is essential when n is not a constant.
+    return new SliceType(this.elementType);
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
+    // We need StorageCompiler to allocate the slice descriptor on stack.
+    if (!(compiler instanceof StorageCompiler)) {
+      throw new InternalError(`new[] requires StorageCompiler`);
+    }
+
     // Compute the count (number of elements).
     const cr = this.size.compile(compiler); // Count.
 
-    // Compute heap allocation size: (count * element_size) + 1 for the length header.
+    // Compute heap allocation size: count * element_size (no length header).
     const sr = compiler.allocateRegister(); // Storage size in words.
     if (this.elementType.size > 1) {
       const mr = compiler.allocateRegister();
@@ -951,44 +941,37 @@ class NewArrayExpression extends Expression {
       compiler.emitMove(sr, cr, 'new[]: data size');
     }
 
-    // Add 1 for the length header.
-    const tsr = compiler.allocateRegister();
-    compiler.emitMove(tsr, sr);
-    compiler.emitIncrement(tsr, 1, 'new[]: add length header');
+    // Allocate the heap storage.
+    const hr = compiler.emitNew(sr, 'new[]');
 
-    // Allocate the heap storage; this deallocates `tsr`.
-    // Heap layout: [length][data...]
-    const hr = compiler.emitNew(tsr, 'new[]');
+    // Allocate stack storage for the slice descriptor (3 words: pointer, length, capacity).
+    const sliceId = compiler.generateIdentifier('new_slice');
+    compiler.allocateStorage(sliceId, 3);
+    const sliceR = compiler.allocateRegister();
+    compiler.emitIdentifier(sliceId, 'local', sliceR, false);
 
-    // Handle allocation failure: if hr is null, skip initialization and return null.
+    // Handle allocation failure: if hr is null, create a null slice.
     const endRef = compiler.generateReference('new_end');
     const initRef = compiler.generateReference('new_init');
     const endR = compiler.allocateRegister();
     const initR = compiler.allocateRegister();
+    const zeroR = compiler.allocateRegister();
     compiler.emit([
+      new ConstantDirective(zeroR, new ImmediateConstant(0)),
       new ConstantDirective(endR, new ReferenceConstant(endRef)),
       new ConstantDirective(initR, new ReferenceConstant(initRef)),
       new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, hr, initR)),
-      // Allocation failed: jump to end (hr is already null).
+      // Allocation failed: create null slice (all zeros).
+    ]);
+    compiler.emitStaticStore(sliceR, zeroR, 3, 'null slice');
+    compiler.emit([
       new InstructionDirective(Instruction.createOperation(Operation.JMP, undefined, endR)),
       new LabelDirective(initRef),
     ]);
     compiler.deallocateRegister(endR);
     compiler.deallocateRegister(initR);
 
-    // Initialize heap: set length header.
-    compiler.emitStaticStore(hr, cr, 1, 'heap.length');
-
-    // Data pointer is heap address + 1 (after length header).
-    const dataR = compiler.allocateRegister();
-    compiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, dataR, hr, Compiler.ONE)).comment('data pointer'),
-    ]);
-
-    // Now initialize the data.
-    const adr = dataR; // Use dataR as address for initialization.
-
-    // Write to destination.
+    // Initialize the data.
     let er;
     let isZero = false;
     if (this.expression) {
@@ -1005,63 +988,41 @@ class NewArrayExpression extends Expression {
     // Ellipsis means we are using the value represented by `er` multiple times.
     if (this.ellipsis || isZero) {
       if (this.elementType.integral || isZero) {
-        compiler.emitDynamicStore(adr, er, sr, 'new[]: zero initialize');
+        compiler.emitDynamicStore(hr, er, sr, 'new[]: zero initialize');
       }
       else {
-        this.compileStructuralEllipsis(compiler, adr, er, cr);
+        this.compileStructuralEllipsis(compiler, hr, er, cr);
       }
-
-      compiler.deallocateRegister(sr);
-      compiler.deallocateRegister(adr);
       compiler.deallocateRegister(er);
-      compiler.deallocateRegister(cr);
-
-      compiler.emit([
-        new LabelDirective(endRef),
-      ]);
-
-      // Return pointer to the heap array.
-      return hr;
+    }
+    else {
+      // `er` is a pointer to an array (source for initialization).
+      // Array layout: [elem0][elem1]... (no length header)
+      // Copy sr bytes from source to destination.
+      compiler.emitDynamicCopy(hr, er, sr, 'new[]: initialize');
+      compiler.deallocateRegister(er);
     }
 
-    // `er` is a pointer to an array (source for initialization).
-    const esr = compiler.allocateRegister(); // Size of expression in bytes.
-    const tr = compiler.allocateRegister(); // Temporary.
-
-    // First load the size of the expression array in *elements*.
-    // Array layout: [length][data...] - length at offset 0
-    compiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.LOAD, esr, er)).comment('new[]: source length'),
-    ]);
-
-    // Then multiply by element size if necessary to find the number of bytes to copy.
-    if (this.elementType.size > 1) {
-      compiler.emit([
-        new ConstantDirective(tr, new ImmediateConstant(this.elementType.size)).comment('new[]: source element size'),
-        new InstructionDirective(Instruction.createOperation(Operation.MUL, esr, esr, tr)).comment('new[]: source all elements size'),
-      ]);
-    }
-
-    // Find the beginning of the source array data.
-    // Array layout: [length][data...] - data starts at offset 1
-    compiler.emitIncrement(er, 1, 'new[]: source data');
-
-    compiler.emitDynamicCopy(adr, er, sr, 'new[]: initialize');
+    // Build the slice descriptor: [pointer][length][capacity]
+    compiler.emitStaticStore(sliceR, hr, 1, 'slice.pointer');
+    compiler.emitIncrement(sliceR, 1);
+    compiler.emitStaticStore(sliceR, cr, 1, 'slice.length');
+    compiler.emitIncrement(sliceR, 1);
+    compiler.emitStaticStore(sliceR, cr, 1, 'slice.capacity');
 
     compiler.deallocateRegister(sr);
-    compiler.deallocateRegister(adr);
-    compiler.deallocateRegister(er);
-    compiler.deallocateRegister(esr);
-    compiler.deallocateRegister(tr);
+    compiler.deallocateRegister(hr);
     compiler.deallocateRegister(cr);
+    compiler.deallocateRegister(zeroR);
 
-    // End, so we can jump here if memory allocation fails.
+    // End label for allocation failure jump.
     compiler.emit([
       new LabelDirective(endRef),
     ]);
 
-    // Return pointer to the heap array.
-    return hr;
+    // Return the address of the slice descriptor.
+    compiler.emitIdentifier(sliceId, 'local', sliceR, false);
+    return sliceR;
   }
 
   private compileStructuralEllipsis(compiler: Compiler, dr: Register, er: Register, cr: Register): void {
