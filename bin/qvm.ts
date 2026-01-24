@@ -15,7 +15,7 @@ import {
   DebugOutputPeripheral,
 } from "@server/peripherals";
 import { TimerPeripheral } from "@/vm/peripherals";
-import { Breakpoint, VM } from "@/vm/vm";
+import { Breakpoint, VM, Watchpoint } from "@/vm/vm";
 
 const log = logger("qvm");
 
@@ -28,6 +28,8 @@ interface Options {
   size?: string;
   break: string;
   "break-write": string;
+  watchpoint: string;
+  "trace-interrupts": boolean;
   stats: boolean;
 }
 
@@ -59,6 +61,18 @@ const argv = parseArguments<Options>(
         type: "string",
         default: "",
       },
+      watchpoint: {
+        alias: "W",
+        describe: "watch physical address range for writes (e.g. 0x2-0x43)",
+        type: "string",
+        default: "",
+      },
+      "trace-interrupts": {
+        alias: "t",
+        describe: "trace interrupt store/restore operations",
+        type: "boolean",
+        default: false,
+      },
       stats: {
         alias: "s",
         describe: "display statistics",
@@ -89,6 +103,19 @@ if (argv["break-write"]) {
   });
 }
 
+const watchpoints: Watchpoint[] = [];
+if (argv.watchpoint) {
+  // Parse range format: 0x2-0x43
+  const parts = argv.watchpoint.split("-");
+  const low = Address.parse(parts[0]);
+  const high = parts.length > 1 ? Address.parse(parts[1]) : low + 1;
+  watchpoints.push({
+    low,
+    high,
+    type: "write",
+  });
+}
+
 ///////////////////////////////////////////////////////////////////////
 
 // 1. Load file as binary, if passed. Otherwise just loads `halt`.
@@ -113,6 +140,8 @@ log.debug(`decoded program:\n${program}\n`);
 const vm = new VM({
   debug: argv.verbose,
   breakpoints: breakpoints,
+  watchpoints: watchpoints,
+  traceInterrupts: argv["trace-interrupts"],
   cycles: argv.cycles ? parseInt(argv.cycles, 10) : undefined,
   size: argv.size ? parseInt(argv.size, 10) : undefined,
   debuggerFactory: (vm, state, memory) => {

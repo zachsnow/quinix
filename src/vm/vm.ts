@@ -98,6 +98,15 @@ type Breakpoint = {
   type: BreakpointType;
 };
 
+type WatchpointType = "read" | "write" | "all";
+type WatchpointCallback = (address: Address, value: number, oldValue: number) => void;
+type Watchpoint = {
+  low: Address;      // Start of physical address range (inclusive)
+  high: Address;     // End of range (exclusive)
+  type: WatchpointType;
+  callback?: WatchpointCallback;
+};
+
 /**
  * Interface for an interactive debugger.
  */
@@ -117,6 +126,8 @@ type VMOptions = {
   debug?: boolean;
   mmu?: MMU;
   breakpoints?: Breakpoint[];
+  watchpoints?: Watchpoint[];
+  traceInterrupts?: boolean;
   cycles?: number;
   debuggerFactory?: DebuggerFactory;
 };
@@ -204,6 +215,12 @@ class VM {
   private debugger?: IDebugger;
   private debuggerFactory?: DebuggerFactory;
 
+  // Watchpoints (physical address ranges).
+  private watchpoints: Watchpoint[] = [];
+
+  // Interrupt tracing.
+  private traceInterrupts: boolean = false;
+
   public constructor(options?: VMOptions) {
     options = options || {};
 
@@ -230,6 +247,12 @@ class VM {
     (options.breakpoints || []).forEach((breakpoint) => {
       this.breakpointAddresses[breakpoint.address] = breakpoint;
     });
+
+    // Watchpoints (physical address ranges).
+    this.watchpoints = options.watchpoints || [];
+
+    // Interrupt tracing.
+    this.traceInterrupts = options.traceInterrupts || false;
 
     this.maxCycles = options.cycles;
   }
@@ -435,6 +458,34 @@ class VM {
   }
 
   /**
+   * Add a breakpoint at runtime.
+   */
+  public addBreakpoint(breakpoint: Breakpoint): void {
+    this.breakpointAddresses[breakpoint.address] = breakpoint;
+  }
+
+  /**
+   * Remove a breakpoint at runtime.
+   */
+  public removeBreakpoint(address: Address): void {
+    delete this.breakpointAddresses[address];
+  }
+
+  /**
+   * Add a watchpoint at runtime.
+   */
+  public addWatchpoint(watchpoint: Watchpoint): void {
+    this.watchpoints.push(watchpoint);
+  }
+
+  /**
+   * Clear all watchpoints.
+   */
+  public clearWatchpoints(): void {
+    this.watchpoints = [];
+  }
+
+  /**
    * Kill the machine.
    */
   public kill(): void {
@@ -570,6 +621,12 @@ class VM {
   }
 
   private interruptStore(): void {
+    if (this.traceInterrupts) {
+      console.log(`[INT-STORE] Saving registers to 0x${this.INTERRUPT_TABLE_REGISTERS_ADDR.toString(16)}`);
+      console.log(`  IP: ${Immediate.toString(this.state.registers[Register.IP])}`);
+      console.log(`  SP (r63): ${Immediate.toString(this.state.registers[63])}`);
+    }
+
     // Store each register in the register location.
     const base = this.INTERRUPT_TABLE_REGISTERS_ADDR;
     for (var i = 0; i < this.state.registers.length; i++) {
@@ -578,6 +635,14 @@ class VM {
   }
 
   private interruptRestore(): void {
+    if (this.traceInterrupts) {
+      const storedIP = this.memory[this.INTERRUPT_TABLE_REGISTERS_ADDR + Register.IP];
+      const storedSP = this.memory[this.INTERRUPT_TABLE_REGISTERS_ADDR + 63];
+      console.log(`[INT-RESTORE] Loading registers from 0x${this.INTERRUPT_TABLE_REGISTERS_ADDR.toString(16)}`);
+      console.log(`  Stored IP: ${Immediate.toString(storedIP)}`);
+      console.log(`  Stored SP: ${Immediate.toString(storedSP)}`);
+    }
+
     // Read each register in the register location.
     const base = this.INTERRUPT_TABLE_REGISTERS_ADDR;
     for (var i = 0; i < this.state.registers.length; i++) {
@@ -836,6 +901,19 @@ class VM {
 
           const value = memory[physicalAddress];
           registers[decoded.dr!] = value;
+
+          // Check watchpoints (physical address).
+          for (const wp of this.watchpoints) {
+            if (physicalAddress >= wp.low && physicalAddress < wp.high) {
+              if (wp.type === "read" || wp.type === "all") {
+                if (wp.callback) {
+                  wp.callback(physicalAddress, value, value);
+                } else {
+                  console.log(`[WATCH] read ${Address.toString(physicalAddress)}: ${Immediate.toString(value)}`);
+                }
+              }
+            }
+          }
           break;
         }
         case Operation.STORE: {
@@ -871,8 +949,22 @@ class VM {
             return "continue";
           }
 
+          const oldValue = memory[physicalAddress];
           const value = registers[decoded.sr0!];
           memory[physicalAddress] = value;
+
+          // Check watchpoints (physical address).
+          for (const wp of this.watchpoints) {
+            if (physicalAddress >= wp.low && physicalAddress < wp.high) {
+              if (wp.type === "write" || wp.type === "all") {
+                if (wp.callback) {
+                  wp.callback(physicalAddress, value, oldValue);
+                } else {
+                  console.log(`[WATCH] write ${Address.toString(physicalAddress)}: ${Immediate.toString(oldValue)} -> ${Immediate.toString(value)}`);
+                }
+              }
+            }
+          }
 
           // Check peripheral mapping for a method.
           const peripheralMapping = peripheralAddresses[physicalAddress];
@@ -1029,6 +1121,6 @@ class VM {
 export { State, VM };
 export type {
   Breakpoint, DebuggerFactory, IDebugger, Interrupt, VMResult,
-  VMStepResult
+  VMStepResult, Watchpoint, WatchpointCallback, WatchpointType
 };
 

@@ -67,6 +67,8 @@ class Debugger {
       ["quit", this.quit],
       ["registers", this.registers],
       ["step", this.step],
+      ["unwatch", this.unwatch],
+      ["watch", this.watch],
       ["where", this.where],
     ];
 
@@ -330,6 +332,36 @@ class Debugger {
         )}: ${Immediate.toString(data)}`
       );
     });
+    return;
+  }
+
+  private async watch(low: string, high?: string): Promise<CommandHandlerResult> {
+    // help: watch <low> [high] -- watch physical address range for writes.
+    if (!low) {
+      this.error("usage: watch <low> [high]");
+      return;
+    }
+
+    const lowAddr = Immediate.parse(low);
+    const highAddr = high ? Immediate.parse(high) : lowAddr + 1;
+    if (isNaN(lowAddr) || isNaN(highAddr)) {
+      this.error("invalid address");
+      return;
+    }
+
+    this.vm.addWatchpoint({
+      low: lowAddr,
+      high: highAddr,
+      type: "write"
+    });
+    this.write(`Watching ${Immediate.toString(lowAddr)} - ${Immediate.toString(highAddr)}`);
+    return;
+  }
+
+  private async unwatch(): Promise<CommandHandlerResult> {
+    // help: unwatch -- clear all watchpoints.
+    this.vm.clearWatchpoints();
+    this.write("Watchpoints cleared");
     return;
   }
 
