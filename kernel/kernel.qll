@@ -21,6 +21,8 @@ namespace kernel {
       ip: byte;
     };
 
+    // Point to 0x2 so that registers[0] maps to address 0x2 where VM stores r0.
+    // The struct copy doesn't include array length prefix, just the data.
     global state: * state = <unsafe * state>0x2;
 
   }

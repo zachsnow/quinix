@@ -43,11 +43,13 @@ namespace lib {
   }
 
   function read(handle: handle, buffer: string): error {
-    return <error>support::syscall2(support::READ_SYSCALL, <byte>handle, <unsafe byte>buffer);
+    // Pass address of the slice structure, not just the data pointer
+    return <error>support::syscall2(support::READ_SYSCALL, <byte>handle, <unsafe byte>&buffer);
   }
 
   function write(handle: handle, data: string): error {
-    return <error>support::syscall2(support::WRITE_SYSCALL, <byte>handle, <unsafe byte>data);
+    // Pass address of the slice structure, not just the data pointer
+    return <error>support::syscall2(support::WRITE_SYSCALL, <byte>handle, <unsafe byte>&data);
   }
 
   function input(buffer: string): error {

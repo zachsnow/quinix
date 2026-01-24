@@ -19,8 +19,6 @@ namespace kernel {
     // This function will be called by the timer interrupt handler.
     // Its argument will be a pointer to the current values of all registers.
     function _schedule_task(state: * interrupts::state): void {
-      log('scheduler: scheduling...');
-
       // Invalid state.
       if(!current_task || !tasks){
         panic('scheduler: no tasks!');
@@ -28,7 +26,6 @@ namespace kernel {
 
       // Already running the only task.
       if(tasks == current_task && !current_task->next){
-        log('scheduler: already running only task');
         return;
       }
 
@@ -36,9 +33,22 @@ namespace kernel {
       current_task->state = *state;
 
       // Schedule the next task; loop around to the beginning.
+      // Skip task 0 (kernel) since it has no page table and can't run with MMU.
       current_task = current_task->next;
       if(!current_task){
         current_task = tasks;
+      }
+      // Skip kernel task (id 0 which has no page table)
+      if(current_task->id == 0){
+        current_task = current_task->next;
+        if(!current_task){
+          current_task = tasks;
+        }
+      }
+
+      // If we're back to task 0, no user tasks left to run
+      if(current_task->id == 0){
+        return;
       }
 
       // Restore the next task's state.
@@ -72,17 +82,22 @@ namespace kernel {
       }
 
       var destroyed_current_task = task == current_task;
-      var next_task = task->next || tasks;
 
       std::ilist::remove(&tasks, task);
       delete task;
 
-      // Now we need to schedule a different task,
-      // otherwise when we may return to the one we just
-      // destroyed if this was called in an interrupt
-      //  handler.
+      // If we destroyed the current task, switch to the head of the task list.
       if(destroyed_current_task){
-        current_task = next_task;
+        if(!tasks){
+          panic('scheduler: no tasks after destroy');
+        }
+        current_task = tasks;
+        // If we're switching to the kernel task (no page table), halt instead
+        // because the kernel can't run with MMU enabled and no valid page table.
+        if(!current_task->table){
+          log('All user tasks completed');
+          support::halt(0);
+        }
         *interrupts::state = current_task->state;
         memory::use_table(current_task->table);
       }
@@ -100,7 +115,7 @@ namespace kernel {
 
       // Configure hardware timer interrupt handler.
       support::interrupt(interrupts::TIMER, _timer_interrupt);
-      *peripherals::timer = 100;
+      *peripherals::timer = 500;  // Timer interval for preemption (ms)
     }
   }
 }

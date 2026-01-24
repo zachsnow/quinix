@@ -21,8 +21,6 @@ namespace kernel {
 
     // interrupt 0x80 handler.
     .interrupt function _syscall_interrupt(): void {
-      log('syscall: interrupt');
-
       // Arguments are passed in r0...r3.
       var sc = syscall {
         syscall = interrupts::state->registers[0],
@@ -33,7 +31,7 @@ namespace kernel {
 
       // For now if we make an invalid syscall, we just exit.
       if(sc.syscall < 0 || sc.syscall >= len syscalls){
-        log('syscall: invalid syscall');
+        log('syscall: invalid');
         _exit(sc);
         return;
       }
@@ -160,8 +158,10 @@ namespace kernel {
     }
 
     function init(): void {
+      log('syscall: initializing...');
       // Register `syscall` to handle interrupt 0x80.
       support::interrupt(interrupts::SYSCALL, _syscall_interrupt);
+      log('syscall: initialized');
     }
   }
 }

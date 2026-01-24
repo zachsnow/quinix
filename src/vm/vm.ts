@@ -239,7 +239,7 @@ class VM {
   }
 
   public fault(message: string): void {
-    log.debug(`fault: ${message}`);
+    console.log(`[FAULT] ${message}`);
 
     if (this.state.faulting) {
       throw new Error(`fault: double fault: ${message}`);

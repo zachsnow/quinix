@@ -1,5 +1,7 @@
-// Test program B - exits with code 1
+// Test program B - prints B repeatedly
 function main(): byte {
-  lib::exit(1);
+  for(var i = 0; i < 100; i = i + 1){
+    lib::print('B');
+  }
   return 0;
 }

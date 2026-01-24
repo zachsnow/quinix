@@ -39,4 +39,10 @@
   add r3 r3 r1            ; Interrupt handler entry address.
   store r3 r2             ; Update handler entry.
 
+  ; Update the interrupt count to ensure high interrupts (like syscall 0x80) are mapped.
+  ; The count must be at least as high as the highest interrupt number used.
+  constant r5 0x43        ; Count address (REGISTER_COUNT + 2).
+  constant r6 0x80        ; Ensure count >= 128 for syscalls.
+  store r5 r6             ; Update count.
+
   jmp r0                  ; Return.

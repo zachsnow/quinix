@@ -18,6 +18,7 @@ namespace kernel {
     global processes: std::vector<* process> = null;
 
     .interrupt function _error_interrupt(): void {
+      log('process: error interrupt!');
       // For now, just kill the current process.
       var process = current_process();
       destroy_process(process);
