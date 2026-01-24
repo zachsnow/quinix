@@ -31,7 +31,7 @@ namespace kernel {
       std::buffered::write(
         &peripherals::debug_output->control,
         &peripherals::debug_output->size,
-        &peripherals::debug_output->buffer[0],
+        &peripherals::debug_output->buffer[unsafe 0],
         message
       );
       return;
@@ -76,7 +76,7 @@ function _load_program(path: byte[], parent_id: byte): byte {
   if(!std::buffered::write(
     &kernel::peripherals::debug_file->control,
     &kernel::peripherals::debug_file->size,
-    &kernel::peripherals::debug_file->buffer[0],
+    &kernel::peripherals::debug_file->buffer[unsafe 0],
     path
   )){
     kernel::panic('unable to write program path');
@@ -92,7 +92,7 @@ function _load_program(path: byte[], parent_id: byte): byte {
   if(!std::buffered::read(
     &kernel::peripherals::debug_file->control,
     &kernel::peripherals::debug_file->size,
-    &kernel::peripherals::debug_file->buffer[0],
+    &kernel::peripherals::debug_file->buffer[unsafe 0],
     binary
   )){
     kernel::panic('unable to read program');
