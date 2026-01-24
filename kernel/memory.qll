@@ -105,7 +105,7 @@ namespace kernel::memory {
     // We map 3 pages: executable, heap, and stack.
     var page_count: byte = 3;
     var table_size = 1 + page_count * sizeof page;
-    var t: * table = <unsafe * table>allocate_kernel_memory(table_size);
+    var t: * table = allocate_kernel_memory(table_size);
     if (!t) {
       return null;
     }
@@ -204,7 +204,7 @@ namespace kernel::memory {
     log('memory: user pool size');
 
     // Initialize MMU peripheral
-    mmu_base_address = <unsafe * byte>kernel::peripherals::mmu;
+    mmu_base_address = kernel::peripherals::mmu;
     if (!mmu_base_address) {
       panic('memory: mmu not mapped');
     }
