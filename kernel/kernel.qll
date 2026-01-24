@@ -121,11 +121,11 @@ function main(): void {
   kernel::log('loading test programs...');
 
   // Load test program A
-  var pid_a = _load_program('tests/hello-a', 0);
+  var pid_a = _load_program('tests/hello-a.qbin', 0);
   kernel::log('loaded hello-a');
 
   // Load test program B
-  var pid_b = _load_program('tests/hello-b', 0);
+  var pid_b = _load_program('tests/hello-b.qbin', 0);
   kernel::log('loaded hello-b');
 
   kernel::log('starting scheduler...');
