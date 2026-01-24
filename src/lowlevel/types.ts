@@ -877,16 +877,9 @@ class PointerType extends Type {
 class ArrayType extends Type {
   public constructor(
     private type: Type,
-    public readonly length: number | undefined,
+    public readonly length: number,
   ) {
     super();
-  }
-
-  /**
-   * Whether this is a runtime-sized array (T[*]).
-   */
-  public get isRuntimeSized(): boolean {
-    return this.length === undefined;
   }
 
   public kindcheck(context: TypeChecker, kindchecker: KindChecker) {
@@ -902,19 +895,9 @@ class ArrayType extends Type {
 
     type = nominal ? type.evaluate() : type.resolve();
 
-    // Arrays unify with arrays of same element type.
+    // Arrays unify with arrays of same element type and length.
     if (type instanceof ArrayType) {
-      if (this.type.isUnifiableWith(type.type, nominal)) {
-        // T[n] unifies with T[n] (exact match)
-        // T[*] unifies with T[*]
-        // T[n] → T[*] is OK (converting sized to runtime-sized)
-        // T[*] → T[n] is NOT OK (would need to assert length at runtime)
-        if (this.length === undefined || type.length === undefined) {
-          // Allow if target is runtime-sized (forgetting compile-time length is safe)
-          return type.length === undefined;
-        }
-        return this.length === type.length;
-      }
+      return this.type.isUnifiableWith(type.type, nominal) && this.length === type.length;
     }
 
     // Arrays also unify with slices of the same element type (implicit conversion).
@@ -930,13 +913,8 @@ class ArrayType extends Type {
   }
 
   public get size(): number {
-    // Runtime-sized arrays have unknown compile-time size.
-    // They can only exist behind a pointer.
-    if (this.length === undefined) {
-      throw new InternalError(`cannot compute size of runtime-sized array ${this}`);
-    }
-    // Layout: [length][elem0][elem1]...[elemN-1]
-    return 1 + this.length * this.type.size;
+    // Layout: [elem0][elem1]...[elemN-1] (no length header)
+    return this.length * this.type.size;
   }
 
   public substitute(typeTable: TypeTable): Type {
@@ -947,9 +925,6 @@ class ArrayType extends Type {
   }
 
   public toString() {
-    if (this.length === undefined) {
-      return `${this.type}[*]`;
-    }
     return `${this.type}[${Immediate.toString(this.length, 1)}]`;
   }
 }
@@ -1134,11 +1109,6 @@ class StructType extends Type {
       member.type.kindcheck(context, nestedKindchecker);
       if (member.type.isConvertibleTo(Type.Void)) {
         this.error(context, `invalid void struct member`);
-      }
-      // Runtime-sized arrays (T[*]) cannot be struct members - they can only exist behind a pointer.
-      const resolved = member.type.resolve();
-      if (resolved instanceof ArrayType && resolved.isRuntimeSized) {
-        this.error(context, `cannot have struct member of runtime-sized array type ${member.type}; use pointer (* ${member.type}) instead`);
       }
     });
   }
