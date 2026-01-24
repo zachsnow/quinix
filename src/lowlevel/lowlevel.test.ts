@@ -626,6 +626,15 @@ describe('QLLC end-to-end', () => {
     return expect(run(text, includeSystem, cycles).then((n) => typeof n === 'string' ? n : Immediate.toString(n))).resolves.toBe(Immediate.toString(value));
   }
 
+  function expectCompileError(errorSubstring: string, text: string) {
+    return expect(run(text, false).then((n) => {
+      if (typeof n === 'string') {
+        return n;
+      }
+      throw new Error('expected compile error, but program ran successfully');
+    })).resolves.toContain(errorSubstring);
+  }
+
   function expectExpressionToBe(expr: string, value: number) {
     return expectRunToBe(value, `
       function main(): byte {
@@ -1438,32 +1447,14 @@ describe('QLLC end-to-end', () => {
     `);
   });
 
-  test('stack allocate array, change len', () => {
-    return expectRunToBe(5, `
+  // Fixed-size arrays no longer have a mutable length field.
+  // Assigning to `len arr` for a fixed-size array is a compile error.
+  test('stack allocate array, len is not assignable', () => {
+    return expectCompileError('expected len(ar) to be assignable', `
       function main(): byte {
         var ar: byte[10];
         len ar = 5;
         return len ar;
-      }
-    `);
-  });
-
-  test('stack allocate array, change len (capacity)', () => {
-    return expectRunToBe(10, `
-      function main(): byte {
-        var ar: byte[10];
-        len ar = 5;
-        return cap ar;
-      }
-    `);
-  });
-
-  test('stack allocate array, change len invalid', () => {
-    return expectRunToBe(Compiler.CAPACITY_ERROR, `
-      function main(): byte {
-        var ar: byte[10];
-        len ar = 20;
-        return 0;
       }
     `);
   });

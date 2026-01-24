@@ -2196,14 +2196,15 @@ class SliceExpression extends SuffixExpression {
     const er = this.expression.compile(compiler);
 
     if (exprType instanceof ArrayType) {
-      // Array layout: [length][data...]
-      // Load original length for bounds/capacity calculation.
+      // Array layout: [data...] (no length header)
+      // Use compile-time length for bounds/capacity calculation.
+      const arrayLength = exprType.length;
       const origLenR = compiler.allocateRegister();
       compiler.emit([
-        new InstructionDirective(Instruction.createOperation(Operation.LOAD, origLenR, er)).comment('array length'),
+        new ConstantDirective(origLenR, new ImmediateConstant(arrayLength)).comment(`array length ${arrayLength}`),
       ]);
 
-      // If hi is not provided, use original length.
+      // If hi is not provided, use array length.
       if (!hiR) {
         hiR = compiler.allocateRegister();
         compiler.emit([
@@ -2221,8 +2222,8 @@ class SliceExpression extends SuffixExpression {
         new InstructionDirective(Instruction.createOperation(Operation.SUB, cr, origLenR, loR)).comment('slice capacity = len - lo'),
       ]);
 
-      // Compute pointer = er + 1 + lo * stride (pointing to data[lo]).
-      compiler.emitIncrement(er, 1, 'skip array length header');
+      // Compute pointer = er + lo * stride (pointing to data[lo]).
+      // No length header to skip.
       if (this.stride > 1) {
         const sr = compiler.allocateRegister();
         compiler.emit([
