@@ -34,6 +34,12 @@ namespace kernel {
         &peripherals::debug_output->buffer[unsafe 0],
         message
       );
+      std::buffered::write(
+        &peripherals::debug_output->control,
+        &peripherals::debug_output->size,
+        &peripherals::debug_output->buffer[unsafe 0],
+        '\n'
+      );
       return;
     }
 
@@ -48,6 +54,7 @@ namespace kernel {
       var debug_output_size = <unsafe * byte>(<unsafe byte>debug_output_base + 2);
       var debug_output_buffer = <unsafe * byte>(<unsafe byte>debug_output_base + 3);
       std::buffered::write(debug_output_control, debug_output_size, debug_output_buffer, message);
+      std::buffered::write(debug_output_control, debug_output_size, debug_output_buffer, '\n');
       return;
     }
 
@@ -57,7 +64,6 @@ namespace kernel {
 
   function panic(message: byte[]): .abort void {
     log(message);
-    log('\n');
     support::halt(error::PANIC);
   }
 
@@ -112,17 +118,17 @@ function main(): void {
   kernel::support::disable_interrupts();
   kernel::init();
 
-  kernel::log('loading test programs...\n');
+  kernel::log('loading test programs...');
 
   // Load test program A
   var pid_a = _load_program('tests/hello-a', 0);
-  kernel::log('loaded hello-a\n');
+  kernel::log('loaded hello-a');
 
   // Load test program B
   var pid_b = _load_program('tests/hello-b', 0);
-  kernel::log('loaded hello-b\n');
+  kernel::log('loaded hello-b');
 
-  kernel::log('starting scheduler...\n');
+  kernel::log('starting scheduler...');
   kernel::support::enable_interrupts();
   while(true){
     kernel::support::wait();
