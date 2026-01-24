@@ -559,9 +559,7 @@ class VM {
           break;
 
         case "halt":
-          const r = this.state.registers[Register.R0];
-          log.debug(`halt: ${Immediate.toString(r)}`);
-          return r;
+          return this.state.registers[Register.R0];
       }
 
       if (this.state.killed) {
@@ -620,8 +618,6 @@ class VM {
 
       // Re-enable MMU.
       this.mmu.enable();
-
-      // We set the fault flag upon fault so that
 
       return true;
     }
@@ -798,11 +794,10 @@ class VM {
           const interrupt = registers[decoded.sr0!];
           const prepared = this.prepareInterrupt(interrupt);
           if (prepared) {
-            // Interrupt prepared. If we are waiting and we just performed an interrupt
-            // return (int 0x0), we should carry on waiting. Otherwise we want to execute the
-            // body of the interrupt, so we `continue` (to release for peripherals and then
-            // resume execution).
-            return !interrupt && this.state.waiting ? "wait" : "continue";
+            // Interrupt return always continues execution (the scheduler may have
+            // switched to a different task). Regular interrupts continue to execute
+            // the handler.
+            return "continue";
           }
         }
 

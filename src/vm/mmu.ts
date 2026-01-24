@@ -303,16 +303,19 @@ class ListPageTablePeripheral extends Peripheral implements MMU {
 
     // Not mapped.
     if (page === undefined) {
+      log.debug(`translate ${Immediate.toString(virtualAddress)}: not mapped`);
       return;
     }
 
     // Not mapped with correct flags.
     if (!(page.flags & flag)) {
+      log.debug(`translate ${Immediate.toString(virtualAddress)}: wrong flags (has ${page.flags}, need ${flag})`);
       return;
     }
 
     // Mapped with correct flags, convert to physical address.
-    return page.physicalAddress + (virtualAddress - page.virtualAddress);
+    const result = page.physicalAddress + (virtualAddress - page.virtualAddress);
+    return result;
   }
 
   public notify(address: Address): void {

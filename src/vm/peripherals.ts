@@ -146,6 +146,8 @@ abstract class BufferedPeripheral extends Peripheral {
       }
       const outputBuffer = this.outputBuffer;
       this.outputBuffer = [];
+      // Clear any pending input buffer since we're starting a new operation
+      this.inputBuffer = undefined;
       this.onWrite(outputBuffer)
         .then(() => {
           this.ready();
@@ -158,11 +160,13 @@ abstract class BufferedPeripheral extends Peripheral {
 
     if (control === this.READ) {
       this.mapping.view[this.CONTROL_ADDR] = this.PENDING;
-      if (this.inputBuffer) {
+      // If we have remaining data from a previous large read, return the next chunk
+      if (this.inputBuffer && this.inputBuffer.length > 0) {
         this.writeShared();
         this.ready();
         return;
       }
+      // Otherwise, call onRead() for fresh data
       this.onRead()
         .then((data) => {
           this.inputBuffer = data;

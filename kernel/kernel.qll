@@ -94,15 +94,34 @@ function _load_program(path: byte[], parent_id: byte): byte {
     kernel::panic('unable to allocate memory for program');
   }
 
-  // Read the file contents
-  if(!std::buffered::read(
-    &kernel::peripherals::debug_file->control,
-    &kernel::peripherals::debug_file->size,
-    &kernel::peripherals::debug_file->buffer[unsafe 0],
-    binary
-  )){
-    kernel::panic('unable to read program');
+  // Read the file contents in chunks (peripheral buffer is limited)
+  var total_read: byte = 0;
+  var capacity = kernel::peripherals::debug_file->capacity;
+  var control = &kernel::peripherals::debug_file->control;
+  var size = &kernel::peripherals::debug_file->size;
+  var buffer = &kernel::peripherals::debug_file->buffer[unsafe 0];
+
+  while(total_read < cap binary){
+    // Trigger a read
+    *control = std::buffered::READ;
+    while(*control == std::buffered::PENDING){}
+    if(*control != std::buffered::READY){
+      kernel::panic('unable to read program');
+    }
+
+    // Copy data from peripheral buffer to binary
+    var chunk_size = *size;
+    for(var i: byte = 0; i < chunk_size && total_read + i < cap binary; i = i + 1){
+      binary[total_read + i] = buffer[unsafe i];
+    }
+    total_read = total_read + chunk_size;
+
+    // If we read less than capacity, we're done
+    if(chunk_size < capacity){
+      break;
+    }
   }
+  len binary = total_read;
 
   // Create process
   var pid = kernel::process::create_process(binary, parent_id);

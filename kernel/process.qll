@@ -75,6 +75,7 @@ namespace kernel {
       var exec_page = memory::table_page(table, 0);
       var dest = <unsafe * byte>(<byte>exec_page->physical_address);
       var src = &binary[0];
+
       for(var i = 0; i < len binary; i = i + 1){
         dest[unsafe i] = src[unsafe i];
       }
