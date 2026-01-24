@@ -8,7 +8,7 @@
 ; This code:
 ;   1. Initializes r62 (ONE) = 1
 ;   2. Calls main
-;   3. Calls lib::exit with the return value
+;   3. Triggers EXIT syscall with main's return value
 
 @user_entrypoint$:
   ; Initialize ONE register (required for QLL calling convention)
@@ -21,15 +21,11 @@
 
 @user_main_return$:
   ; r0 contains main's return value
-  ; Push return value as argument to exit
-  sub r63 r63 r62
-  store r63 r0
+  ; Syscall convention: r0 = syscall number, r1 = arg0
+  mov r1 r0           ; r1 = exit code (main's return value)
+  constant r0 0x0000  ; r0 = EXIT syscall (0)
+  constant r2 0x0080  ; syscall interrupt
+  int r2
 
-  ; Call lib::exit (this should not return)
-  constant r1 @global::lib::exit
-  constant r0 @user_exit_return$
-  jmp r1
-
-@user_exit_return$:
-  ; If we get here, something went wrong
+  ; Should not reach here
   halt
