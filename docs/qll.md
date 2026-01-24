@@ -318,7 +318,15 @@ var f: feet = <feet>m;  // explicit cast required
 
 ### Argument Passing
 
-All arguments are passed on the stack, pushed right-to-left (first argument at lowest address). Arguments are computed into registers, then pushed before the call. The callee reads arguments from the stack.
+All arguments are passed on the stack. Arguments are evaluated left-to-right and pushed in that order. Since the stack grows downward, this means the last argument ends up at the lowest address (closest to SP).
+
+For a call `f(a, b, c)`, the stack looks like:
+```
+low addr   [c][b][a][return_addr]...   high addr
+           ^SP
+```
+
+The callee accesses arguments at positive offsets from the frame pointer.
 
 ### Return Values
 
