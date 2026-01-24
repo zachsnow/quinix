@@ -30,8 +30,8 @@ namespace lib {
 
   type handle = byte;
   namespace handle {
-    .constant global input: handle = 0x1;
-    .constant global output: handle = 0x2;
+    .constant global input: handle = 0x2;
+    .constant global output: handle = 0x1;
   }
 
   function open(filename: string): handle {
