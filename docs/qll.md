@@ -1,6 +1,17 @@
-# QLL Language Specification
+# QLL
 
-QLL is a C-like systems programming language targeting the Quinix virtual machine.
+QLL is a C-like systems programming language that compiles to [QASM](./qasm.md) for
+execution on the [Quinix virtual machine](./qvm.md).
+
+Key features of the language include:
+
+* C-style syntax with functions, structs, and control flow.
+* Strong static typing with pointers, fixed-size arrays, and slices.
+* Pass-by-value semantics for all types.
+* Generics via `<T>` syntax.
+* Namespaces for code organization.
+* Explicit memory management with `new` and `delete`.
+* `unsafe` keyword for bypassing safety checks when needed.
 
 ## Types
 
