@@ -1,10 +1,5 @@
-// Test program B - prints 'B' repeatedly
+// Test program B - exits with code 1
 function main(): byte {
-  var i = 0;
-  while (i < 10) {
-    lib::print('B\n');
-    i = i + 1;
-  }
-  lib::exit(0);
+  lib::exit(1);
   return 0;
 }

@@ -7,6 +7,7 @@ import { Instruction, Operation, Register, Immediate } from '@/vm/instructions';
 import { Peripheral, BufferedPeripheral } from '@/vm/peripherals';
 import type { PeripheralMapping } from '@/vm/peripherals';
 import fs from 'fs';
+import path from 'path';
 import readline from 'readline';
 
 const log = logger('vm:peripherals');
@@ -234,12 +235,19 @@ class KeypressPeripheral extends Peripheral {
 
 /**
  * A simple peripheral for reading files from the host file system.
+ * Paths are resolved relative to the base directory (typically the binary's directory).
  */
 class DebugFilePeripheral extends BufferedPeripheral {
   public readonly name = 'debug-file';
   public readonly identifier = 0x00000011;
 
+  private baseDir: string;
   private path: string = '';
+
+  public constructor(baseDir: string = '.') {
+    super();
+    this.baseDir = baseDir;
+  }
 
   protected async onWrite(data: number[]): Promise<void> {
     if (!this.path) {
@@ -256,18 +264,19 @@ class DebugFilePeripheral extends BufferedPeripheral {
     if (!this.path) {
       throw new Error('no path');
     }
-    const path = this.path;
+    const relativePath = this.path;
     this.path = '';  // Clear path so next write sets a new path
-    log.debug(`${this.name}: reading path ${path}`);
+    const fullPath = path.resolve(this.baseDir, relativePath);
+    log.debug(`${this.name}: reading path ${fullPath}`);
 
     // Check if this is a binary file (e.g., .qbin extension or no extension)
-    const isBinary = !path.includes('.') ||
-                     path.endsWith('.qbin') ||
-                     path.endsWith('.bin');
+    const isBinary = !fullPath.includes('.') ||
+                     fullPath.endsWith('.qbin') ||
+                     fullPath.endsWith('.bin');
 
     if (isBinary) {
       // Read as binary - each 4 bytes becomes a 32-bit word
-      const buffer = await fs.promises.readFile(path);
+      const buffer = await fs.promises.readFile(fullPath);
       const words: number[] = [];
       for (let i = 0; i + 3 < buffer.length; i += 4) {
         // Little-endian 32-bit integer
@@ -279,7 +288,7 @@ class DebugFilePeripheral extends BufferedPeripheral {
     }
 
     // Read as text
-    const text = await fs.promises.readFile(path, 'utf-8');
+    const text = await fs.promises.readFile(fullPath, 'utf-8');
     log.debug(`${this.name}: read complete`);
     return stringToCodePoints(text);
   }

@@ -123,7 +123,7 @@ const vm = new VM({
     new DebugBreakPeripheral(),
     new DebugOutputPeripheral(),
     new DebugInputPeripheral(),
-    new DebugFilePeripheral(),
+    new DebugFilePeripheral(filename ? path.dirname(filename) : "."),
   ],
 });
 

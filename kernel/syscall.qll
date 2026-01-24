@@ -94,6 +94,7 @@ namespace kernel {
     }
 
     function _exit(sc: syscall): byte {
+      log('syscall: exit');
       var process = process::current_process();
       process::destroy_process(process);
       return 0;
