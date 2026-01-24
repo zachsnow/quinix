@@ -1547,42 +1547,46 @@ class UnaryExpression extends Expression {
 
       case 'cap': {
         const exprType = this.expression.concreteType.resolve();
-        const er = this.expression.compile(compiler);
 
         if (exprType instanceof ArrayType) {
           // Fixed-size array: capacity is a compile-time constant.
+          const er = compiler.allocateRegister();
           compiler.emit([
             new ConstantDirective(er, new ImmediateConstant(exprType.length)).comment(`array capacity ${exprType.length}`),
           ]);
+          return er;
         }
-        else {
-          // Slice or slice-like struct
-          const sliceInfo = SliceType.getSliceInfo(exprType);
-          if (sliceInfo) {
-            compiler.emitIncrement(er, sliceInfo.capacityOffset, 'capacity offset');
-            if (this.dereference(lvalue)) {
-              compiler.emit([
-                new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
-              ]);
-            }
+
+        // Slice or slice-like struct: load capacity from memory.
+        const er = this.expression.compile(compiler);
+        const sliceInfo = SliceType.getSliceInfo(exprType);
+        if (sliceInfo) {
+          compiler.emitIncrement(er, sliceInfo.capacityOffset, 'capacity offset');
+          if (this.dereference(lvalue)) {
+            compiler.emit([
+              new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment(`${this}`),
+            ]);
           }
         }
         return er;
       }
       case 'len': {
         const exprType = this.expression.concreteType.resolve();
-        const er = this.expression.compile(compiler);
 
         if (exprType instanceof ArrayType) {
-          // Array layout: [length][data...] - length at offset 0
-          // No offset needed, just load
+          // Fixed-size array: return compile-time constant length.
+          const er = compiler.allocateRegister();
+          compiler.emit([
+            new ConstantDirective(er, new ImmediateConstant(exprType.length)).comment(`array length ${exprType.length}`),
+          ]);
+          return er;
         }
-        else {
-          // Slice or slice-like struct
-          const sliceInfo = SliceType.getSliceInfo(exprType);
-          if (sliceInfo) {
-            compiler.emitIncrement(er, sliceInfo.lengthOffset, 'length offset');
-          }
+
+        // Slice or slice-like struct: load length from memory.
+        const er = this.expression.compile(compiler);
+        const sliceInfo = SliceType.getSliceInfo(exprType);
+        if (sliceInfo) {
+          compiler.emitIncrement(er, sliceInfo.lengthOffset, 'length offset');
         }
 
         if (this.dereference(lvalue)) {
