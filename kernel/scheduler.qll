@@ -12,8 +12,11 @@ namespace kernel {
     global tasks: * task = null;
 
     function _restore_current_task(): void {
+      log('scheduler: restoring state');
       *interrupts::state = current_task->state;
+      log('scheduler: using table');
       memory::use_table(current_task->table);
+      log('scheduler: done');
     }
 
     // This function will be called by the timer interrupt handler.
