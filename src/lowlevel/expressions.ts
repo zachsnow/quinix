@@ -930,7 +930,21 @@ class NewArrayExpression extends Expression {
     }
 
     // Allocate the heap storage.
+    // Note: emitNew clobbers sr, so we'll recompute it after the call.
     const hr = compiler.emitNew(sr, 'new[]');
+
+    // Recompute sr from cr since emitNew clobbers the argument register.
+    if (this.elementType.size > 1) {
+      const mr = compiler.allocateRegister();
+      compiler.emit([
+        new ConstantDirective(mr, new ImmediateConstant(this.elementType.size)).comment('new[]: element size (recompute)'),
+        new InstructionDirective(Instruction.createOperation(Operation.MUL, sr, cr, mr)).comment('new[]: data size (recompute)'),
+      ]);
+      compiler.deallocateRegister(mr);
+    }
+    else {
+      compiler.emitMove(sr, cr, 'new[]: data size (recompute)');
+    }
 
     // Allocate stack storage for the slice descriptor (3 words: pointer, length, capacity).
     const sliceId = compiler.generateIdentifier('new_slice');
