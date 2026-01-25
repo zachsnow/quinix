@@ -797,9 +797,9 @@ class Compiler {
 
     this.emit([
       new InstructionDirective(Instruction.createOperation(Operation.LOAD, cr, ar)).comment('load capacity'),
-      new InstructionDirective(Instruction.createOperation(Operation.GT, cr, lr, cr)).comment('compare capacity with new len'),
+      new InstructionDirective(Instruction.createOperation(Operation.GT, cr, lr, cr)).comment('compare new len with capacity'),
       new ConstantDirective(er, new ReferenceConstant(endRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, er)),
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, er)).comment('skip error if new_len <= capacity'),
       new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.CAPACITY_ERROR)).comment('capacity error'),
       new InstructionDirective(Instruction.createOperation(Operation.HALT)),
       new LabelDirective(endRef),
