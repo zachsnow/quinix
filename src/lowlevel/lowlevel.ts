@@ -254,10 +254,12 @@ class GlobalDeclaration extends BaseValueDeclaration {
   }
 
   public typecheck(context: TypeChecker) {
-    // Pre-declarations don't need typechecking; we assume that the module
-    // that actually declares them is already typechecked and that the
-    // pre-declaration is correct.
+    // Pre-declarations (marked .extern) don't need typechecking; we assume
+    // that the module that actually declares them is already typechecked.
     if (!this.expression) {
+      if (!this.tagged('.extern')) {
+        this.error(context, `global without initializer must be marked .extern`);
+      }
       return;
     }
 
@@ -274,8 +276,9 @@ class GlobalDeclaration extends BaseValueDeclaration {
    * Returns the data directives for this global (static storage).
    */
   public compileData(): Directive[] {
-    // Global pre-declarations aren't compiled.
-    if (!this.expression) {
+    // Extern globals are pre-declarations (defined elsewhere).
+    // Globals without initializers and without .extern are caught by typecheck.
+    if (this.tagged('.extern') || !this.expression) {
       return [];
     }
 
