@@ -556,21 +556,19 @@ namespace kernel {
 
         _parse_filename(path, &name[0], &name_len, &ext[0], &ext_len);
 
-        // Create temp strings for lookup (need to set len).
+        // Create temp strings for lookup.
         var name_str: byte[9];
         var ext_str: byte[4];
         for (var i: byte = 0; i < name_len; i = i + 1) {
           name_str[i] = name[i];
         }
-        len name_str = name_len;
         for (var i: byte = 0; i < ext_len; i = i + 1) {
           ext_str[i] = ext[i];
         }
-        len ext_str = ext_len;
 
         // Find file.
         var entry: dirent;
-        var dir_index = dir_find(name_str, ext_str, &entry);
+        var dir_index = dir_find(name_str[0:name_len], ext_str[0:ext_len], &entry);
 
         if (mode == MODE_READ) {
           // File must exist.
@@ -581,7 +579,7 @@ namespace kernel {
           // For write/append, create if not exists.
           if (dir_index == -1) {
             // Create empty file.
-            dir_index = dir_create(name_str, ext_str, 0, 0);
+            dir_index = dir_create(name_str[0:name_len], ext_str[0:ext_len], 0, 0);
             if (dir_index == -1) {
               return -1;
             }

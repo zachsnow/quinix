@@ -145,23 +145,21 @@ namespace kernel {
       if (handle == fs::handle::INPUT) {
         // Read from console input - use existing buffered read.
         var temp_buffer: byte[256];
-        len temp_buffer = data_len;
-        if (data_len > 256) {
-          len temp_buffer = 256;
-        }
+        var read_limit: byte = data_len > 256 ? 256 : data_len;
+        var temp_slice = temp_buffer[0:read_limit];
         if (!std::buffered::read(
           &peripherals::debug_input->control,
           &peripherals::debug_input->size,
           &peripherals::debug_input->buffer[unsafe 0],
-          temp_buffer
+          temp_slice
         )) {
           return 0;
         }
         // Copy to user buffer.
-        for (var i: byte = 0; i < len temp_buffer; i = i + 1) {
+        for (var i: byte = 0; i < len temp_slice; i = i + 1) {
           data_ptr[unsafe i] = temp_buffer[i];
         }
-        return len temp_buffer;
+        return len temp_slice;
       }
 
       // Handle QFS file handles.
