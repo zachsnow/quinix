@@ -502,15 +502,16 @@ class Compiler {
     ]);
     this.emitMove(di, dr);
 
-    // Loop through `cr` times, copying `sr` the destination and incrementing
-    // by one each time.
+    // Loop through `cr` times, copying `sr` to the destination and incrementing
+    // by one each time. EQ returns 1 when done (ci == cr), 0 when continue.
+    // JZ jumps when zero (continue looping).
     this.emit([
       new LabelDirective(loop),
       new InstructionDirective(Instruction.createOperation(Operation.STORE, di, sr)),
       new InstructionDirective(Instruction.createOperation(Operation.ADD, di, di, Compiler.ONE)),
       new InstructionDirective(Instruction.createOperation(Operation.ADD, ci, ci, Compiler.ONE)),
       new InstructionDirective(Instruction.createOperation(Operation.EQ, tr, ci, cr)),
-      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, tr, loopR)),
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, tr, loopR)),
     ]);
 
     this.deallocateRegister(loopR);
@@ -590,7 +591,8 @@ class Compiler {
     this.emitMove(si, sr);
 
     // Loop through `cr` times, copying bytes from the source to the destination and incrementing
-    // by one each time.
+    // by one each time. EQ returns 1 when done (ci == cr), 0 when continue.
+    // JZ jumps when zero (continue looping).
     this.emit([
       new LabelDirective(loop),
       new InstructionDirective(Instruction.createOperation(Operation.LOAD, tr, si)),
@@ -599,7 +601,7 @@ class Compiler {
       new InstructionDirective(Instruction.createOperation(Operation.ADD, si, si, Compiler.ONE)),
       new InstructionDirective(Instruction.createOperation(Operation.ADD, ci, ci, Compiler.ONE)),
       new InstructionDirective(Instruction.createOperation(Operation.EQ, tr, ci, cr)),
-      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, tr, loopR)),
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, tr, loopR)),
     ]);
 
     this.deallocateRegister(loopR);
@@ -736,14 +738,13 @@ class Compiler {
     if (lengthOffset > 0) {
       this.emitIncrement(sr, lengthOffset, 'length offset');
     }
-    // VM comparison ops return 0 for true, 1 for false (inverted from C semantics)
-    // LT(index, length) returns 0 if index < length
-    // JZ jumps if condition is 0, so it jumps when index < length (skip bounds error)
+    // LT(index, length) returns 1 if index < length (standard semantics)
+    // JNZ jumps if condition is 1, so it jumps when index < length (skip bounds error)
     this.emit([
       new InstructionDirective(Instruction.createOperation(Operation.LOAD, sr, sr)).comment('length'),
       new InstructionDirective(Instruction.createOperation(Operation.LT, sr, ir, sr)),
       new ConstantDirective(er, new ReferenceConstant(endRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, sr, er)),
+      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, sr, er)),
       new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.BOUNDS_ERROR)).comment('bounds error'),
       new InstructionDirective(Instruction.createOperation(Operation.HALT)),
       new LabelDirective(endRef),
@@ -765,14 +766,13 @@ class Compiler {
     const er = this.allocateRegister();
     const endRef = this.generateReference('bounds_check_end');
 
-    // VM comparison ops return 0 for true, 1 for false (inverted from C semantics)
-    // LT(index, length) returns 0 if index < length
-    // JZ jumps if condition is 0, so it jumps when index < length (skip bounds error)
+    // LT(index, length) returns 1 if index < length (standard semantics)
+    // JNZ jumps if condition is 1, so it jumps when index < length (skip bounds error)
     this.emit([
       new ConstantDirective(sr, new ImmediateConstant(length)).comment(`array length ${length}`),
       new InstructionDirective(Instruction.createOperation(Operation.LT, sr, ir, sr)),
       new ConstantDirective(er, new ReferenceConstant(endRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, sr, er)),
+      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, sr, er)),
       new ConstantDirective(Compiler.RET, new ImmediateConstant(Compiler.BOUNDS_ERROR)).comment('bounds error'),
       new InstructionDirective(Instruction.createOperation(Operation.HALT)),
       new LabelDirective(endRef),

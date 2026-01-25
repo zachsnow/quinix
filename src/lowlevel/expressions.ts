@@ -1050,12 +1050,11 @@ class NewArrayExpression extends Expression {
 
     compiler.emitIncrement(di, this.elementType.size, 'increment index');
     compiler.emitIncrement(ci, 1, 'increment counter');
-    // VM comparison ops return 0 for true (equal), 1 for false (not equal)
-    // EQ(ci, cr) returns 0 when ci == cr (done), 1 when ci != cr (continue)
-    // JNZ jumps when condition is non-zero, so it jumps when ci != cr (continue looping)
+    // EQ(ci, cr) returns 1 when ci == cr (done), 0 when ci != cr (continue)
+    // JZ jumps when condition is zero, so it jumps when ci != cr (continue looping)
     compiler.emit([
       new InstructionDirective(Instruction.createOperation(Operation.EQ, tr, ci, cr)).comment('check for end of element loop'),
-      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, tr, loopR)),
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, tr, loopR)),
     ]);
 
     compiler.deallocateRegister(loopR);
@@ -1273,10 +1272,13 @@ class BinaryExpression extends Expression {
       '%': Operation.MOD,
       '|': Operation.OR,
       '&': Operation.AND,
-      '==': Operation.NEQ,
-      '!=': Operation.EQ,
+      '==': Operation.EQ,
+      '!=': Operation.NEQ,
       '<': Operation.LT,
       '>': Operation.GT,
+      // Note: <= and >= use inverted ops, then control flow uses JNZ
+      // a <= b: use GT, result is 1 when a > b, then JNZ skips (correct: skip when NOT <=)
+      // a >= b: use LT, result is 1 when a < b, then JNZ skips (correct: skip when NOT >=)
       '<=': Operation.GT,
       '>=': Operation.LT,
     };
@@ -1351,7 +1353,24 @@ class BinaryExpression extends Expression {
 
       case '<':
       case '>': {
-        // Our CPU doesn't support <= or >=, so we simulate them.
+        // LT/GT now return 1 when true, 0 when false (standard semantics)
+        const lr = this.left.compile(compiler);
+        const rr = this.right.compile(compiler);
+
+        const r = compiler.allocateRegister();
+        compiler.emit([
+          new InstructionDirective(Instruction.createOperation(this.operation, r, lr, rr)),
+        ]);
+        compiler.deallocateRegister(lr);
+        compiler.deallocateRegister(rr);
+        return r;
+      }
+
+      case '<=':
+      case '>=': {
+        // We don't have LE/GE, so use inverted op then invert result
+        // a <= b: GT(a,b) returns 1 if a > b, then EQ(r,0) inverts to 1 if a <= b
+        // a >= b: LT(a,b) returns 1 if a < b, then EQ(r,0) inverts to 1 if a >= b
         const lr = this.left.compile(compiler);
         const rr = this.right.compile(compiler);
 
@@ -1360,7 +1379,7 @@ class BinaryExpression extends Expression {
         compiler.emit([
           new InstructionDirective(Instruction.createOperation(this.operation, r, lr, rr)),
           new ConstantDirective(zr, new ImmediateConstant(0)),
-          new InstructionDirective(Instruction.createOperation(Operation.NEQ, r, r, zr)),
+          new InstructionDirective(Instruction.createOperation(Operation.EQ, r, r, zr)),
         ]);
         compiler.deallocateRegister(lr);
         compiler.deallocateRegister(rr);
@@ -1514,11 +1533,11 @@ class UnaryExpression extends Expression {
       case '!': {
         const er = this.expression.compile(compiler);
 
-        // We want !0 == 1, and !(non-zero) == 0. This is exactly the semantics of `NEQ`.
+        // We want !0 == 1, and !(non-zero) == 0. This is exactly the semantics of `EQ`.
         const r = compiler.allocateRegister();
         compiler.emit([
           new ConstantDirective(r, new ImmediateConstant(0)).comment(`${this}`),
-          new InstructionDirective(Instruction.createOperation(Operation.NEQ, r, r, er)),
+          new InstructionDirective(Instruction.createOperation(Operation.EQ, r, r, er)),
         ]);
         compiler.deallocateRegister(er);
         return r;

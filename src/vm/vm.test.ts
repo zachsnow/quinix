@@ -94,38 +94,38 @@ describe("VM", () => {
 
   test("comparison: ==", () => {
     return Promise.all([
-      expect(run(binaryOp(Operation.EQ, 0x0, 0x0))).resolves.toBe(0x0),
-      expect(run(binaryOp(Operation.EQ, 0x1, 0x0))).resolves.toBe(0x1),
+      expect(run(binaryOp(Operation.EQ, 0x0, 0x0))).resolves.toBe(0x1),
+      expect(run(binaryOp(Operation.EQ, 0x1, 0x0))).resolves.toBe(0x0),
       expect(run(binaryOp(Operation.EQ, 0xffffffff, 0xffffffff))).resolves.toBe(
-        0x0
+        0x1
       ),
-      expect(run(binaryOp(Operation.EQ, 0xffffffff, 0x1))).resolves.toBe(0x1),
-      expect(run(binaryOp(Operation.EQ, 0x1, 0xffffffff))).resolves.toBe(0x1),
-      expect(run(binaryOp(Operation.EQ, 0xffffffff, 0x0))).resolves.toBe(0x1),
-      expect(run(binaryOp(Operation.EQ, 0x0, 0xffffffff))).resolves.toBe(0x1),
+      expect(run(binaryOp(Operation.EQ, 0xffffffff, 0x1))).resolves.toBe(0x0),
+      expect(run(binaryOp(Operation.EQ, 0x1, 0xffffffff))).resolves.toBe(0x0),
+      expect(run(binaryOp(Operation.EQ, 0xffffffff, 0x0))).resolves.toBe(0x0),
+      expect(run(binaryOp(Operation.EQ, 0x0, 0xffffffff))).resolves.toBe(0x0),
     ]);
   });
 
   test("comparison: !=", () => {
     return Promise.all([
-      expect(run(binaryOp(Operation.NEQ, 0x0, 0x0))).resolves.toBe(0x1),
-      expect(run(binaryOp(Operation.NEQ, 0x1, 0x0))).resolves.toBe(0x0),
+      expect(run(binaryOp(Operation.NEQ, 0x0, 0x0))).resolves.toBe(0x0),
+      expect(run(binaryOp(Operation.NEQ, 0x1, 0x0))).resolves.toBe(0x1),
       expect(
         run(binaryOp(Operation.NEQ, 0xffffffff, 0xffffffff))
-      ).resolves.toBe(0x1),
-      expect(run(binaryOp(Operation.NEQ, 0xffffffff, 0x1))).resolves.toBe(0x0),
-      expect(run(binaryOp(Operation.NEQ, 0x1, 0xffffffff))).resolves.toBe(0x0),
-      expect(run(binaryOp(Operation.NEQ, 0xffffffff, 0x0))).resolves.toBe(0x0),
-      expect(run(binaryOp(Operation.NEQ, 0x0, 0xffffffff))).resolves.toBe(0x0),
+      ).resolves.toBe(0x0),
+      expect(run(binaryOp(Operation.NEQ, 0xffffffff, 0x1))).resolves.toBe(0x1),
+      expect(run(binaryOp(Operation.NEQ, 0x1, 0xffffffff))).resolves.toBe(0x1),
+      expect(run(binaryOp(Operation.NEQ, 0xffffffff, 0x0))).resolves.toBe(0x1),
+      expect(run(binaryOp(Operation.NEQ, 0x0, 0xffffffff))).resolves.toBe(0x1),
     ]);
   });
 
   test("comparison: <", () => {
     return Promise.all([
-      expect(run(binaryOp(Operation.LT, 0x0, 0x0))).resolves.toBe(0x1),
-      expect(run(binaryOp(Operation.LT, 0x0, 0x1))).resolves.toBe(0x0),
+      expect(run(binaryOp(Operation.LT, 0x0, 0x0))).resolves.toBe(0x0),
+      expect(run(binaryOp(Operation.LT, 0x0, 0x1))).resolves.toBe(0x1),
       expect(run(binaryOp(Operation.LT, 0xffffffff, 0xffffffff))).resolves.toBe(
-        0x1
+        0x0
       ),
       expect(run(binaryOp(Operation.LT, 0xffffffff, 0x1))).resolves.toBe(0x0),
       expect(run(binaryOp(Operation.LT, 0x1, 0xffffffff))).resolves.toBe(0x1),
@@ -136,10 +136,10 @@ describe("VM", () => {
 
   test("comparison: >", () => {
     return Promise.all([
-      expect(run(binaryOp(Operation.GT, 0x0, 0x0))).resolves.toBe(0x1),
-      expect(run(binaryOp(Operation.GT, 0x1, 0x0))).resolves.toBe(0x0),
+      expect(run(binaryOp(Operation.GT, 0x0, 0x0))).resolves.toBe(0x0),
+      expect(run(binaryOp(Operation.GT, 0x1, 0x0))).resolves.toBe(0x1),
       expect(run(binaryOp(Operation.GT, 0xffffffff, 0xffffffff))).resolves.toBe(
-        0x1
+        0x0
       ),
       expect(run(binaryOp(Operation.GT, 0x1, 0xffffffff))).resolves.toBe(0x0),
       expect(run(binaryOp(Operation.GT, 0xffffffff, 0x1))).resolves.toBe(0x1),

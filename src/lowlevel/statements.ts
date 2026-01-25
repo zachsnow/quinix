@@ -366,12 +366,10 @@ class IfStatement extends Statement {
     const endRef = compiler.generateReference('if_end');
     const r = compiler.allocateRegister();
 
-    // If the condition is false, jump to the else branch.
+    // If the condition is false (0), jump to the else branch.
     compiler.emit([
-      new ConstantDirective(r, new ImmediateConstant(0)),
-      new InstructionDirective(Instruction.createOperation(Operation.NEQ, cr, cr, r)),
       new ConstantDirective(r, new ReferenceConstant(elseRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, r))
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, r))
     ]);
 
     // Otherwise, fall through to the if branch.
@@ -469,12 +467,10 @@ class ForStatement extends Statement {
 
     const cr = this.condition.compile(compiler);
 
-    // If the condition is false, jump to the end.
+    // If the condition is false (0), jump to the end.
     compiler.emit([
-      new ConstantDirective(r, new ImmediateConstant(0)),
-      new InstructionDirective(Instruction.createOperation(Operation.NEQ, cr, cr, r)),
       new ConstantDirective(r, new ReferenceConstant(endRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, r))
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, r))
     ]);
 
     // For loop body.
@@ -541,12 +537,10 @@ class WhileStatement extends Statement {
 
     const cr = this.condition.compile(compiler);
 
-    // If the condition is false, jump to the end.
+    // If the condition is false (0), jump to the end.
     compiler.emit([
-      new ConstantDirective(r, new ImmediateConstant(0)),
-      new InstructionDirective(Instruction.createOperation(Operation.NEQ, cr, cr, r)),
       new ConstantDirective(r, new ReferenceConstant(endRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, r))
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, r))
     ]);
 
     // While loop body.

@@ -1051,25 +1051,25 @@ class VM {
 
         case Operation.EQ:
           registers[decoded.dr!] =
-            registers[decoded.sr0!] === registers[decoded.sr1!] ? 0 : 1;
+            registers[decoded.sr0!] === registers[decoded.sr1!] ? 1 : 0;
           break;
         case Operation.NEQ:
           registers[decoded.dr!] =
-            registers[decoded.sr0!] !== registers[decoded.sr1!] ? 0 : 1;
+            registers[decoded.sr0!] !== registers[decoded.sr1!] ? 1 : 0;
           break;
         case Operation.LT:
           registers[decoded.dr!] =
-            (registers[decoded.sr0!] & 0xffffffff) <
-              (registers[decoded.sr1!] & 0xffffffff)
-              ? 0
-              : 1;
+            (registers[decoded.sr0!] >>> 0) <
+              (registers[decoded.sr1!] >>> 0)
+              ? 1
+              : 0;
           break;
         case Operation.GT:
           registers[decoded.dr!] =
-            (registers[decoded.sr0!] & 0xffffffff) >
-              (registers[decoded.sr1!] & 0xffffffff)
-              ? 0
-              : 1;
+            (registers[decoded.sr0!] >>> 0) >
+              (registers[decoded.sr1!] >>> 0)
+              ? 1
+              : 0;
           break;
 
         case Operation.JMP:

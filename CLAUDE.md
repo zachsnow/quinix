@@ -30,7 +30,6 @@ modify registers. Suggests possible:
 - Interrupt state saved at physical 0x2-0x42 (64 regs + IP)
 - Timer uses JS `setInterval`, fires during `await release()` between step() calls
 - Scheduler in kernel writes directly to interrupt save area via `*interrupts::state`
-- EQ instruction returns 0 when equal (inverted from typical semantics)
 
 **Debug Commands:**
 ```bash
