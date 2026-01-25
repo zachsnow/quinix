@@ -263,7 +263,7 @@ class VM {
   }
 
   public fault(message: string): void {
-    console.log(`[FAULT] ${message}`);
+    log.debug(`[FAULT] ${message}`);
 
     if (this.state.faulting) {
       throw new Error(`fault: double fault: ${message}`);
@@ -509,7 +509,7 @@ class VM {
           if (wp.callback) {
             wp.callback(address, value, oldValue, source);
           } else {
-            console.log(
+            log.debug(
               `[WATCH] ${source} ${accessType} ${Address.toString(address)}: ` +
               `${Immediate.toString(oldValue)} -> ${Immediate.toString(value)}`
             );
@@ -663,9 +663,9 @@ class VM {
 
   private interruptStore(): void {
     if (this.traceInterrupts) {
-      console.log(`[INT-STORE] Saving registers to 0x${this.INTERRUPT_TABLE_REGISTERS_ADDR.toString(16)}`);
-      console.log(`  IP: ${Immediate.toString(this.state.registers[Register.IP])}`);
-      console.log(`  SP (r63): ${Immediate.toString(this.state.registers[63])}`);
+      log.debug(`[INT-STORE] Saving registers to 0x${this.INTERRUPT_TABLE_REGISTERS_ADDR.toString(16)}`);
+      log.debug(`  IP: ${Immediate.toString(this.state.registers[Register.IP])}`);
+      log.debug(`  SP (r63): ${Immediate.toString(this.state.registers[63])}`);
     }
 
     // Store each register in the register location.
@@ -681,9 +681,9 @@ class VM {
     if (this.traceInterrupts) {
       const storedIP = this.memory[this.INTERRUPT_TABLE_REGISTERS_ADDR + Register.IP];
       const storedSP = this.memory[this.INTERRUPT_TABLE_REGISTERS_ADDR + 63];
-      console.log(`[INT-RESTORE] Loading registers from 0x${this.INTERRUPT_TABLE_REGISTERS_ADDR.toString(16)}`);
-      console.log(`  Stored IP: ${Immediate.toString(storedIP)}`);
-      console.log(`  Stored SP: ${Immediate.toString(storedSP)}`);
+      log.debug(`[INT-RESTORE] Loading registers from 0x${this.INTERRUPT_TABLE_REGISTERS_ADDR.toString(16)}`);
+      log.debug(`  Stored IP: ${Immediate.toString(storedIP)}`);
+      log.debug(`  Stored SP: ${Immediate.toString(storedSP)}`);
     }
 
     // Read each register in the register location.
