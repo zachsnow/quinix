@@ -22,7 +22,7 @@ namespace kernel {
     };
 
     // Point to 0x2 so that registers[0] maps to address 0x2 where VM stores r0.
-    // The struct copy doesn't include array length prefix, just the data.
+    // The struct copy doesn"t include array length prefix, just the data.
     global state: * state = <unsafe * state>0x2;
 
   }
@@ -40,7 +40,7 @@ namespace kernel {
         &peripherals::debug_output->control,
         &peripherals::debug_output->size,
         &peripherals::debug_output->buffer[unsafe 0],
-        '\n'
+        "\n"
       );
       return;
     }
@@ -56,11 +56,11 @@ namespace kernel {
       var debug_output_size = <unsafe * byte>(<unsafe byte>debug_output_base + 2);
       var debug_output_buffer = <unsafe * byte>(<unsafe byte>debug_output_base + 3);
       std::buffered::write(debug_output_control, debug_output_size, debug_output_buffer, message);
-      std::buffered::write(debug_output_control, debug_output_size, debug_output_buffer, '\n');
+      std::buffered::write(debug_output_control, debug_output_size, debug_output_buffer, "\n");
       return;
     }
 
-    // Otherwise, we're effed.
+    // Otherwise, we"re effed.
     support::halt(error::NO_LOG);
   }
 
@@ -87,13 +87,13 @@ function _load_program(path: byte[], parent_id: byte): byte {
     &kernel::peripherals::debug_file->buffer[unsafe 0],
     path
   )){
-    kernel::panic('unable to write program path');
+    kernel::panic("unable to write program path");
   }
 
   // Allocate a buffer to hold the file
   var binary = new byte[0x1000];  // 4KB should be enough
   if (len binary == 0) {
-    kernel::panic('unable to allocate memory for program');
+    kernel::panic("unable to allocate memory for program");
   }
 
   // Read the file contents in chunks (peripheral buffer is limited)
@@ -108,7 +108,7 @@ function _load_program(path: byte[], parent_id: byte): byte {
     *control = std::buffered::READ;
     while(*control == std::buffered::PENDING){}
     if(*control != std::buffered::READY){
-      kernel::panic('unable to read program');
+      kernel::panic("unable to read program");
     }
 
     // Copy data from peripheral buffer to binary
@@ -118,7 +118,7 @@ function _load_program(path: byte[], parent_id: byte): byte {
     }
     total_read = total_read + chunk_size;
 
-    // If we read less than capacity, we're done
+    // If we read less than capacity, we"re done
     if(chunk_size < capacity){
       break;
     }
@@ -128,7 +128,7 @@ function _load_program(path: byte[], parent_id: byte): byte {
   // Create process
   var pid = kernel::process::create_process(binary, parent_id);
   if(!pid){
-    kernel::panic('unable to create process');
+    kernel::panic("unable to create process");
   }
 
   delete binary;
@@ -139,6 +139,6 @@ function main(): void {
   kernel::support::disable_interrupts();
   kernel::init();
 
-  kernel::log('starting shell...');
+  kernel::log("starting shell...");
   shell::main();
 }

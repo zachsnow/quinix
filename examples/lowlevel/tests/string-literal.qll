@@ -1,4 +1,4 @@
 function main(): byte {
-  var s = 'Hello!';
+  var s = "Hello!";
   return s[0];
 }

@@ -12,9 +12,9 @@ function main(): byte {
 
   std::fmt::print([
     std::fmt::fi(p.x),
-    std::fmt::fs(', '),
+    std::fmt::fs(", "),
     std::fmt::fi(p.y),
-    std::fmt::fs('\n'),
+    std::fmt::fs("\n"),
   ]);
 
   return p.x + p.y;

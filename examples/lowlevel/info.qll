@@ -10,18 +10,18 @@ global peripheral_table: peripheral_table_entry[] = <unsafe peripheral_table_ent
 
 function main(): byte {
   io::printf([
-    io::fs('peripherals: '),
+    io::fs("peripherals: "),
     io::fi(len peripheral_table),
-    io::fs('\n'),
+    io::fs("\n"),
   ]);
 
   for(var i = 0; i < len peripheral_table; i = i + 1){
     var p = peripheral_table[i];
     io::printf([
       io::fu(p.identifier),
-      io::fs(': '),
+      io::fs(": "),
       io::fu(p.address),
-      io::fs('\n'),
+      io::fs("\n"),
     ]);
   }
 

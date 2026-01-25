@@ -1,6 +1,6 @@
 // Test: Delete on slice struct field
 //
-// Tests that we can delete a slice that's a member of a struct.
+// Tests that we can delete a slice that"s a member of a struct.
 // This verifies the l-value handling works correctly.
 
 type container = struct {
@@ -23,7 +23,7 @@ function test_struct_field_delete(): byte {
   // Delete the slice field
   delete c.data;
 
-  // Verify it's zeroed
+  // Verify it"s zeroed
   if (len c.data != 0) {
     return 2;  // Length should be 0
   }

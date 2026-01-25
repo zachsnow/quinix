@@ -10,7 +10,7 @@ global a1: my_array = null;  // Should work?
 
 // Test 3: Alias to sized array
 type my_sized_array = byte[10];
-global a2: my_sized_array = null;  // Should NOT work (sized arrays aren't nullable)
+global a2: my_sized_array = null;  // Should NOT work (sized arrays aren"t nullable)
 
 // Test 4: Generic alias to array
 type vec<T> = T[];

@@ -26,7 +26,7 @@ function test_vector_delete(): byte {
   // Destroy it (should delete and zero out)
   std::vector::destroy(&vec);
 
-  // Verify it's zeroed after delete
+  // Verify it"s zeroed after delete
   if (len vec != 0) {
     return 1;  // Length should be 0
   }

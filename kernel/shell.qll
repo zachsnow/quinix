@@ -6,7 +6,7 @@ namespace shell {
   global cwd_len: byte = 1;
 
   function _init_cwd(): void {
-    cwd[0] = 47;  // '/'
+    cwd[0] = 47;  // "/"
     cwd_len = 1;
   }
 
@@ -49,13 +49,13 @@ namespace shell {
     var i: byte = 0;
 
     if (n == 0) {
-      std::console::print('0');
+      std::console::print("0");
       return;
     }
 
     // Build digits in reverse.
     while (n > 0) {
-      buf[i] = 48 + (n % 10);  // '0' + digit
+      buf[i] = 48 + (n % 10);  // "0" + digit
       n = n / 10;
       i = i + 1;
     }
@@ -70,19 +70,19 @@ namespace shell {
   }
 
   function cmd_help(): void {
-    std::console::print('Commands: help, pwd, ls, cat, echo, exit\n');
+    std::console::print("Commands: help, pwd, ls, cat, echo, exit\n");
   }
 
   function cmd_pwd(): void {
     _print_n(cwd, cwd_len);
-    std::console::print('\n');
+    std::console::print("\n");
   }
 
   function cmd_ls(): void {
     // Check if filesystem is initialized.
     if (!kernel::fs::qfs::initialized) {
       if (!kernel::fs::qfs::init()) {
-        std::console::print('ls: filesystem not available\n');
+        std::console::print("ls: filesystem not available\n");
         return;
       }
     }
@@ -108,7 +108,7 @@ namespace shell {
 
         // Print extension if present.
         if (entry.extension[0] != 0) {
-          std::console::print('.');
+          std::console::print(".");
           for (var e: byte = 0; e < 4; e = e + 1) {
             if (entry.extension[e] == 0) {
               break;
@@ -120,29 +120,29 @@ namespace shell {
         }
 
         // Print size.
-        std::console::print('  ');
+        std::console::print("  ");
         _print_num(entry.size);
-        std::console::print(' bytes\n');
+        std::console::print(" bytes\n");
 
         found = found + 1;
       }
     }
 
     if (found == 0) {
-      std::console::print('(empty)\n');
+      std::console::print("(empty)\n");
     }
   }
 
   function cmd_cat(args: byte[], args_len: byte): void {
     if (args_len == 0) {
-      std::console::print('cat: missing filename\n');
+      std::console::print("cat: missing filename\n");
       return;
     }
 
     // Check if filesystem is initialized.
     if (!kernel::fs::qfs::initialized) {
       if (!kernel::fs::qfs::init()) {
-        std::console::print('cat: filesystem not available\n');
+        std::console::print("cat: filesystem not available\n");
         return;
       }
     }
@@ -156,9 +156,9 @@ namespace shell {
 
     var slot = kernel::fs::qfs::file_open(path, kernel::fs::qfs::MODE_READ);
     if (slot == -1) {
-      std::console::print('cat: file not found: ');
+      std::console::print("cat: file not found: ");
       _print_n(args, args_len);
-      std::console::print('\n');
+      std::console::print("\n");
       delete path;
       return;
     }
@@ -177,38 +177,38 @@ namespace shell {
 
     kernel::fs::qfs::file_close(slot);
     delete path;
-    std::console::print('\n');
+    std::console::print("\n");
   }
 
   function cmd_echo(args: byte[], args_len: byte): void {
     _print_n(args, args_len);
-    std::console::print('\n');
+    std::console::print("\n");
   }
 
   function cmd_exit(): void {
-    std::console::print('Goodbye.\n');
+    std::console::print("Goodbye.\n");
     kernel::support::halt(0);
   }
 
   function main(): void {
     _init_cwd();
 
-    std::console::print('Quinix Shell v0.0.1\n');
+    std::console::print("Quinix Shell v0.0.1\n");
 
     // Try to initialize filesystem.
     if (kernel::fs::qfs::init()) {
-      std::console::print('Filesystem mounted.\n');
+      std::console::print("Filesystem mounted.\n");
     } else {
-      std::console::print('No filesystem available.\n');
+      std::console::print("No filesystem available.\n");
     }
 
     var line: byte[0x100];
 
     while (true) {
-      std::console::print('$ ');
+      std::console::print("$ ");
 
       if (!std::console::input(line)) {
-        std::console::print('input error\n');
+        std::console::print("input error\n");
       } else if (len line == 0) {
         // Empty line, do nothing
       } else {
@@ -243,21 +243,21 @@ namespace shell {
         }
 
         // Dispatch commands.
-        if (str_eq_n('help', cmd, cmd_len)) {
+        if (str_eq_n("help", cmd, cmd_len)) {
           cmd_help();
-        } else if (str_eq_n('pwd', cmd, cmd_len)) {
+        } else if (str_eq_n("pwd", cmd, cmd_len)) {
           cmd_pwd();
-        } else if (str_eq_n('ls', cmd, cmd_len)) {
+        } else if (str_eq_n("ls", cmd, cmd_len)) {
           cmd_ls();
-        } else if (str_eq_n('cat', cmd, cmd_len)) {
+        } else if (str_eq_n("cat", cmd, cmd_len)) {
           cmd_cat(args, args_len);
-        } else if (str_eq_n('echo', cmd, cmd_len)) {
+        } else if (str_eq_n("echo", cmd, cmd_len)) {
           cmd_echo(args, args_len);
-        } else if (str_eq_n('exit', cmd, cmd_len)) {
+        } else if (str_eq_n("exit", cmd, cmd_len)) {
           cmd_exit();
         } else {
           _print_n(cmd, cmd_len);
-          std::console::print(': unknown command\n');
+          std::console::print(": unknown command\n");
         }
       }
     }

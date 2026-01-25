@@ -8,7 +8,7 @@ function get_array(): byte[] {
 }
 
 function main(): byte {
-  // This should be a compile error - can't delete a temporary
+  // This should be a compile error - can"t delete a temporary
   delete get_array();
 
   return 0;

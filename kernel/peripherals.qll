@@ -13,7 +13,7 @@ namespace kernel {
 
     // VM peripheral table is at 0x0200 (see vm.ts:175)
     // Layout: [count: byte][entry0: peripheral_table_entry][entry1: ...]...
-    // We access this directly via pointer arithmetic since it's a hardware-defined layout.
+    // We access this directly via pointer arithmetic since it"s a hardware-defined layout.
     .constant global peripheral_table_base: * byte = <unsafe * byte>0x0200;
     .constant global peripheral_table_data: * peripheral_table_entry = <unsafe * peripheral_table_entry>0x0201;
 
@@ -123,7 +123,7 @@ namespace kernel {
           return;
         }
       }
-      kernel::panic('peripherals: peripheral not found.');
+      kernel::panic("peripherals: peripheral not found.");
     }
 
     //

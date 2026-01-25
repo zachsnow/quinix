@@ -435,7 +435,7 @@ describe('QLLC typechecking', () => {
           y: byte;
         };
         function main(): void {
-          var p = Point { x=2, y='hi' };
+          var p = Point { x=2, y="hi" };
         }`
       )).toContain('member y expected byte, actual byte[0x02]');
     });
@@ -1097,7 +1097,7 @@ describe('QLLC end-to-end', () => {
   test('string literal', () => {
     return expectRunToBe(72, `
       function main(): byte {
-        var s = 'Hello!';
+        var s = "Hello!";
         return s[0];
       }
     `);
@@ -1232,7 +1232,7 @@ describe('QLLC end-to-end', () => {
 
   test('global string literal', () => {
     return expectRunToBe(72, `
-      global g: byte[] = 'Hello!';
+      global g: byte[] = "Hello!";
       function main(): byte {
         return g[0];
       }
@@ -2023,7 +2023,7 @@ describe('QLLC end-to-end', () => {
         return len s;
       }
       function main(): byte {
-        return getLen('hello');
+        return getLen("hello");
       }
     `);
   });
@@ -2110,7 +2110,7 @@ describe('QLLC end-to-end', () => {
         return inner(s);
       }
       function main(): byte {
-        return outer('hello');
+        return outer("hello");
       }
     `);
   });

@@ -28,21 +28,21 @@ function destroy_file(f: * file): void {
 }
 
 function test_string_delete(): byte {
-  var f = create_file('test.txt');
+  var f = create_file("test.txt");
 
-  // Verify it's set up
+  // Verify it"s set up
   if (f.handle != 42) {
     return 1;  // Wrong handle
   }
 
   if (len f.path != 8) {
-    return 2;  // 'test.txt' should be 8 chars
+    return 2;  // "test.txt" should be 8 chars
   }
 
   // Delete the string
   destroy_file(&f);
 
-  // Verify it's zeroed
+  // Verify it"s zeroed
   if (len f.path != 0) {
     return 3;  // Length should be 0
   }

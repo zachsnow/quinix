@@ -18,7 +18,7 @@ import {
   UnaryExpression, BinaryExpression,
   SuffixExpression,
   ConditionalExpression,
-  IntLiteralExpression, StringLiteralExpression, BoolLiteralExpression,
+  IntLiteralExpression, CharLiteralExpression, StringLiteralExpression, BoolLiteralExpression,
   ArrayLiteralExpression, StructLiteralExpression,
   IdentifierExpression,
   CastExpression,

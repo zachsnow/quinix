@@ -36,7 +36,7 @@ namespace kernel {
       .constant global MAX_FAT_ENTRIES: byte = 1024;
       .constant global MAX_DIR_ENTRIES: byte = 64;
 
-      // Magic number: 'QFS1' (0x51465331).
+      // Magic number: "QFS1" (0x51465331).
       .constant global QFS_MAGIC: byte = 0x51465331;
 
       // Filename limits.
@@ -478,19 +478,19 @@ namespace kernel {
       }
 
       // Parse a filename into name and extension.
-      // Looks for the last '.' in the path.
+      // Looks for the last "." in the path.
       function _parse_filename(path: string, name: *byte, name_len: *byte, ext: *byte, ext_len: *byte): void {
         var dot_pos: byte = -1;
         var start: byte = 0;
 
-        // Find the last '/' to get just the filename.
+        // Find the last "/" to get just the filename.
         for (var i: byte = 0; i < len path; i = i + 1) {
           if (path[i] == '/') {
             start = i + 1;
           }
         }
 
-        // Find the last '.'.
+        // Find the last ".".
         for (var i = start; i < len path; i = i + 1) {
           if (path[i] == '.') {
             dot_pos = i;
@@ -883,7 +883,7 @@ namespace kernel {
       var h = handle::id;
       handle::id = handle::id + 1;
 
-      // Be sure to copy the path because it's a string that lives
+      // Be sure to copy the path because it"s a string that lives
       // in the memory of the calling process.
       std::vector::add(&process->files, file {
         path = std::str::from_string(path),

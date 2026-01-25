@@ -23,7 +23,7 @@ namespace kernel::memory {
   }
 
   // Pages represent *allocated* memory.
-  // Layout must match VM's ListPageTablePeripheral: [virt][phys][size][flags]
+  // Layout must match VM"s ListPageTablePeripheral: [virt][phys][size][flags]
   type page = struct {
     virtual_address: byte;
     physical_address: byte;
@@ -32,7 +32,7 @@ namespace kernel::memory {
   };
 
   // Page table is a pointer to memory laid out as [count][page0][page1]...
-  // This matches the VM's expected format for the MMU peripheral.
+  // This matches the VM"s expected format for the MMU peripheral.
   // We manage this layout manually since slices have a different format.
   type table = byte;  // Raw pointer to the table memory
 
@@ -64,14 +64,14 @@ namespace kernel::memory {
 
     // Check if we have space
     if(user_pool_current + bytes_needed > user_pool_size){
-      log('memory: out of physical memory');
+      log("memory: out of physical memory");
       return 0;
     }
 
     var address = user_pool_base + user_pool_current;
     user_pool_current = user_pool_current + bytes_needed;
 
-    log('memory: allocated physical memory');
+    log("memory: allocated physical memory");
     return address;
   }
 
@@ -83,7 +83,7 @@ namespace kernel::memory {
 
   function allocate_kernel_memory(size: byte): * byte {
     if(kernel_heap_current + size > KERNEL_HEAP_SIZE){
-      panic('memory: kernel heap exhausted');
+      panic("memory: kernel heap exhausted");
     }
 
     var address = kernel_heap_base + kernel_heap_current;
@@ -152,19 +152,19 @@ namespace kernel::memory {
 
   function enable(): void {
     // MMU is enabled when a non-null table is set.
-    log('memory: enabled mmu');
+    log("memory: enabled mmu");
   }
 
   function disable(): void {
     // Setting table to null disables translation.
     use_table(null);
-    log('memory: disabled mmu');
+    log("memory: disabled mmu");
   }
 
   function use_table(t: * table): void {
     current_table = t;
     // Write the table address to the MMU peripheral.
-    // This triggers the VM's MMU to rebuild its page cache.
+    // This triggers the VM"s MMU to rebuild its page cache.
     *mmu_base_address = <unsafe byte>t;
   }
 
@@ -187,7 +187,7 @@ namespace kernel::memory {
   }
 
   function init(): void {
-    log('memory: initializing...');
+    log("memory: initializing...");
 
     // Calculate memory layout
     // Kernel heap sits at the end of kernel reserved space
@@ -199,20 +199,20 @@ namespace kernel::memory {
     user_pool_current = 0;
     user_pool_size = TOTAL_PHYSICAL_MEMORY - KERNEL_RESERVED;
 
-    log('memory: kernel heap base');
-    log('memory: user pool base');
-    log('memory: user pool size');
+    log("memory: kernel heap base");
+    log("memory: user pool base");
+    log("memory: user pool size");
 
     // Initialize MMU peripheral
     mmu_base_address = kernel::peripherals::mmu;
     if (!mmu_base_address) {
-      panic('memory: mmu not mapped');
+      panic("memory: mmu not mapped");
     }
 
     // Start with MMU disabled (no page table)
     use_table(null);
 
-    log('memory: initialized');
+    log("memory: initialized");
   }
 }
 

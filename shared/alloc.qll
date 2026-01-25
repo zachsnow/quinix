@@ -66,7 +66,7 @@ namespace std {
 
     var ptr = <unsafe * byte>(<unsafe byte>free_block + sizeof block);
 
-    // If there's enough excess space in the block, split it.
+    // If there"s enough excess space in the block, split it.
     if (free_block->size - size > sizeof block + SPLIT_THRESHOLD) {
       var split_block = <unsafe * block>(<unsafe byte>ptr + size);
 

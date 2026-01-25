@@ -26,7 +26,7 @@ function destroy_file(f: * file): void {
 }
 
 function main(): byte {
-  var f = create_file('test.txt');
+  var f = create_file("test.txt");
   destroy_file(&f);
   return 0;
 }

@@ -1,5 +1,5 @@
 // Is this invalid, or is the instantiation of it invalid?
-// A recursive use of a type isn't always invalid; for instance,
+// A recursive use of a type isn"t always invalid; for instance,
 // if the recursive use instantiates the type at a different type
 // (that is "smaller" than the original type).
 //

@@ -1,4 +1,4 @@
-// Test: Can we use 'new' in global initializers?
+// Test: Can we use "new" in global initializers?
 
 global my_array: byte[] = new byte[10];
 

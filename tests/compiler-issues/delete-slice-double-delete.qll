@@ -9,7 +9,7 @@ function test_double_delete(): byte {
   // First delete
   delete arr;
 
-  // Verify it's zeroed
+  // Verify it"s zeroed
   if (len arr != 0) {
     return 1;  // Should be 0 after first delete
   }
@@ -17,7 +17,7 @@ function test_double_delete(): byte {
   // Second delete - should be safe (deleting null pointer)
   delete arr;
 
-  // Verify it's still zeroed
+  // Verify it"s still zeroed
   if (len arr != 0) {
     return 2;  // Should still be 0
   }

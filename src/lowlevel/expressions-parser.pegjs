@@ -6,6 +6,7 @@ Expression
 
 PrimaryExpression
     = i:IntLiteral { return new IntLiteralExpression(i).at(location(), text(), options); }
+    / CharExpression
     / StringExpression
     / b:BoolLiteral {  return new BoolLiteralExpression(b).at(location(), text(), options); }
     / ArrayExpression
@@ -148,6 +149,9 @@ ConditionalExpression
     = condition:LogicalExpression tail:(_ "?" _ Expression _ ":" _ Expression)* {
         return ConditionalExpression.build(condition, tail.map((t: any) => [ t[3], t[7] ])).at(location(), text(), options);
     }
+
+CharExpression
+    = c:CharLiteral { return new CharLiteralExpression(c).at(location(), text(), options); }
 
 StringExpression
     = s:StringLiteral { return new StringLiteralExpression(s).at(location(), text(), options); }

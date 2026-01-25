@@ -363,6 +363,39 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
   return r;
 }
 
+class CharLiteralExpression extends Expression {
+  public readonly codePoint: number;
+
+  public constructor(public readonly char: string) {
+    super();
+    const codePoints = stringToCodePoints(this.char);
+    if (codePoints.length !== 1) {
+      throw new InternalError(`character literal must be exactly one character: '${char}'`);
+    }
+    this.codePoint = codePoints[0];
+  }
+
+  public substitute(typeTable: TypeTable): Expression {
+    return new CharLiteralExpression(this.char).at(this.location).tag(this.tags);
+  }
+
+  public typecheck(context: TypeChecker, contextual?: Type): Type {
+    return Type.Byte;
+  }
+
+  public compile(compiler: Compiler, lvalue?: boolean): Register {
+    const r = compiler.allocateRegister();
+    compiler.emit([
+      new ConstantDirective(r, new ImmediateConstant(this.codePoint)),
+    ]);
+    return r;
+  }
+
+  public toString() {
+    return `'${TextData.escape(this.char)}'`;
+  }
+}
+
 class StringLiteralExpression extends Expression {
   public readonly codePoints: readonly number[];
 
@@ -396,7 +429,7 @@ class StringLiteralExpression extends Expression {
   }
 
   public toString() {
-    return `'${TextData.escape(this.text)}'`;
+    return `"${TextData.escape(this.text)}"`;
   }
 }
 
@@ -2454,7 +2487,7 @@ class ConditionalExpression extends Expression {
 });
 
 export {
-  ArrayLiteralExpression, ArrowExpression, BinaryExpression, BoolLiteralExpression, CallExpression, CastExpression, ConditionalExpression, DotExpression, Expression,
+  ArrayLiteralExpression, ArrowExpression, BinaryExpression, BoolLiteralExpression, CallExpression, CastExpression, CharLiteralExpression, ConditionalExpression, DotExpression, Expression,
   IdentifierExpression, IndexExpression, IntLiteralExpression, NewArrayExpression, NewExpression, NullExpression, SizeofExpression, SliceExpression, StringLiteralExpression, StructLiteralExpression, SuffixExpression, UnaryExpression, VoidExpression
 };
 

@@ -19,9 +19,11 @@ IntLiteral
   / "0b" digits:[01]+ { return parseInt(digits.join(''), 2); }
   / digits:[0-9]+ { return parseInt(digits.join(''), 10); }
 
+CharLiteral
+  = "'" character:SingleQuoteChar "'" { return character; }
+
 StringLiteral
-  = "'" characters:SingleQuoteChar* "'" { return characters.join(''); }
-  / "\"" characters:DoubleQuoteChar* "\"" { return characters.join(''); }
+  = "\"" characters:DoubleQuoteChar* "\"" { return characters.join(''); }
 
 BoolLiteral
   = "true" { return true; }

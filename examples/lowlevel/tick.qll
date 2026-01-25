@@ -17,7 +17,7 @@ function print(message: byte[]): void {
 }
 
 .interrupt function tick(): void {
-  print('Tick...\n');
+  print("Tick...\n");
 }
 
 function main(): void {

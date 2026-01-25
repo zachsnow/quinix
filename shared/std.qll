@@ -254,7 +254,7 @@ namespace std {
       .constant global P: fmt_type = 4;
     }
 
-    .constant global nl: fmt = fs('\n');
+    .constant global nl: fmt = fs("\n");
 
     function fs(s: string): fmt {
       return fmt {

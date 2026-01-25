@@ -3,7 +3,7 @@
 
 function main(): byte {
   var buffer: byte[0x100];
-  std::console::print('Enter filename: ');
+  std::console::print("Enter filename: ");
   if(!std::console::input(buffer)){
     return -1;
   }

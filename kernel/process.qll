@@ -18,12 +18,12 @@ namespace kernel {
     global processes: std::vector<* process> = null;
 
     .interrupt function _error_interrupt(): void {
-      log('process: error interrupt!');
+      log("process: error interrupt!");
       // For now, just kill the current process.
       var process = current_process();
       destroy_process(process);
 
-      // When we return from here, we'll be returning to
+      // When we return from here, we"ll be returning to
       // a *different* task.
       return;
     }
@@ -31,7 +31,7 @@ namespace kernel {
     function create_process(binary: byte[], parent_id: byte): byte {
       // Check process limit
       if(len processes >= MAX_PROCESSES){
-        log('process: max processes reached');
+        log("process: max processes reached");
         return 0;
       }
 
@@ -45,7 +45,7 @@ namespace kernel {
 
       var table = memory::create_table(executable_base, executable_size, heap_size, stack_size);
       if(!table){
-        log('process: failed to create memory table');
+        log("process: failed to create memory table");
         return 0;
       }
 
@@ -54,11 +54,11 @@ namespace kernel {
       // the QLLC stack pointer, which initialize to the top of the stack.
       var task = scheduler::create_task();
       task->state.ip = executable_base;
-      // Stack pointer uses virtual address (must match create_table's layout)
+      // Stack pointer uses virtual address (must match create_table"s layout)
       var heap_base = executable_base + executable_size + 0x1000;
       var stack_base = heap_base + heap_size + 0x1000;
       task->state.registers[63] = stack_base + stack_size;
-      // Set the task's page table for context switching
+      // Set the task"s page table for context switching
       task->table = table;
 
       // Create a process.
@@ -84,7 +84,7 @@ namespace kernel {
       // Add the task to the task queue.
       scheduler::enqueue_task(process->task);
 
-      log('process: created process');
+      log("process: created process");
       return process->id;
     }
 
@@ -105,17 +105,17 @@ namespace kernel {
 
     function destroy_process(process: * process): void {
       if(!process){
-        panic('process: invalid process');
+        panic("process: invalid process");
       }
 
-      log('process: destroying process');
+      log("process: destroying process");
 
       // First kill all children recursively
       _kill_children(process->id);
 
       var i = std::vector::find(processes, process);
       if(i == -1){
-        panic('process: unknown process');
+        panic("process: unknown process");
       }
       std::vector::remove(processes, i);
 
@@ -133,13 +133,13 @@ namespace kernel {
       // Find the current process.
       var i = std::vector::find_by(processes, _find_process, scheduler::current_task);
       if(i == -1){
-        panic('process: current_process: current process not found');
+        panic("process: current_process: current process not found");
       }
       return processes[i];
     }
 
     function init(): void {
-      log('process: initializing...');
+      log("process: initializing...");
 
       // Create an empty process table.
       processes = std::vector::create<* process>(MAX_PROCESSES);
@@ -147,7 +147,7 @@ namespace kernel {
       // Register error handler.
       support::interrupt(interrupts::ERROR, _error_interrupt);
 
-      log('process: initialized');
+      log("process: initialized");
     }
   }
 }

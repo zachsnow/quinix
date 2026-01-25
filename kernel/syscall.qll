@@ -31,7 +31,7 @@ namespace kernel {
 
       // For now if we make an invalid syscall, we just exit.
       if(sc.syscall < 0 || sc.syscall >= len syscalls){
-        log('syscall: invalid');
+        log("syscall: invalid");
         _exit(sc);
         return;
       }
@@ -93,7 +93,7 @@ namespace kernel {
     }
 
     function _exit(sc: syscall): byte {
-      log('syscall: exit');
+      log("syscall: exit");
       var process = process::current_process();
       process::destroy_process(process);
       return 0;
@@ -104,7 +104,7 @@ namespace kernel {
       var slice_addr = <unsafe * byte>sc.arg1;
 
       if (!_validate_slice(slice_addr)) {
-        log('syscall: write: invalid slice');
+        log("syscall: write: invalid slice");
         return 0;
       }
 
@@ -225,7 +225,7 @@ namespace kernel {
     function _close(sc: syscall): byte {
       var handle = <fs::handle>sc.arg0;
 
-      // Don't close special handles.
+      // Don"t close special handles.
       if (handle == fs::handle::OUTPUT || handle == fs::handle::INPUT) {
         return 0;
       }
@@ -259,10 +259,10 @@ namespace kernel {
     }
 
     function init(): void {
-      log('syscall: initializing...');
+      log("syscall: initializing...");
       // Register `syscall` to handle interrupt 0x80.
       support::interrupt(interrupts::SYSCALL, _syscall_interrupt);
-      log('syscall: initialized');
+      log("syscall: initialized");
     }
   }
 }

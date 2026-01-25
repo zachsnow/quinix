@@ -21,7 +21,7 @@ namespace kernel {
     function _schedule_task(state: * interrupts::state): void {
       // Invalid state.
       if(!current_task || !tasks){
-        panic('scheduler: no tasks!');
+        panic("scheduler: no tasks!");
       }
 
       // Already running the only task.
@@ -29,11 +29,11 @@ namespace kernel {
         return;
       }
 
-      // Save the current task's state.
+      // Save the current task"s state.
       current_task->state = *state;
 
       // Schedule the next task; loop around to the beginning.
-      // Skip task 0 (kernel) since it has no page table and can't run with MMU.
+      // Skip task 0 (kernel) since it has no page table and can"t run with MMU.
       current_task = current_task->next;
       if(!current_task){
         current_task = tasks;
@@ -46,12 +46,12 @@ namespace kernel {
         }
       }
 
-      // If we're back to task 0, no user tasks left to run
+      // If we"re back to task 0, no user tasks left to run
       if(current_task->id == 0){
         return;
       }
 
-      // Restore the next task's state.
+      // Restore the next task"s state.
       _restore_current_task();
     }
 
@@ -75,10 +75,10 @@ namespace kernel {
 
     function destroy_task(task: * task): void {
       if(!task){
-        panic('scheduler: destroy: no task');
+        panic("scheduler: destroy: no task");
       }
       if(task->id == 0){
-        panic('scheduler: destroy: destroying PID 0');
+        panic("scheduler: destroy: destroying PID 0");
       }
 
       var destroyed_current_task = task == current_task;
@@ -89,13 +89,13 @@ namespace kernel {
       // If we destroyed the current task, switch to the head of the task list.
       if(destroyed_current_task){
         if(!tasks){
-          panic('scheduler: no tasks after destroy');
+          panic("scheduler: no tasks after destroy");
         }
         current_task = tasks;
-        // If we're switching to the kernel task (no page table), halt instead
-        // because the kernel can't run with MMU enabled and no valid page table.
+        // If we"re switching to the kernel task (no page table), halt instead
+        // because the kernel can"t run with MMU enabled and no valid page table.
         if(!current_task->table){
-          log('All user tasks completed');
+          log("All user tasks completed");
           support::halt(0);
         }
         *interrupts::state = current_task->state;
@@ -104,11 +104,11 @@ namespace kernel {
     }
 
     function init(): void {
-      log('scheduler: initializing...');
+      log("scheduler: initializing...");
 
       // Create task 0. When we receive our first
       // request to schedule a task, this is the task
-      // that we'll record as having been currently running.
+      // that we"ll record as having been currently running.
       var task: * task = create_task();
       task->next = null;  // Explicitly initialize to null
       task->table = null;

@@ -16,11 +16,11 @@ function printn(n: byte): void {
 }
 
 function print_point<T>(p: T): void {
-  std::console::print('(');
+  std::console::print("(");
   printn(p.x);
-  std::console::print(', ');
+  std::console::print(", ");
   printn(p.y);
-  std::console::print(')\n');
+  std::console::print(")\n");
 }
 
 function print_point_list(p: * point_list): void {
@@ -34,7 +34,7 @@ function main(): byte {
 
 function play(): void {
   // Vectors.
-  std::console::print('Vector:\n');
+  std::console::print("Vector:\n");
   var v: point[] = new point[] = [
     point {
       x = 110,
@@ -52,11 +52,11 @@ function play(): void {
     y = 160,
   });
 
-  std::console::print('Added:\n');
+  std::console::print("Added:\n");
   std::vector::foreach(v, print_point<point>);
 
   // Intrusive lists.
-  std::console::print('Intrusive list:\n');
+  std::console::print("Intrusive list:\n");
   var i: * point_list = new point_list = point_list {
     x = 10,
     y = 20,
