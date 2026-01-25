@@ -42,12 +42,14 @@ bun run bin/qvm.ts -w 0x2-0x43 kernel/kernel.qbin
 
 **Interactive Debugging via MCP:**
 The `mcp-repl` MCP server (in `../mcp-repl`) provides interactive REPL access to the VM debugger.
-Use `repl_start` with the debugger command and a prompt pattern like `^qvm> `:
+Use `-b 0x1000` to break at program entry (programs load at 0x1000). The debugger prompt is `# `.
 ```
-repl_start: command="bun", args=["run", "bin/qvm.ts", "-d", "kernel/kernel.qbin"], prompt="^qvm> "
+repl_start: command="bun", args=["run", "bin/qvm.ts", "-b", "0x1000", "kernel/kernel.qbin"], prompt="# $"
 repl_send: input="step 100"
-repl_send: input="regs"
-repl_send: input="mem 0x2 64"
+repl_send: input="r"          # registers
+repl_send: input="m 0x2 64"   # memory
+repl_send: input="w 0x2 0x43" # watch address range
+repl_send: input="c"          # continue
 ```
 
 ---
