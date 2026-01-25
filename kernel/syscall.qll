@@ -103,7 +103,7 @@ namespace kernel {
       var handle = <fs::handle>sc.arg0;
       var slice_addr = <unsafe * byte>sc.arg1;
 
-      if(!_validate_slice(slice_addr)){
+      if (!_validate_slice(slice_addr)) {
         log('syscall: write: invalid slice');
         return 0;
       }
@@ -111,35 +111,134 @@ namespace kernel {
       var data_ptr = _get_slice_data(slice_addr);
       var data_len = _get_slice_len(slice_addr);
 
-      // Write data byte by byte through the filesystem
-      for(var i = 0; i < data_len; i = i + 1){
-        var ch = data_ptr[unsafe i];
-        fs::write_byte(handle, ch);
+      // Handle special handles.
+      if (handle == fs::handle::OUTPUT) {
+        // Write to console output byte by byte.
+        for (var i: byte = 0; i < data_len; i = i + 1) {
+          var ch = data_ptr[unsafe i];
+          fs::write_byte(handle, ch);
+        }
+        return data_len;
       }
 
-      return 1;
+      // Handle QFS file handles.
+      if (handle >= 0x10) {
+        var qfs_slot = handle - 0x10;
+        return fs::qfs::file_write(qfs_slot, data_ptr, data_len);
+      }
+
+      return 0;
     }
 
     function _read(sc: syscall): byte {
       var handle = <fs::handle>sc.arg0;
       var slice_addr = <unsafe * byte>sc.arg1;
 
-      if(!_validate_slice(slice_addr)){
+      if (!_validate_slice(slice_addr)) {
         return 0;
       }
 
-      // For now, read is not implemented
-      // TODO: implement proper read syscall
+      var data_ptr = _get_slice_data(slice_addr);
+      var data_len = _get_slice_len(slice_addr);
+
+      // Handle special handles.
+      if (handle == fs::handle::INPUT) {
+        // Read from console input - use existing buffered read.
+        var temp_buffer: byte[256];
+        len temp_buffer = data_len;
+        if (data_len > 256) {
+          len temp_buffer = 256;
+        }
+        if (!std::buffered::read(
+          &peripherals::debug_input->control,
+          &peripherals::debug_input->size,
+          &peripherals::debug_input->buffer[unsafe 0],
+          temp_buffer
+        )) {
+          return 0;
+        }
+        // Copy to user buffer.
+        for (var i: byte = 0; i < len temp_buffer; i = i + 1) {
+          data_ptr[unsafe i] = temp_buffer[i];
+        }
+        return len temp_buffer;
+      }
+
+      // Handle QFS file handles.
+      // QFS handles start at 0x10 to avoid collision with special handles.
+      if (handle >= 0x10) {
+        var qfs_slot = handle - 0x10;
+        return fs::qfs::file_read(qfs_slot, data_ptr, data_len);
+      }
+
       return 0;
+    }
+
+    // Translate a user-space string to kernel-space and copy it.
+    // Returns false if the string is invalid.
+    function _copy_string(virt_addr: *byte, dest: byte[], max_len: byte): bool {
+      var phys = _translate(virt_addr);
+      if (!phys) {
+        return false;
+      }
+      var i: byte = 0;
+      while (i < max_len) {
+        var ch = phys[unsafe i];
+        if (ch == 0) {
+          break;
+        }
+        dest[i] = ch;
+        i = i + 1;
+      }
+      len dest = i;
+      return true;
     }
 
     function _open(sc: syscall): byte {
-      // TODO: implement
-      return 0;
+      var path_addr = <unsafe *byte>sc.arg0;
+      var mode = sc.arg1;
+
+      // Copy path to kernel buffer.
+      var path_buffer: byte[64];
+      if (!_copy_string(path_addr, path_buffer, 64)) {
+        return -1;
+      }
+
+      // Map mode: 0=read, 1=write, 2=append.
+      var qfs_mode = fs::qfs::MODE_READ;
+      if (mode == 1) {
+        qfs_mode = fs::qfs::MODE_WRITE;
+      } else if (mode == 2) {
+        qfs_mode = fs::qfs::MODE_APPEND;
+      }
+
+      // Open file in QFS.
+      var slot = fs::qfs::file_open(path_buffer, qfs_mode);
+      if (slot == -1) {
+        return -1;
+      }
+
+      // Return handle (QFS slot + 0x10 to avoid collision with special handles).
+      return slot + 0x10;
     }
 
     function _close(sc: syscall): byte {
-      // TODO: implement
+      var handle = <fs::handle>sc.arg0;
+
+      // Don't close special handles.
+      if (handle == fs::handle::OUTPUT || handle == fs::handle::INPUT) {
+        return 0;
+      }
+
+      // Handle QFS file handles.
+      if (handle >= 0x10) {
+        var qfs_slot = handle - 0x10;
+        if (fs::qfs::file_close(qfs_slot)) {
+          return 0;
+        }
+        return -1;
+      }
+
       return 0;
     }
 
