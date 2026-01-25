@@ -68,6 +68,15 @@ namespace kernel {
     }
 
     //
+    // Block device.
+    //
+    .constant global block_device_identifier: byte = 0x20;
+
+    function _init_block_device(entry: * peripheral_table_entry): void {
+      kernel::block::init(entry);
+    }
+
+    //
     // Peripheral initialization.
     //
     type init_table_entry = struct {
@@ -95,6 +104,10 @@ namespace kernel {
       init_table_entry {
         identifier = mmu_identifier,
         init = _init_mmu,
+      },
+      init_table_entry {
+        identifier = block_device_identifier,
+        init = _init_block_device,
       },
     ];
 
