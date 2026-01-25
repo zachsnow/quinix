@@ -1,3 +1,48 @@
+## Current Task
+
+Debug kernel interrupt handling. After process exits, intermittent memory fault:
+
+```
+[FAULT] memory fault: 0x00000001 not executable fetching instruction
+```
+
+### Investigation Summary
+
+**Bug Behavior:**
+- Intermittent (timing-dependent) - doesn't reproduce with `-t` tracing flag
+- IP becomes 0x1 after interrupt return, causing fault
+- Happens after `destroy_task()` switches to another process
+
+**Fixes Applied (partial, bug not fully resolved):**
+1. `src/vm/vm.ts`: Fixed interrupt masking - only FAULT bypasses mask
+2. `src/vm/vm.ts`: Added missing `break` after INT instruction case
+3. `kernel/scheduler.qll`: Initialize task0->next and task0->table to null
+
+**Key Finding:**
+Through tracing, narrowed to exact moment: IP is correct (0x1417) at `step()` entry,
+but becomes 0x1 by first instruction fetch - within ~5 lines of code that shouldn't
+modify registers. Suggests possible:
+- Register array aliasing issue
+- Concurrent modification during `await release()` yielding to event loop
+- Memory corruption
+
+**Architecture Notes:**
+- Interrupt state saved at physical 0x2-0x42 (64 regs + IP)
+- Timer uses JS `setInterval`, fires during `await release()` between step() calls
+- Scheduler in kernel writes directly to interrupt save area via `*interrupts::state`
+- EQ instruction returns 0 when equal (inverted from typical semantics)
+
+**Debug Commands:**
+```bash
+# Run with interrupt tracing
+bun run bin/qvm.ts -t kernel/kernel.qbin
+
+# Run with watchpoints on save area
+bun run bin/qvm.ts -w 0x2-0x43 kernel/kernel.qbin
+```
+
+---
+
 # Quinix
 
 Quinix is an educational project implementing a complete virtual computing stack: a 32-bit RISC virtual machine, an assembly language, and a C-like high-level language. It is intended to additionally include an operating system for

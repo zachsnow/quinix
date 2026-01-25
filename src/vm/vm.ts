@@ -687,9 +687,9 @@ class VM {
       return true;
     }
 
-    // Fault is not masked by disabling interrupts.
+    // Check if interrupts are masked. Only FAULT can bypass the mask.
     const isMasked = !this.memory[this.INTERRUPT_TABLE_ENABLED_ADDR];
-    if (!this.state.faulting && isMasked) {
+    if (isMasked && interrupt !== Interrupt.FAULT) {
       this.stats.interruptsIgnored++;
       log.debug(
         `interrupt ${Immediate.toString(interrupt)}: interrupts disabled`
@@ -864,6 +864,7 @@ class VM {
             // the handler.
             return "continue";
           }
+          break;
         }
 
         case Operation.LOAD: {

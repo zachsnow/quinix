@@ -110,6 +110,8 @@ namespace kernel {
       // request to schedule a task, this is the task
       // that we'll record as having been currently running.
       var task: * task = create_task();
+      task->next = null;  // Explicitly initialize to null
+      task->table = null;
       tasks = task;
       current_task = task;
 
