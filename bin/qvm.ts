@@ -16,6 +16,7 @@ import {
   DebugOutputPeripheral,
   FileBlockStorage,
 } from "@server/peripherals";
+import { SECTOR_SIZE_WORDS, sectorsFromFileSize } from "@server/qfs";
 import { Peripheral, TimerPeripheral } from "@/vm/peripherals";
 import { Breakpoint, VM, Watchpoint } from "@/vm/vm";
 
@@ -142,9 +143,7 @@ let blockDevice: BlockDevicePeripheral | null = null;
 if (argv.disk) {
   const diskPath = argv.disk;
   const stat = fs.statSync(diskPath);
-  const sectorSize = 128; // words per sector
-  const sectorBytes = sectorSize * 4; // 512 bytes per sector
-  const totalSectors = Math.floor(stat.size / sectorBytes);
+  const totalSectors = sectorsFromFileSize(stat.size);
 
   if (totalSectors < 1) {
     console.error(`error: disk image too small (${stat.size} bytes)`);
@@ -152,8 +151,8 @@ if (argv.disk) {
   }
 
   log.debug(`disk: ${diskPath} (${totalSectors} sectors)`);
-  const storage = new FileBlockStorage(diskPath, totalSectors, sectorSize);
-  blockDevice = new BlockDevicePeripheral(storage, sectorSize);
+  const storage = new FileBlockStorage(diskPath, totalSectors, SECTOR_SIZE_WORDS);
+  blockDevice = new BlockDevicePeripheral(storage, SECTOR_SIZE_WORDS);
 }
 
 // 4. Run program.

@@ -47,6 +47,13 @@ export const MAX_FILENAME_LEN = 8;
 export const MAX_EXTENSION_LEN = 3;
 
 /**
+ * Calculate total sectors from file size in bytes
+ */
+export function sectorsFromFileSize(fileSize: number): number {
+  return Math.floor(fileSize / SECTOR_SIZE_BYTES);
+}
+
+/**
  * Superblock structure (sector 0)
  */
 export interface Superblock {
