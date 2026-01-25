@@ -9,12 +9,14 @@ import { Program } from "@/vm/instructions";
 import { parseArguments } from "@server/cli";
 import { Debugger } from "@server/debugger";
 import {
+  BlockDevicePeripheral,
   DebugBreakPeripheral,
   DebugFilePeripheral,
   DebugInputPeripheral,
   DebugOutputPeripheral,
+  FileBlockStorage,
 } from "@server/peripherals";
-import { TimerPeripheral } from "@/vm/peripherals";
+import { Peripheral, TimerPeripheral } from "@/vm/peripherals";
 import { Breakpoint, VM, Watchpoint } from "@/vm/vm";
 
 const log = logger("qvm");
@@ -26,6 +28,7 @@ interface Options {
   binary: string;
   cycles?: string;
   size?: string;
+  disk?: string;
   break: string;
   "break-write": string;
   watchpoint: string;
@@ -46,6 +49,11 @@ const argv = parseArguments<Options>(
       size: {
         alias: "m",
         describe: "memory size in bytes (e.g. 0x100000 for 1MB)",
+        type: "string",
+      },
+      disk: {
+        alias: "d",
+        describe: "QFS disk image file",
         type: "string",
       },
       break: {
@@ -129,7 +137,37 @@ log.debug(`loaded binary:\n${programData}\n`);
 const program = Program.decode(programData);
 log.debug(`decoded program:\n${program}\n`);
 
-// 3. Run program.
+// 3. Create block device if disk image provided.
+let blockDevice: BlockDevicePeripheral | null = null;
+if (argv.disk) {
+  const diskPath = argv.disk;
+  const stat = fs.statSync(diskPath);
+  const sectorSize = 128; // words per sector
+  const sectorBytes = sectorSize * 4; // 512 bytes per sector
+  const totalSectors = Math.floor(stat.size / sectorBytes);
+
+  if (totalSectors < 1) {
+    console.error(`error: disk image too small (${stat.size} bytes)`);
+    process.exit(1);
+  }
+
+  log.debug(`disk: ${diskPath} (${totalSectors} sectors)`);
+  const storage = new FileBlockStorage(diskPath, totalSectors, sectorSize);
+  blockDevice = new BlockDevicePeripheral(storage, sectorSize);
+}
+
+// 4. Run program.
+const peripherals: Peripheral[] = [
+  new TimerPeripheral(),
+  new DebugBreakPeripheral(),
+  new DebugOutputPeripheral(),
+  new DebugInputPeripheral(),
+  new DebugFilePeripheral(filename ? path.dirname(filename) : "."),
+];
+if (blockDevice) {
+  peripherals.push(blockDevice);
+}
+
 const vm = new VM({
   debug: argv.verbose,
   breakpoints: breakpoints,
@@ -139,13 +177,7 @@ const vm = new VM({
   debuggerFactory: (vm, state, memory) => {
     return new Debugger(vm, state, memory);
   },
-  peripherals: [
-    new TimerPeripheral(),
-    new DebugBreakPeripheral(),
-    new DebugOutputPeripheral(),
-    new DebugInputPeripheral(),
-    new DebugFilePeripheral(filename ? path.dirname(filename) : "."),
-  ],
+  peripherals,
 });
 
 vm.run(programData)
