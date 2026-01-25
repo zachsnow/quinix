@@ -40,6 +40,16 @@ bun run bin/qvm.ts -t kernel/kernel.qbin
 bun run bin/qvm.ts -w 0x2-0x43 kernel/kernel.qbin
 ```
 
+**Interactive Debugging via MCP:**
+The `mcp-repl` MCP server (in `../mcp-repl`) provides interactive REPL access to the VM debugger.
+Use `repl_start` with the debugger command and a prompt pattern like `^qvm> `:
+```
+repl_start: command="bun", args=["run", "bin/qvm.ts", "-d", "kernel/kernel.qbin"], prompt="^qvm> "
+repl_send: input="step 100"
+repl_send: input="regs"
+repl_send: input="mem 0x2 64"
+```
+
 ---
 
 # Quinix
