@@ -35,6 +35,13 @@ import {
   writeSuperblock,
 } from '@server/qfs';
 
+interface Options {
+  sectors: number;
+  name: string;
+  output: string;
+  verbose: boolean;
+}
+
 function printUsage(): void {
   console.log(`qfs - QFS filesystem tool
 
@@ -50,24 +57,34 @@ Options:
   -v, --verbose  Verbose output`);
 }
 
-function parseArgs(): { command: string; args: string[]; options: Record<string, string> } {
-  const args = process.argv.slice(2);
-  const options: Record<string, string> = {};
+function parseArgs(): { command: string; args: string[]; options: Options } {
+  const argv = process.argv.slice(2);
+  const options: Options = {
+    sectors: 1024,
+    name: '',
+    output: '',
+    verbose: false,
+  };
   const positional: string[] = [];
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
     if (arg === '-h' || arg === '--help') {
       printUsage();
       process.exit(0);
     } else if (arg === '-s' || arg === '--sectors') {
-      options.sectors = args[++i] || '1024';
+      const val = argv[++i];
+      options.sectors = parseInt(val, 10);
+      if (isNaN(options.sectors)) {
+        console.error(`Error: --sectors requires a number, got '${val}'`);
+        process.exit(1);
+      }
     } else if (arg === '-n' || arg === '--name') {
-      options.name = args[++i] || '';
+      options.name = argv[++i] || '';
     } else if (arg === '-o' || arg === '--output') {
-      options.output = args[++i] || '';
+      options.output = argv[++i] || '';
     } else if (arg === '-v' || arg === '--verbose') {
-      options.verbose = 'true';
+      options.verbose = true;
     } else if (arg.startsWith('-')) {
       console.error(`Unknown option: ${arg}`);
       process.exit(1);
@@ -84,16 +101,16 @@ function parseArgs(): { command: string; args: string[]; options: Record<string,
 // Commands
 // ============================================================
 
-async function cmdCreate(args: string[], options: Record<string, string>): Promise<void> {
+async function cmdCreate(args: string[], options: Options): Promise<void> {
   if (args.length < 1) {
     console.error('Usage: qfs create <image> [--sectors N]');
     process.exit(1);
   }
 
   const outputPath = args[0];
-  const totalSectors = parseInt(options.sectors || '1024', 10);
+  const totalSectors = options.sectors;
 
-  if (isNaN(totalSectors) || totalSectors < DATA_START_SECTOR + 1) {
+  if (totalSectors < DATA_START_SECTOR + 1) {
     console.error(`Error: sectors must be at least ${DATA_START_SECTOR + 1}`);
     process.exit(1);
   }
@@ -137,7 +154,7 @@ async function cmdCreate(args: string[], options: Record<string, string>): Promi
   console.log('Done.');
 }
 
-async function cmdAdd(args: string[], options: Record<string, string>): Promise<void> {
+async function cmdAdd(args: string[], options: Options): Promise<void> {
   if (args.length < 2) {
     console.error('Usage: qfs add <image> <file> [--name <name>]');
     process.exit(1);
@@ -146,7 +163,7 @@ async function cmdAdd(args: string[], options: Record<string, string>): Promise<
   const imagePath = args[0];
   const hostFilePath = args[1];
 
-  let filename = options.name || path.basename(hostFilePath);
+  const filename = options.name || path.basename(hostFilePath);
   const { name, extension } = parseFilename(filename);
 
   if (name.length > MAX_FILENAME_LEN) {
@@ -240,7 +257,7 @@ async function cmdList(args: string[]): Promise<void> {
   }
 }
 
-async function cmdExtract(args: string[], options: Record<string, string>): Promise<void> {
+async function cmdExtract(args: string[], options: Options): Promise<void> {
   if (args.length < 2) {
     console.error('Usage: qfs extract <image> <filename> [--output <path>]');
     process.exit(1);
