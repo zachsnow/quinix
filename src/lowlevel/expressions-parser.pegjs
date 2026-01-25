@@ -97,8 +97,17 @@ AdditiveOperator
     = "+"
     / "-"
 
+ShiftExpression
+    = e:AdditiveExpression tail:(_ ShiftOperator _ AdditiveExpression)* {
+        return BinaryExpression.build(e, tail.map((t: any) => [ t[1], t[3] ])).at(location(), text(), options);
+    }
+
+ShiftOperator
+    = "<<" { return "<<"; }
+    / ">>" { return ">>"; }
+
 RelationalExpression
-    = e:AdditiveExpression tail:(_ RelationalOperator _ AdditiveExpression)? {
+    = e:ShiftExpression tail:(_ RelationalOperator _ ShiftExpression)? {
         return BinaryExpression.build(e, tail ? [ [tail[1], tail[3]] ] : []).at(location(), text(), options);
     }
 

@@ -10,7 +10,7 @@ describe('Instructions', () => {
     expect(Instruction.createOperation(Operation.LOAD, Register.R0, r1).encode()).toBe(0x02000100);
     expect(Instruction.createOperation(Operation.STORE, r2, r3).encode()).toBe(0x03020300);
     expect(Instruction.createOperation(Operation.CONSTANT, r3).encode()).toBe(0x05030000);
-    expect(Instruction.createOperation(Operation.JMP, undefined, r2).encode()).toBe(0x12000200);
+    expect(Instruction.createOperation(Operation.JMP, undefined, r2).encode()).toBe(0x14000200);
   });
 
   test('immediates encode correctly', () => {
@@ -35,8 +35,8 @@ describe('Instructions', () => {
     expect(Instruction.decode(0x03020300).sr0).toBe(r3);
     expect(Instruction.decode(0x05030000).operation).toBe(Operation.CONSTANT);
     expect(Instruction.decode(0x05030000).dr).toBe(r3);
-    expect(Instruction.decode(0x12000200).operation).toBe(Operation.JMP);
-    expect(Instruction.decode(0x12000200).sr0).toBe(r2);
+    expect(Instruction.decode(0x14000200).operation).toBe(Operation.JMP);
+    expect(Instruction.decode(0x14000200).sr0).toBe(r2);
   });
 
   test('instructions toString correct', () => {

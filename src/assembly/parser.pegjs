@@ -50,6 +50,8 @@ BinaryUpdateOperation
   / "mod" { return Operation.MOD; }
   / "and" { return Operation.AND; }
   / "or" { return Operation.OR; }
+  / "shl" { return Operation.SHL; }
+  / "shr" { return Operation.SHR; }
   / "eq" { return Operation.EQ; }
   / "neq" { return Operation.NEQ; }
   / "lt" { return Operation.LT; }

@@ -1044,6 +1044,14 @@ class VM {
         case Operation.NOT:
           registers[decoded.dr!] = ~registers[decoded.sr0!] >>> 0;
           break;
+        case Operation.SHL:
+          registers[decoded.dr!] =
+            (registers[decoded.sr0!] << (registers[decoded.sr1!] & 0x1f)) >>> 0;
+          break;
+        case Operation.SHR:
+          registers[decoded.dr!] =
+            registers[decoded.sr0!] >>> (registers[decoded.sr1!] & 0x1f);
+          break;
 
         case Operation.EQ:
           registers[decoded.dr!] =

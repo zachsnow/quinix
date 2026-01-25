@@ -23,6 +23,8 @@ enum Operation {
   AND,
   OR,
   NOT,
+  SHL,
+  SHR,
 
   EQ,
   NEQ,
@@ -61,6 +63,8 @@ namespace Operation {
     "and d s s",
     "or d s s",
     "not d s",
+    "shl d s s",
+    "shr d s s",
     "eq d s s",
     "neq d s s",
     "lt d s s",
@@ -93,7 +97,7 @@ namespace Operation {
    * @param n the operation
    */
   export function isValid(n: number): boolean {
-    return n >= Operation.HALT && n <= Operation.WAIT;
+    return n >= Operation.HALT && n < Operation.specifications.length;
   }
 }
 
