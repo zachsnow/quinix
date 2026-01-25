@@ -99,13 +99,12 @@ type Breakpoint = {
 };
 
 type WatchpointType = "read" | "write" | "all";
-type WatchpointCallback = (address: Address, value: number, oldValue: number, source: string) => void;
+type WatchpointCallback = (address: Address, value: number, oldValue: number) => void;
 type Watchpoint = {
   low: Address;      // Start of physical address range (inclusive)
   high: Address;     // End of range (exclusive)
   type: WatchpointType;
   callback?: WatchpointCallback;
-  breakOnHit?: boolean;  // Trigger debugger breakpoint when hit
 };
 
 /**
@@ -128,7 +127,6 @@ type VMOptions = {
   mmu?: MMU;
   breakpoints?: Breakpoint[];
   watchpoints?: Watchpoint[];
-  traceInterrupts?: boolean;
   cycles?: number;
   debuggerFactory?: DebuggerFactory;
 };
@@ -219,9 +217,6 @@ class VM {
   // Watchpoints (physical address ranges).
   private watchpoints: Watchpoint[] = [];
 
-  // Interrupt tracing.
-  private traceInterrupts: boolean = false;
-
   public constructor(options?: VMOptions) {
     options = options || {};
 
@@ -251,10 +246,6 @@ class VM {
 
     // Watchpoints (physical address ranges).
     this.watchpoints = options.watchpoints || [];
-
-    // Interrupt tracing.
-    this.traceInterrupts = options.traceInterrupts || false;
-
     this.maxCycles = options.cycles;
   }
 
@@ -488,40 +479,32 @@ class VM {
   }
 
   /**
-   * Check watchpoints for a memory access. Returns true if a breakpoint should be triggered.
+   * Check watchpoints for a memory access.
    * @param address Physical address being accessed
    * @param oldValue Previous value at address (for writes)
-   * @param source Description of what caused this access (e.g., "store", "int-store", "int-restore")
    * @param accessType Whether this is a read or write
    */
   private checkWatchpoint(
     address: Address,
     oldValue: number,
-    source: string,
     accessType: "read" | "write" = "write"
-  ): boolean {
+  ): void {
     const value = this.memory[address];
-    let shouldBreak = false;
 
     for (const wp of this.watchpoints) {
       if (address >= wp.low && address < wp.high) {
         if (wp.type === accessType || wp.type === "all") {
           if (wp.callback) {
-            wp.callback(address, value, oldValue, source);
+            wp.callback(address, value, oldValue);
           } else {
             log.debug(
-              `[WATCH] ${source} ${accessType} ${Address.toString(address)}: ` +
+              `[WATCH] ${accessType} ${Address.toString(address)}: ` +
               `${Immediate.toString(oldValue)} -> ${Immediate.toString(value)}`
             );
-          }
-          if (wp.breakOnHit) {
-            shouldBreak = true;
           }
         }
       }
     }
-
-    return shouldBreak;
   }
 
   /**
@@ -662,41 +645,17 @@ class VM {
   }
 
   private interruptStore(): void {
-    if (this.traceInterrupts) {
-      log.debug(`[INT-STORE] Saving registers to 0x${this.INTERRUPT_TABLE_REGISTERS_ADDR.toString(16)}`);
-      log.debug(`  IP: ${Immediate.toString(this.state.registers[Register.IP])}`);
-      log.debug(`  SP (r63): ${Immediate.toString(this.state.registers[63])}`);
-    }
-
-    // Store each register in the register location.
     const base = this.INTERRUPT_TABLE_REGISTERS_ADDR;
     for (var i = 0; i < this.state.registers.length; i++) {
-      const oldValue = this.memory[base + i];
       this.memory[base + i] = this.state.registers[i];
-      this.checkWatchpoint(base + i, oldValue, "int-store");
     }
   }
 
   private interruptRestore(): void {
-    if (this.traceInterrupts) {
-      const storedIP = this.memory[this.INTERRUPT_TABLE_REGISTERS_ADDR + Register.IP];
-      const storedSP = this.memory[this.INTERRUPT_TABLE_REGISTERS_ADDR + 63];
-      log.debug(`[INT-RESTORE] Loading registers from 0x${this.INTERRUPT_TABLE_REGISTERS_ADDR.toString(16)}`);
-      log.debug(`  Stored IP: ${Immediate.toString(storedIP)}`);
-      log.debug(`  Stored SP: ${Immediate.toString(storedSP)}`);
-    }
-
-    // Read each register in the register location.
     const base = this.INTERRUPT_TABLE_REGISTERS_ADDR;
     for (var i = 0; i < this.state.registers.length; i++) {
-      const value = this.memory[base + i];
-      this.state.registers[i] = value;
-      // Check for read watchpoint (value being loaded into register)
-      this.checkWatchpoint(base + i, value, "int-restore", "read");
-      // Zero the memory after reading
+      this.state.registers[i] = this.memory[base + i];
       this.memory[base + i] = 0;
-      // Check for write watchpoint (zeroing the save area)
-      this.checkWatchpoint(base + i, value, "int-restore-zero", "write");
     }
   }
 
@@ -961,9 +920,7 @@ class VM {
           registers[decoded.dr!] = value;
 
           // Check watchpoints (physical address).
-          if (this.checkWatchpoint(physicalAddress, value, "load", "read")) {
-            return "break";
-          }
+          this.checkWatchpoint(physicalAddress, value, "read");
           break;
         }
         case Operation.STORE: {
@@ -1004,9 +961,7 @@ class VM {
           memory[physicalAddress] = value;
 
           // Check watchpoints (physical address).
-          if (this.checkWatchpoint(physicalAddress, oldValue, "store")) {
-            return "break";
-          }
+          this.checkWatchpoint(physicalAddress, oldValue);
 
           // Check peripheral mapping for a method.
           const peripheralMapping = peripheralAddresses[physicalAddress];

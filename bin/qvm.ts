@@ -29,7 +29,6 @@ interface Options {
   break: string;
   "break-write": string;
   watchpoint: string;
-  "trace-interrupts": boolean;
   stats: boolean;
 }
 
@@ -66,12 +65,6 @@ const argv = parseArguments<Options>(
         describe: "watch physical address range for writes (e.g. 0x2-0x43)",
         type: "string",
         default: "",
-      },
-      "trace-interrupts": {
-        alias: "t",
-        describe: "trace interrupt store/restore operations",
-        type: "boolean",
-        default: false,
       },
       stats: {
         alias: "s",
@@ -112,7 +105,7 @@ if (argv.watchpoint) {
   watchpoints.push({
     low,
     high,
-    type: "all",  // Watch both reads and writes
+    type: "write",
   });
 }
 
@@ -141,7 +134,6 @@ const vm = new VM({
   debug: argv.verbose,
   breakpoints: breakpoints,
   watchpoints: watchpoints,
-  traceInterrupts: argv["trace-interrupts"],
   cycles: argv.cycles ? parseInt(argv.cycles, 10) : undefined,
   size: argv.size ? parseInt(argv.size, 10) : undefined,
   debuggerFactory: (vm, state, memory) => {
