@@ -437,18 +437,21 @@ class ForStatement extends Statement {
   }
 
   public typecheck(context: TypeChecker): void {
-    this.initializer.typecheck(context);
+    // Create a new scope for the for loop's initializer and body.
+    const nestedContext = context.extend(context.symbolTable.extend());
 
-    const conditionType = this.condition.typecheck(context);
+    this.initializer.typecheck(nestedContext);
+
+    const conditionType = this.condition.typecheck(nestedContext);
 
     // Integer conditions and pointer conditions are allowed.
     if (!conditionType.integral) {
-      this.error(context, `expected integral type, actual ${conditionType}`);
+      this.error(nestedContext, `expected integral type, actual ${conditionType}`);
     }
 
-    this.update.typecheck(context);
+    this.update.typecheck(nestedContext);
 
-    this.block.typecheck(context.loop());
+    this.block.typecheck(nestedContext.loop());
 
     return;
   }
