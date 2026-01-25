@@ -14,6 +14,7 @@ LineStatement
     / ReturnToken { return new ReturnStatement().at(location(), text(), options); }
 
     / BreakToken { return new BreakStatement().at(location(), text(), options); }
+    / ContinueToken { return new ContinueStatement().at(location(), text(), options); }
 
     / DeleteToken _ e:Expression { return new DeleteStatement(e).at(location(), text(), options); }
 

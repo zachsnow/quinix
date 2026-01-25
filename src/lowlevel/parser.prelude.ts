@@ -10,7 +10,7 @@ import {
   BlockStatement, ExpressionStatement,
   IfStatement, WhileStatement, ForStatement,
   DeleteStatement,
-  ReturnStatement, BreakStatement,
+  ReturnStatement, BreakStatement, ContinueStatement,
 } from './statements';
 import {
   Expression,

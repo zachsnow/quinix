@@ -64,7 +64,7 @@ jnz r3 @loop
 halt
 ```
 
-Instructions: `halt`, `int`, `load`, `store`, `mov`, `constant`, `add`, `sub`, `mul`, `div`, `mod`, `and`, `or`, `not`, `eq`, `neq`, `lt`, `gt`, `jmp`, `jz`, `jnz`, `nop`, `wait`
+Instructions: `halt`, `int`, `load`, `store`, `mov`, `constant`, `add`, `sub`, `mul`, `div`, `mod`, `and`, `or`, `not`, `shl`, `shr`, `eq`, `neq`, `lt`, `gt`, `jmp`, `jz`, `jnz`, `nop`, `wait`
 
 Registers: `r0`-`r63`, `ip`
 

@@ -55,6 +55,10 @@ or *sources* of the operation.
 
 `not d s`:  store `s` bitwise-negated into `d`
 
+`shl d s0 s1`: store `s0` left-shifted by `s1` bits into `d`
+
+`shr d s0 s1`: store `s0` right-shifted (logical) by `s1` bits into `d`
+
 **Comparison operators**
 
 `eq d s0 s1`: if `s0` is equal to `s1`, store `0x0` into `d`; otherwise, store `0x1`

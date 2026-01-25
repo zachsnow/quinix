@@ -461,6 +461,7 @@ class ForStatement extends Statement {
     this.initializer.compile(compiler);
 
     const topRef = compiler.generateReference('for');
+    const continueRef = compiler.generateReference('for_continue');
     const endRef = compiler.generateReference('for_end');
     const r = compiler.allocateRegister();
 
@@ -476,10 +477,15 @@ class ForStatement extends Statement {
       new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, r))
     ]);
 
-    // For loop body.
-    compiler.loop(endRef, () => {
+    // For loop body. Continue jumps to continueRef (before update).
+    compiler.loop(endRef, continueRef, () => {
       this.block.compile(compiler);
     });
+
+    // Continue target: run update then recheck condition.
+    compiler.emit([
+      new LabelDirective(continueRef),
+    ]);
 
     this.update.compile(compiler);
 
@@ -546,8 +552,8 @@ class WhileStatement extends Statement {
       new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, r))
     ]);
 
-    // While loop body.
-    compiler.loop(endRef, () => {
+    // While loop body. Continue jumps to topRef (condition recheck).
+    compiler.loop(endRef, topRef, () => {
       this.block.compile(compiler);
     });
 
@@ -675,6 +681,39 @@ class BreakStatement extends Statement {
   }
 }
 
+class ContinueStatement extends Statement {
+  public substitute(typeTable: TypeTable) {
+    return this;
+  }
+
+  public typecheck(context: TypeChecker): void {
+    if (!context.inLoop) {
+      this.error(context, `continue outside of for or while`);
+    }
+  }
+
+  public compile(compiler: Compiler): void {
+    if (!compiler.continueReference) {
+      throw new InternalError(`unable to compile continue outside of a for or while statement`);
+    }
+
+    const r = compiler.allocateRegister();
+    compiler.emit([
+      new ConstantDirective(r, new ReferenceConstant(compiler.continueReference)),
+      new InstructionDirective(Instruction.createOperation(Operation.JMP, undefined, r)),
+    ]);
+    compiler.deallocateRegister(r);
+  }
+
+  public returns(): boolean {
+    return false;
+  }
+
+  public toString() {
+    return `continue;`;
+  }
+}
+
 /**
  * A delete statement of the form `delete expression;`.
  */
@@ -773,4 +812,5 @@ export {
   AssignmentStatement,
   ReturnStatement,
   BreakStatement,
+  ContinueStatement,
 };

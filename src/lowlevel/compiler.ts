@@ -168,6 +168,14 @@ class Compiler {
   }
 
   /**
+   * For continue statements.
+   */
+  private continueReferences: Reference[] = [];
+  public get continueReference(): Reference | undefined {
+    return this.continueReferences[this.continueReferences.length - 1];
+  }
+
+  /**
    * @param prefix the name of the context being compiled -- e.g. a function's name.
    * @param allocator the custom allocator to use.
    * @param deallocator the custom deallocator to use.
@@ -180,19 +188,21 @@ class Compiler {
 
   /**
    * Evaluate the given `fn` with this compiler extended to include the given
-   * break reference. (Kind of like "extending" this compiler but trying to avoid
-   * cloning each private property and making it work with subclasses).
+   * break and continue references.
    *
-   * @param reference the reference to break out to.
-   * @param fn a function to evaluate in the context of this break label.
+   * @param breakRef the reference to break out to.
+   * @param continueRef the reference to continue to.
+   * @param fn a function to evaluate in the context of this loop.
    */
-  public loop(reference: Reference, fn: () => void): void {
-    this.breakReferences.push(reference);
+  public loop(breakRef: Reference, continueRef: Reference, fn: () => void): void {
+    this.breakReferences.push(breakRef);
+    this.continueReferences.push(continueRef);
     try {
       fn();
     }
     finally {
       this.breakReferences.pop();
+      this.continueReferences.pop();
     }
   }
 

@@ -59,7 +59,7 @@ Tokens
   / IfToken / ElseToken
   / WhileToken / ForToken
   / VarToken
-  / ReturnToken / BreakToken
+  / ReturnToken / BreakToken / ContinueToken
   / NamespaceToken / UsingToken
   / GlobalToken / TypeToken / FunctionToken
 
@@ -78,6 +78,7 @@ WhileToken = tok:"while" !Identifier { return tok; }
 VarToken = tok:"var" !Identifier { return tok; }
 ReturnToken = tok:"return" !Identifier { return tok; }
 BreakToken = tok:"break" !Identifier { return tok; }
+ContinueToken = tok:"continue" !Identifier { return tok; }
 DeleteToken = tok:"delete" !Identifier { return tok; }
 NamespaceToken = tok:"namespace" !Identifier { return tok; }
 UsingToken = tok:"using" !Identifier { return tok; }
