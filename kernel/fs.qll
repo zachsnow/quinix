@@ -423,6 +423,48 @@ namespace kernel {
       global file_buffer_sector: byte = 0;
       global file_buffer_dirty: bool = false;
 
+      // Shift helper: get multiplier for byte position (0-3).
+      // Returns 1, 256, 65536, or 16777216.
+      function _byte_shift(pos: byte): byte {
+        if (pos == 0) {
+          return 1;
+        } else if (pos == 1) {
+          return 256;
+        } else if (pos == 2) {
+          return 65536;
+        } else {
+          return 16777216;
+        }
+      }
+
+      // Get byte mask for position (0-3).
+      // Returns 0xFF, 0xFF00, 0xFF0000, or 0xFF000000.
+      function _byte_mask(pos: byte): byte {
+        if (pos == 0) {
+          return 0xFF;
+        } else if (pos == 1) {
+          return 0xFF00;
+        } else if (pos == 2) {
+          return 0xFF0000;
+        } else {
+          return 0xFF000000;
+        }
+      }
+
+      // Get inverse byte mask for position (0-3).
+      // Returns ~0xFF, ~0xFF00, ~0xFF0000, or ~0xFF000000.
+      function _byte_mask_inv(pos: byte): byte {
+        if (pos == 0) {
+          return 0xFFFFFF00;
+        } else if (pos == 1) {
+          return 0xFFFF00FF;
+        } else if (pos == 2) {
+          return 0xFF00FFFF;
+        } else {
+          return 0x00FFFFFF;
+        }
+      }
+
       // Flush the file buffer if dirty.
       function _flush_file_buffer(): bool {
         if (file_buffer_dirty && file_buffer_sector != 0) {
@@ -662,7 +704,7 @@ namespace kernel {
 
           // Read a byte.
           var word = file_buffer[word_offset];
-          var b = (word >> (byte_in_word * 8)) & 0xFF;
+          var b = (word / _byte_shift(byte_in_word)) & 0xFF;
           buffer[unsafe bytes_read] = b;
 
           bytes_read = bytes_read + 1;
@@ -734,9 +776,9 @@ namespace kernel {
 
           // Write a byte.
           var word = file_buffer[word_offset];
-          var mask = ~(0xFF << (byte_in_word * 8));
+          var mask = _byte_mask_inv(byte_in_word);
           var b = buffer[unsafe bytes_written] & 0xFF;
-          word = (word & mask) | (b << (byte_in_word * 8));
+          word = (word & mask) | (b * _byte_shift(byte_in_word));
           file_buffer[word_offset] = word;
           file_buffer_dirty = true;
 
