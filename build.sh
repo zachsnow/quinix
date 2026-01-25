@@ -51,8 +51,8 @@ bunx tsc -p tsconfig.server.json --noEmit
 echo "Building libraries..."
 (cd lib && ./build.sh)
 
-echo "Type checking std.bare.qll..."
-bun run qllc --library --strict lib/std.bare.qll
+echo "Type checking shared libraries..."
+bun run qllc --library --strict shared/alloc.qll shared/buffered.qll
 
 echo "Building browser bundle..."
 mkdir -p build

@@ -5,9 +5,15 @@
 import { LowLevelProgram } from '@/lowlevel/lowlevel';
 import { VM } from '@/vm/vm';
 
-// Import the bare-metal standard library from the source file.
-// This is embedded at build time by bun.
-import stdlib from '@/../lib/std.bare.qll' with { type: 'text' };
+// Import the bare-metal standard library components.
+// These are embedded at build time by bun and concatenated.
+import sharedStd from '@/../shared/std.qll' with { type: 'text' };
+import sharedBuffered from '@/../shared/buffered.qll' with { type: 'text' };
+import sharedAlloc from '@/../shared/alloc.qll' with { type: 'text' };
+import bareConsole from '@/../bare/console.qll' with { type: 'text' };
+import bareAlloc from '@/../bare/alloc.qll' with { type: 'text' };
+
+const stdlib = [sharedStd, sharedBuffered, sharedAlloc, bareConsole, bareAlloc].join('\n');
 import { BrowserInputPeripheral, BrowserOutputPeripheral } from './peripherals';
 
 type BrowserVMOptions = {
