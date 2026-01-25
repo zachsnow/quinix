@@ -88,7 +88,8 @@ namespace kernel {
     }
 
     function _validate_slice(p: * byte): bool {
-      return _get_slice_data(p) != null;
+      var result = _get_slice_data(p) != null;
+      return result;
     }
 
     function _exit(sc: syscall): byte {
@@ -103,6 +104,7 @@ namespace kernel {
       var slice_addr = <unsafe * byte>sc.arg1;
 
       if(!_validate_slice(slice_addr)){
+        log('syscall: write: invalid slice');
         return 0;
       }
 

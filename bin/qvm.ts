@@ -105,14 +105,14 @@ if (argv["break-write"]) {
 
 const watchpoints: Watchpoint[] = [];
 if (argv.watchpoint) {
-  // Parse range format: 0x2-0x43
+  // Parse range format: 0x2-0x43 or 0x42 for single address
   const parts = argv.watchpoint.split("-");
   const low = Address.parse(parts[0]);
   const high = parts.length > 1 ? Address.parse(parts[1]) : low + 1;
   watchpoints.push({
     low,
     high,
-    type: "write",
+    type: "all",  // Watch both reads and writes
   });
 }
 

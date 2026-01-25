@@ -117,7 +117,7 @@ namespace kernel {
 
       // Configure hardware timer interrupt handler.
       support::interrupt(interrupts::TIMER, _timer_interrupt);
-      *peripherals::timer = 500;  // Timer interval for preemption (ms)
+      *peripherals::timer = 10;  // Timer interval for preemption (ms)
     }
   }
 }

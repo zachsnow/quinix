@@ -99,12 +99,13 @@ type Breakpoint = {
 };
 
 type WatchpointType = "read" | "write" | "all";
-type WatchpointCallback = (address: Address, value: number, oldValue: number) => void;
+type WatchpointCallback = (address: Address, value: number, oldValue: number, source: string) => void;
 type Watchpoint = {
   low: Address;      // Start of physical address range (inclusive)
   high: Address;     // End of range (exclusive)
   type: WatchpointType;
   callback?: WatchpointCallback;
+  breakOnHit?: boolean;  // Trigger debugger breakpoint when hit
 };
 
 /**
@@ -269,7 +270,8 @@ class VM {
     }
 
     this.state.faulting = true;
-    if (!this.prepareInterrupt(Interrupt.FAULT)) {
+    // Faults don't advance IP - we want to save the faulting instruction's address
+    if (!this.prepareInterrupt(Interrupt.FAULT, false)) {
       throw new Error(`fault: unhandled fault: ${message}`);
     }
   }
@@ -486,6 +488,43 @@ class VM {
   }
 
   /**
+   * Check watchpoints for a memory access. Returns true if a breakpoint should be triggered.
+   * @param address Physical address being accessed
+   * @param oldValue Previous value at address (for writes)
+   * @param source Description of what caused this access (e.g., "store", "int-store", "int-restore")
+   * @param accessType Whether this is a read or write
+   */
+  private checkWatchpoint(
+    address: Address,
+    oldValue: number,
+    source: string,
+    accessType: "read" | "write" = "write"
+  ): boolean {
+    const value = this.memory[address];
+    let shouldBreak = false;
+
+    for (const wp of this.watchpoints) {
+      if (address >= wp.low && address < wp.high) {
+        if (wp.type === accessType || wp.type === "all") {
+          if (wp.callback) {
+            wp.callback(address, value, oldValue, source);
+          } else {
+            console.log(
+              `[WATCH] ${source} ${accessType} ${Address.toString(address)}: ` +
+              `${Immediate.toString(oldValue)} -> ${Immediate.toString(value)}`
+            );
+          }
+          if (wp.breakOnHit) {
+            shouldBreak = true;
+          }
+        }
+      }
+    }
+
+    return shouldBreak;
+  }
+
+  /**
    * Kill the machine.
    */
   public kill(): void {
@@ -536,7 +575,9 @@ class VM {
       this.critical(`invalid interrupt: ${Immediate.toString(interrupt, 1)}`);
     }
 
-    if (this.prepareInterrupt(interrupt)) {
+    // External interrupts don't advance IP - the IP is already at the
+    // instruction that should execute after the interrupt returns.
+    if (this.prepareInterrupt(interrupt, false)) {
       // Currently in "wait" mode; this will allow `execute`
       // to resume from the wait.
       if (this.resumeInterrupt) {
@@ -630,7 +671,9 @@ class VM {
     // Store each register in the register location.
     const base = this.INTERRUPT_TABLE_REGISTERS_ADDR;
     for (var i = 0; i < this.state.registers.length; i++) {
+      const oldValue = this.memory[base + i];
       this.memory[base + i] = this.state.registers[i];
+      this.checkWatchpoint(base + i, oldValue, "int-store");
     }
   }
 
@@ -646,8 +689,14 @@ class VM {
     // Read each register in the register location.
     const base = this.INTERRUPT_TABLE_REGISTERS_ADDR;
     for (var i = 0; i < this.state.registers.length; i++) {
-      this.state.registers[i] = this.memory[base + i];
+      const value = this.memory[base + i];
+      this.state.registers[i] = value;
+      // Check for read watchpoint (value being loaded into register)
+      this.checkWatchpoint(base + i, value, "int-restore", "read");
+      // Zero the memory after reading
       this.memory[base + i] = 0;
+      // Check for write watchpoint (zeroing the save area)
+      this.checkWatchpoint(base + i, value, "int-restore-zero", "write");
     }
   }
 
@@ -657,8 +706,11 @@ class VM {
    * returns `false`, and the machine's state remains unchanged.
    *
    * @param interrupt the interrupt to prepare to handle.
+   * @param advanceIp if true, advance IP before saving (for software interrupts
+   *                  triggered by INT instruction to skip past it on return).
+   *                  For external interrupts (timer), this should be false.
    */
-  private prepareInterrupt(interrupt: Interrupt): boolean {
+  private prepareInterrupt(interrupt: Interrupt, advanceIp: boolean = true): boolean {
     // Special cases.
     if (interrupt === Interrupt.RETURN) {
       log.debug(`interrupt 0x0: return`);
@@ -728,8 +780,12 @@ class VM {
     // Disable interrupts.
     this.memory[this.INTERRUPT_TABLE_ENABLED_ADDR] = 0x0;
 
-    // Advance so we save the *next* instruction, not the current instruction.
-    this.state.registers[Register.IP]++;
+    // For software interrupts (INT instruction), advance IP so we save the
+    // *next* instruction and don't re-execute the INT on return.
+    // For external interrupts (timer), IP is already at the next instruction.
+    if (advanceIp) {
+      this.state.registers[Register.IP]++;
+    }
 
     // Store state. If an interrupt handler is interrupted by fault, we *replace* it with
     // the fault handler, but we do not store the state. When the fault
@@ -798,6 +854,7 @@ class VM {
     while (true) {
       // Fetch the instruction.
       let virtualIp = registers[Register.IP];
+
 
       // Check breakpoints. If we found one, run the debugger.
       // Breakpoints are set against virtual memory for now.
@@ -904,16 +961,8 @@ class VM {
           registers[decoded.dr!] = value;
 
           // Check watchpoints (physical address).
-          for (const wp of this.watchpoints) {
-            if (physicalAddress >= wp.low && physicalAddress < wp.high) {
-              if (wp.type === "read" || wp.type === "all") {
-                if (wp.callback) {
-                  wp.callback(physicalAddress, value, value);
-                } else {
-                  console.log(`[WATCH] read ${Address.toString(physicalAddress)}: ${Immediate.toString(value)}`);
-                }
-              }
-            }
+          if (this.checkWatchpoint(physicalAddress, value, "load", "read")) {
+            return "break";
           }
           break;
         }
@@ -955,16 +1004,8 @@ class VM {
           memory[physicalAddress] = value;
 
           // Check watchpoints (physical address).
-          for (const wp of this.watchpoints) {
-            if (physicalAddress >= wp.low && physicalAddress < wp.high) {
-              if (wp.type === "write" || wp.type === "all") {
-                if (wp.callback) {
-                  wp.callback(physicalAddress, value, oldValue);
-                } else {
-                  console.log(`[WATCH] write ${Address.toString(physicalAddress)}: ${Immediate.toString(oldValue)} -> ${Immediate.toString(value)}`);
-                }
-              }
-            }
+          if (this.checkWatchpoint(physicalAddress, oldValue, "store")) {
+            return "break";
           }
 
           // Check peripheral mapping for a method.
