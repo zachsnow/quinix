@@ -1,20 +1,20 @@
 /**
- * QFS - Simple File System for Quinix
+ * QFS v2 - Simple File System for Quinix
  *
- * Shared constants and utilities for QFS filesystem operations.
+ * Features:
+ * - Dynamic FAT sizing (configurable per-disk)
+ * - 24-character filenames
+ * - Subdirectory support
+ * - Executable flag
  */
 
 // Sector size in bytes (128 words * 4 bytes/word = 512 bytes)
 export const SECTOR_SIZE_WORDS = 128;
 export const SECTOR_SIZE_BYTES = SECTOR_SIZE_WORDS * 4;
 
-// Filesystem layout
+// Superblock is always sector 0, FAT always starts at sector 1
 export const SUPERBLOCK_SECTOR = 0;
 export const FAT_START_SECTOR = 1;
-export const FAT_SECTORS = 8;
-export const ROOT_START_SECTOR = 9;
-export const ROOT_SECTORS = 8;
-export const DATA_START_SECTOR = 17;
 
 // FAT entry values
 export const FAT_FREE = 0x00000000;
@@ -24,27 +24,24 @@ export const FAT_RESERVED = 0xfffffffe;
 // Directory entry flags
 export const DIRENT_FREE = 0x00;
 export const DIRENT_USED = 0x01;
+export const DIRENT_DIRECTORY = 0x02;
+export const DIRENT_EXECUTABLE = 0x04;
 export const DIRENT_DELETED = 0x80;
 
-// Directory entry size in words (16 words = 64 bytes)
-export const DIRENT_SIZE_WORDS = 16;
+// Directory entry size: 32 words = 128 bytes = 4 entries per sector
+export const DIRENT_SIZE_WORDS = 32;
 export const DIRENT_SIZE_BYTES = DIRENT_SIZE_WORDS * 4;
 
 // Entries per sector
 export const FAT_ENTRIES_PER_SECTOR = SECTOR_SIZE_WORDS; // 128 entries
-export const DIRENT_PER_SECTOR = SECTOR_SIZE_WORDS / DIRENT_SIZE_WORDS; // 8 entries
+export const DIRENT_PER_SECTOR = SECTOR_SIZE_WORDS / DIRENT_SIZE_WORDS; // 4 entries
 
-// Total capacities
-export const MAX_FAT_ENTRIES = FAT_SECTORS * FAT_ENTRIES_PER_SECTOR; // 1024
-export const MAX_DIR_ENTRIES = ROOT_SECTORS * DIRENT_PER_SECTOR; // 64
+// Filename limit (24 chars, one per word)
+export const MAX_FILENAME_LEN = 24;
 
-// Magic number: 'QFS1' in little-endian
-export const QFS_MAGIC = 0x51465331;
-export const QFS_VERSION = 1;
-
-// Filename limits
-export const MAX_FILENAME_LEN = 8;
-export const MAX_EXTENSION_LEN = 3;
+// Magic number: 'QFS2' in little-endian
+export const QFS_MAGIC = 0x51465332;
+export const QFS_VERSION = 2;
 
 /**
  * Calculate total sectors from file size in bytes
@@ -54,30 +51,35 @@ export function sectorsFromFileSize(fileSize: number): number {
 }
 
 /**
+ * Calculate recommended FAT sectors for a given total sector count
+ */
+export function recommendedFatSectors(totalSectors: number): number {
+  return Math.ceil(totalSectors / FAT_ENTRIES_PER_SECTOR);
+}
+
+/**
  * Superblock structure (sector 0)
  */
 export interface Superblock {
-  magic: number; // 0x51465331 ('QFS1')
+  magic: number; // 0x51465332 ('QFS2')
   version: number;
-  sectorSize: number; // Words per sector
+  sectorSize: number; // Words per sector (128)
   totalSectors: number;
-  fatStart: number;
-  fatSectors: number;
-  rootStart: number;
-  rootSectors: number;
-  dataStart: number;
+  fatStart: number; // Always 1
+  fatSectors: number; // Configurable
+  rootSector: number; // fatStart + fatSectors
+  dataStart: number; // rootSector + 1
   freeSectors: number;
 }
 
 /**
- * Directory entry structure
+ * Directory entry structure (32 words)
  */
 export interface DirEntry {
   flags: number;
   firstSector: number;
-  size: number; // File size in bytes
-  name: string; // Up to 8 chars
-  extension: string; // Up to 3 chars
+  size: number; // File size in bytes, or entry count for directories
+  name: string; // Up to 24 chars
 }
 
 /**
@@ -95,7 +97,7 @@ export function writeWord(buffer: Buffer, offset: number, value: number): void {
 }
 
 /**
- * Read a null-terminated string from a buffer (words)
+ * Read a null-terminated string from a buffer (one char per word)
  */
 export function readString(buffer: Buffer, wordOffset: number, maxWords: number): string {
   let str = '';
@@ -104,12 +106,7 @@ export function readString(buffer: Buffer, wordOffset: number, maxWords: number)
     if (word === 0) {
       break;
     }
-    // Each word is a single character in QLL
-    const char = String.fromCharCode(word & 0xff);
-    if (char === '\0') {
-      break;
-    }
-    str += char;
+    str += String.fromCharCode(word & 0xff);
   }
   return str;
 }
@@ -143,10 +140,9 @@ export function readSuperblock(buffer: Buffer): Superblock {
     totalSectors: readWord(buffer, 12),
     fatStart: readWord(buffer, 16),
     fatSectors: readWord(buffer, 20),
-    rootStart: readWord(buffer, 24),
-    rootSectors: readWord(buffer, 28),
-    dataStart: readWord(buffer, 32),
-    freeSectors: readWord(buffer, 36),
+    rootSector: readWord(buffer, 24),
+    dataStart: readWord(buffer, 28),
+    freeSectors: readWord(buffer, 32),
   };
 }
 
@@ -160,10 +156,9 @@ export function writeSuperblock(buffer: Buffer, sb: Superblock): void {
   writeWord(buffer, 12, sb.totalSectors);
   writeWord(buffer, 16, sb.fatStart);
   writeWord(buffer, 20, sb.fatSectors);
-  writeWord(buffer, 24, sb.rootStart);
-  writeWord(buffer, 28, sb.rootSectors);
-  writeWord(buffer, 32, sb.dataStart);
-  writeWord(buffer, 36, sb.freeSectors);
+  writeWord(buffer, 24, sb.rootSector);
+  writeWord(buffer, 28, sb.dataStart);
+  writeWord(buffer, 32, sb.freeSectors);
 }
 
 /**
@@ -175,8 +170,8 @@ export function readDirEntry(buffer: Buffer, wordOffset: number): DirEntry {
     flags: readWord(buffer, byteOffset),
     firstSector: readWord(buffer, byteOffset + 4),
     size: readWord(buffer, byteOffset + 8),
-    name: readString(buffer, wordOffset + 3, 8),
-    extension: readString(buffer, wordOffset + 11, 4),
+    // Word 3 is reserved
+    name: readString(buffer, wordOffset + 4, MAX_FILENAME_LEN),
   };
 }
 
@@ -188,56 +183,26 @@ export function writeDirEntry(buffer: Buffer, wordOffset: number, entry: DirEntr
   writeWord(buffer, byteOffset, entry.flags);
   writeWord(buffer, byteOffset + 4, entry.firstSector);
   writeWord(buffer, byteOffset + 8, entry.size);
-  writeString(buffer, wordOffset + 3, 8, entry.name);
-  writeString(buffer, wordOffset + 11, 4, entry.extension);
-  // Reserved words (2)
-  writeWord(buffer, byteOffset + 60, 0);
-}
-
-/**
- * Parse a filename into name and extension parts
- */
-export function parseFilename(filename: string): { name: string; extension: string } {
-  const lastDot = filename.lastIndexOf('.');
-  if (lastDot === -1 || lastDot === 0) {
-    return {
-      name: filename.substring(0, MAX_FILENAME_LEN),
-      extension: '',
-    };
+  writeWord(buffer, byteOffset + 12, 0); // Reserved
+  writeString(buffer, wordOffset + 4, MAX_FILENAME_LEN, entry.name);
+  // Words 28-31 are reserved
+  for (let i = 28; i < 32; i++) {
+    writeWord(buffer, byteOffset + i * 4, 0);
   }
-  return {
-    name: filename.substring(0, lastDot).substring(0, MAX_FILENAME_LEN),
-    extension: filename.substring(lastDot + 1).substring(0, MAX_EXTENSION_LEN),
-  };
 }
 
 /**
- * Format a directory entry name for display
+ * Check if a directory entry is a directory
  */
-export function formatFilename(entry: DirEntry): string {
-  if (entry.extension) {
-    return `${entry.name}.${entry.extension}`;
-  }
-  return entry.name;
+export function isDirectory(entry: DirEntry): boolean {
+  return (entry.flags & DIRENT_DIRECTORY) !== 0;
 }
 
 /**
- * Calculate FAT sector and offset for a data sector index
+ * Check if a directory entry is executable
  */
-export function fatLocation(dataSector: number): { sector: number; offset: number } {
-  const fatIndex = dataSector - DATA_START_SECTOR;
-  const sector = FAT_START_SECTOR + Math.floor(fatIndex / FAT_ENTRIES_PER_SECTOR);
-  const offset = (fatIndex % FAT_ENTRIES_PER_SECTOR) * 4;
-  return { sector, offset };
-}
-
-/**
- * Calculate directory sector and offset for an entry index
- */
-export function dirLocation(entryIndex: number): { sector: number; wordOffset: number } {
-  const sector = ROOT_START_SECTOR + Math.floor(entryIndex / DIRENT_PER_SECTOR);
-  const wordOffset = (entryIndex % DIRENT_PER_SECTOR) * DIRENT_SIZE_WORDS;
-  return { sector, wordOffset };
+export function isExecutable(entry: DirEntry): boolean {
+  return (entry.flags & DIRENT_EXECUTABLE) !== 0;
 }
 
 /**
@@ -246,34 +211,28 @@ export function dirLocation(entryIndex: number): { sector: number; wordOffset: n
 export class QFSImage {
   private fd: number | null = null;
   private filePath: string;
+  private cachedSuperblock: Superblock | null = null;
 
   constructor(filePath: string) {
     this.filePath = filePath;
   }
 
-  /**
-   * Open the image file for reading and writing
-   */
   async open(create: boolean = false): Promise<void> {
     const fs = await import('fs');
     const flags = create ? 'w+' : 'r+';
     this.fd = fs.openSync(this.filePath, flags);
+    this.cachedSuperblock = null;
   }
 
-  /**
-   * Close the image file
-   */
   close(): void {
     if (this.fd !== null) {
       const fs = require('fs');
       fs.closeSync(this.fd);
       this.fd = null;
+      this.cachedSuperblock = null;
     }
   }
 
-  /**
-   * Read a sector from the image
-   */
   readSector(lba: number): Buffer {
     if (this.fd === null) {
       throw new Error('Image not open');
@@ -282,15 +241,11 @@ export class QFSImage {
     const buffer = Buffer.alloc(SECTOR_SIZE_BYTES);
     const bytesRead = fs.readSync(this.fd, buffer, 0, SECTOR_SIZE_BYTES, lba * SECTOR_SIZE_BYTES);
     if (bytesRead < SECTOR_SIZE_BYTES) {
-      // Pad with zeros if reading beyond end of file
       buffer.fill(0, bytesRead);
     }
     return buffer;
   }
 
-  /**
-   * Write a sector to the image
-   */
   writeSector(lba: number, buffer: Buffer): void {
     if (this.fd === null) {
       throw new Error('Image not open');
@@ -299,48 +254,53 @@ export class QFSImage {
     fs.writeSync(this.fd, buffer, 0, SECTOR_SIZE_BYTES, lba * SECTOR_SIZE_BYTES);
   }
 
-  /**
-   * Read the superblock
-   */
   getSuperblock(): Superblock {
+    if (this.cachedSuperblock) {
+      return this.cachedSuperblock;
+    }
     const buffer = this.readSector(SUPERBLOCK_SECTOR);
-    return readSuperblock(buffer);
+    this.cachedSuperblock = readSuperblock(buffer);
+    return this.cachedSuperblock;
   }
 
-  /**
-   * Write the superblock
-   */
   setSuperblock(sb: Superblock): void {
     const buffer = Buffer.alloc(SECTOR_SIZE_BYTES);
     writeSuperblock(buffer, sb);
     this.writeSector(SUPERBLOCK_SECTOR, buffer);
+    this.cachedSuperblock = sb;
   }
 
   /**
-   * Read a FAT entry
+   * Get FAT entry for a sector
    */
-  getFATEntry(dataSector: number): number {
-    const { sector, offset } = fatLocation(dataSector);
-    const buffer = this.readSector(sector);
+  getFATEntry(sector: number): number {
+    const sb = this.getSuperblock();
+    const fatIndex = sector;
+    const fatSector = sb.fatStart + Math.floor(fatIndex / FAT_ENTRIES_PER_SECTOR);
+    const offset = (fatIndex % FAT_ENTRIES_PER_SECTOR) * 4;
+    const buffer = this.readSector(fatSector);
     return readWord(buffer, offset);
   }
 
   /**
-   * Write a FAT entry
+   * Set FAT entry for a sector
    */
-  setFATEntry(dataSector: number, value: number): void {
-    const { sector, offset } = fatLocation(dataSector);
-    const buffer = this.readSector(sector);
+  setFATEntry(sector: number, value: number): void {
+    const sb = this.getSuperblock();
+    const fatIndex = sector;
+    const fatSector = sb.fatStart + Math.floor(fatIndex / FAT_ENTRIES_PER_SECTOR);
+    const offset = (fatIndex % FAT_ENTRIES_PER_SECTOR) * 4;
+    const buffer = this.readSector(fatSector);
     writeWord(buffer, offset, value);
-    this.writeSector(sector, buffer);
+    this.writeSector(fatSector, buffer);
   }
 
   /**
-   * Find a free data sector
+   * Allocate a free sector
    */
   allocateSector(): number | null {
     const sb = this.getSuperblock();
-    for (let sector = DATA_START_SECTOR; sector < sb.totalSectors; sector++) {
+    for (let sector = sb.dataStart; sector < sb.totalSectors; sector++) {
       if (this.getFATEntry(sector) === FAT_FREE) {
         this.setFATEntry(sector, FAT_END_OF_CHAIN);
         sb.freeSectors--;
@@ -357,7 +317,7 @@ export class QFSImage {
   freeSectorChain(firstSector: number): void {
     const sb = this.getSuperblock();
     let sector = firstSector;
-    while (sector !== FAT_END_OF_CHAIN && sector !== FAT_FREE) {
+    while (sector !== FAT_END_OF_CHAIN && sector !== FAT_FREE && sector !== 0) {
       const next = this.getFATEntry(sector);
       this.setFATEntry(sector, FAT_FREE);
       sb.freeSectors++;
@@ -367,66 +327,191 @@ export class QFSImage {
   }
 
   /**
-   * Read a directory entry by index
+   * Read directory entries from a directory sector chain
    */
-  getDirEntry(index: number): DirEntry {
-    const { sector, wordOffset } = dirLocation(index);
-    const buffer = this.readSector(sector);
-    return readDirEntry(buffer, wordOffset);
+  readDirectory(firstSector: number): Array<{ index: number; entry: DirEntry }> {
+    const entries: Array<{ index: number; entry: DirEntry }> = [];
+    let sector = firstSector;
+    let globalIndex = 0;
+
+    while (sector !== FAT_END_OF_CHAIN && sector !== FAT_FREE && sector !== 0) {
+      const buffer = this.readSector(sector);
+      for (let i = 0; i < DIRENT_PER_SECTOR; i++) {
+        const entry = readDirEntry(buffer, i * DIRENT_SIZE_WORDS);
+        if ((entry.flags & DIRENT_USED) !== 0) {
+          entries.push({ index: globalIndex, entry });
+        }
+        globalIndex++;
+      }
+      sector = this.getFATEntry(sector);
+    }
+
+    return entries;
   }
 
   /**
-   * Write a directory entry by index
+   * Find entry in a directory by name
    */
-  setDirEntry(index: number, entry: DirEntry): void {
-    const { sector, wordOffset } = dirLocation(index);
+  findInDirectory(
+    dirSector: number,
+    name: string
+  ): { sector: number; slotIndex: number; entry: DirEntry } | null {
+    let sector = dirSector;
+
+    while (sector !== FAT_END_OF_CHAIN && sector !== FAT_FREE && sector !== 0) {
+      const buffer = this.readSector(sector);
+      for (let i = 0; i < DIRENT_PER_SECTOR; i++) {
+        const entry = readDirEntry(buffer, i * DIRENT_SIZE_WORDS);
+        if ((entry.flags & DIRENT_USED) !== 0 && entry.name === name) {
+          return { sector, slotIndex: i, entry };
+        }
+      }
+      sector = this.getFATEntry(sector);
+    }
+
+    return null;
+  }
+
+  /**
+   * Find a free slot in a directory, extending if needed
+   */
+  findFreeSlot(dirSector: number): { sector: number; slotIndex: number } | null {
+    let sector = dirSector;
+    let prevSector = 0;
+
+    while (sector !== FAT_END_OF_CHAIN && sector !== FAT_FREE && sector !== 0) {
+      const buffer = this.readSector(sector);
+      for (let i = 0; i < DIRENT_PER_SECTOR; i++) {
+        const entry = readDirEntry(buffer, i * DIRENT_SIZE_WORDS);
+        if (entry.flags === DIRENT_FREE || (entry.flags & DIRENT_DELETED) !== 0) {
+          return { sector, slotIndex: i };
+        }
+      }
+      prevSector = sector;
+      sector = this.getFATEntry(sector);
+    }
+
+    // Need to allocate a new directory sector
+    const newSector = this.allocateSector();
+    if (newSector === null) {
+      return null;
+    }
+
+    // Link it to the chain
+    if (prevSector !== 0) {
+      this.setFATEntry(prevSector, newSector);
+    }
+
+    // Clear the new sector
+    const buffer = Buffer.alloc(SECTOR_SIZE_BYTES);
+    this.writeSector(newSector, buffer);
+
+    return { sector: newSector, slotIndex: 0 };
+  }
+
+  /**
+   * Write a directory entry to a specific slot
+   */
+  writeDirEntryAt(sector: number, slotIndex: number, entry: DirEntry): void {
     const buffer = this.readSector(sector);
-    writeDirEntry(buffer, wordOffset, entry);
+    writeDirEntry(buffer, slotIndex * DIRENT_SIZE_WORDS, entry);
     this.writeSector(sector, buffer);
   }
 
   /**
-   * Find a directory entry by name
+   * Resolve a path to a directory entry
+   * Returns the parent directory sector and the entry, or null if not found
    */
-  findDirEntry(name: string, extension: string): { index: number; entry: DirEntry } | null {
-    for (let i = 0; i < MAX_DIR_ENTRIES; i++) {
-      const entry = this.getDirEntry(i);
-      if (
-        entry.flags === DIRENT_USED &&
-        entry.name === name &&
-        entry.extension === extension
-      ) {
-        return { index: i, entry };
-      }
+  resolvePath(
+    pathStr: string
+  ): { parentSector: number; entry: DirEntry; sector: number; slotIndex: number } | null {
+    const sb = this.getSuperblock();
+    const parts = pathStr.split('/').filter((p) => p.length > 0);
+
+    if (parts.length === 0) {
+      // Root directory itself
+      return {
+        parentSector: 0,
+        entry: {
+          flags: DIRENT_USED | DIRENT_DIRECTORY,
+          firstSector: sb.rootSector,
+          size: 0,
+          name: '',
+        },
+        sector: sb.rootSector,
+        slotIndex: -1,
+      };
     }
+
+    let currentSector = sb.rootSector;
+    let parentSector = 0;
+
+    for (let i = 0; i < parts.length; i++) {
+      const found = this.findInDirectory(currentSector, parts[i]);
+      if (!found) {
+        return null;
+      }
+
+      if (i === parts.length - 1) {
+        // Final component
+        return {
+          parentSector: currentSector,
+          entry: found.entry,
+          sector: found.sector,
+          slotIndex: found.slotIndex,
+        };
+      }
+
+      // Must be a directory to continue
+      if (!isDirectory(found.entry)) {
+        return null;
+      }
+
+      parentSector = currentSector;
+      currentSector = found.entry.firstSector;
+    }
+
     return null;
   }
 
   /**
-   * Find a free directory entry
-   */
-  findFreeDirEntry(): number | null {
-    for (let i = 0; i < MAX_DIR_ENTRIES; i++) {
-      const entry = this.getDirEntry(i);
-      if (entry.flags === DIRENT_FREE || entry.flags === DIRENT_DELETED) {
-        return i;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * List all used directory entries
+   * List entries in root directory (convenience method)
    */
   listDirEntries(): Array<{ index: number; entry: DirEntry }> {
-    const entries: Array<{ index: number; entry: DirEntry }> = [];
-    for (let i = 0; i < MAX_DIR_ENTRIES; i++) {
-      const entry = this.getDirEntry(i);
-      if (entry.flags === DIRENT_USED) {
-        entries.push({ index: i, entry });
-      }
+    const sb = this.getSuperblock();
+    return this.readDirectory(sb.rootSector);
+  }
+
+  /**
+   * Find entry in root directory by name (convenience method)
+   */
+  findDirEntry(name: string): { index: number; entry: DirEntry } | null {
+    const sb = this.getSuperblock();
+    const found = this.findInDirectory(sb.rootSector, name);
+    if (found) {
+      return { index: found.slotIndex, entry: found.entry };
     }
-    return entries;
+    return null;
+  }
+
+  /**
+   * Find free slot in root directory (convenience method)
+   */
+  findFreeDirEntry(): number | null {
+    const sb = this.getSuperblock();
+    const slot = this.findFreeSlot(sb.rootSector);
+    return slot ? slot.slotIndex : null;
+  }
+
+  /**
+   * Set entry in root directory (convenience method)
+   */
+  setDirEntry(index: number, entry: DirEntry): void {
+    const sb = this.getSuperblock();
+    // For simple cases, assume index maps directly to root sector
+    const sector = sb.rootSector + Math.floor(index / DIRENT_PER_SECTOR);
+    const slotIndex = index % DIRENT_PER_SECTOR;
+    this.writeDirEntryAt(sector, slotIndex, entry);
   }
 
   /**
@@ -441,7 +526,7 @@ export class QFSImage {
     let sector = entry.firstSector;
     let remaining = entry.size;
 
-    while (sector !== FAT_END_OF_CHAIN && sector !== FAT_FREE && remaining > 0) {
+    while (sector !== FAT_END_OF_CHAIN && sector !== FAT_FREE && sector !== 0 && remaining > 0) {
       const buffer = this.readSector(sector);
       const toRead = Math.min(remaining, SECTOR_SIZE_BYTES);
       chunks.push(buffer.subarray(0, toRead));
@@ -467,7 +552,6 @@ export class QFSImage {
     while (offset < data.length) {
       const sector = this.allocateSector();
       if (sector === null) {
-        // Out of space - free what we allocated
         if (firstSector !== 0) {
           this.freeSectorChain(firstSector);
         }
@@ -477,11 +561,9 @@ export class QFSImage {
       if (firstSector === 0) {
         firstSector = sector;
       } else {
-        // Link previous sector to this one
         this.setFATEntry(prevSector, sector);
       }
 
-      // Write data to sector
       const buffer = Buffer.alloc(SECTOR_SIZE_BYTES);
       const toWrite = Math.min(data.length - offset, SECTOR_SIZE_BYTES);
       data.copy(buffer, 0, offset, offset + toWrite);
@@ -492,5 +574,37 @@ export class QFSImage {
     }
 
     return firstSector;
+  }
+
+  /**
+   * Create a new directory
+   */
+  createDirectory(parentSector: number, name: string): number | null {
+    // Allocate a sector for the new directory
+    const dirSector = this.allocateSector();
+    if (dirSector === null) {
+      return null;
+    }
+
+    // Clear the directory sector
+    const buffer = Buffer.alloc(SECTOR_SIZE_BYTES);
+    this.writeSector(dirSector, buffer);
+
+    // Find a free slot in parent
+    const slot = this.findFreeSlot(parentSector);
+    if (slot === null) {
+      this.freeSectorChain(dirSector);
+      return null;
+    }
+
+    // Write the directory entry
+    this.writeDirEntryAt(slot.sector, slot.slotIndex, {
+      flags: DIRENT_USED | DIRENT_DIRECTORY,
+      firstSector: dirSector,
+      size: 0,
+      name,
+    });
+
+    return dirSector;
   }
 }
