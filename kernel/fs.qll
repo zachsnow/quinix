@@ -76,11 +76,11 @@ namespace kernel {
       /////////////////////////////////////////////////////////////////////
 
       // Cached superblock.
-      global sb: superblock;
+      global sb: superblock = superblock {};
       global initialized: bool = false;
 
       // Sector buffer for temporary operations.
-      global sector_buffer: byte[128];
+      global sector_buffer: byte[128] = [0; 128];
 
       /////////////////////////////////////////////////////////////////////
       // QFS Initialization
@@ -416,10 +416,10 @@ namespace kernel {
       };
 
       // Table of open files.
-      global open_files: file_state[8];
+      global open_files: file_state[8] = [file_state {}; 8];
 
       // Data buffer for file I/O (separate from sector_buffer).
-      global file_buffer: byte[128];
+      global file_buffer: byte[128] = [0; 128];
       global file_buffer_sector: byte = 0;
       global file_buffer_dirty: bool = false;
 

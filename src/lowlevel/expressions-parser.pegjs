@@ -157,7 +157,8 @@ StringExpression
     = s:StringLiteral { return new StringLiteralExpression(s).at(location(), text(), options); }
 
 ArrayExpression
-    = "[" _ args:ExpressionList? _ "]" { return new ArrayLiteralExpression(args || []).at(location(), text(), options); }
+    = "[" _ expr:Expression _ ";" _ count:IntLiteral _ "]" { return new ArrayRepeatExpression(expr, count).at(location(), text(), options); }
+    / "[" _ args:ExpressionList? _ "]" { return new ArrayLiteralExpression(args || []).at(location(), text(), options); }
 
 StructExpression
     = t:Type _ "{" _ members:MemberExpressionList? _ "}" { return new StructLiteralExpression(t, members || []).at(location(), text(), options); }

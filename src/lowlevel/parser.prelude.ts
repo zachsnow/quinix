@@ -19,7 +19,7 @@ import {
   SuffixExpression,
   ConditionalExpression,
   IntLiteralExpression, CharLiteralExpression, StringLiteralExpression, BoolLiteralExpression,
-  ArrayLiteralExpression, StructLiteralExpression,
+  ArrayLiteralExpression, ArrayRepeatExpression, StructLiteralExpression,
   IdentifierExpression,
   CastExpression,
   NewExpression, NewArrayExpression,

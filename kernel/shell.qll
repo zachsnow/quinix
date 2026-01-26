@@ -2,7 +2,7 @@
 namespace shell {
   // Current working directory path.
   // QFS only has a flat root directory for now.
-  global cwd: byte[64];
+  global cwd: byte[64] = [0; 64];
   global cwd_len: byte = 1;
 
   function _init_cwd(): void {

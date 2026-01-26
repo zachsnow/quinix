@@ -517,6 +517,70 @@ class ArrayLiteralExpression extends Expression {
   }
 }
 
+/**
+ * Array repeat expression: [value; count]
+ * Creates an array with `count` copies of `value`.
+ */
+class ArrayRepeatExpression extends Expression {
+  public constructor(
+    private readonly expression: Expression,
+    private readonly count: number,
+  ) {
+    super();
+  }
+
+  public substitute(typeTable: TypeTable): Expression {
+    return new ArrayRepeatExpression(
+      this.expression.substitute(typeTable),
+      this.count,
+    ).at(this.location).tag(this.tags);
+  }
+
+  public typecheck(context: TypeChecker, contextualType?: Type): Type {
+    // Get expected element type from contextual type if available.
+    let elementType: Type | undefined;
+    if (contextualType) {
+      const cType = contextualType.resolve();
+      if (cType instanceof ArrayType) {
+        elementType = cType.index();
+        // Verify count matches expected array size.
+        if (this.count !== cType.length) {
+          this.error(context, `expected array of length ${cType.length}, actual ${this.count}`);
+        }
+      } else if (cType instanceof SliceType) {
+        elementType = cType.index();
+      } else {
+        this.error(context, `expected contextual array or slice type, actual ${contextualType}`);
+      }
+    }
+
+    // Typecheck the value expression.
+    const actualElementType = this.expression.typecheck(context, elementType);
+    if (elementType && !actualElementType.isConvertibleTo(elementType)) {
+      this.error(context, `expected ${elementType}, actual ${actualElementType}`);
+    }
+
+    return new ArrayType(elementType || actualElementType, this.count);
+  }
+
+  public compile(compiler: Compiler, lvalue?: boolean): Register {
+    const elementType = (this.concreteType as ArrayType).index();
+    // Create array of the same expression repeated `count` times.
+    const expressions: { expression: Expression; type: Type }[] = [];
+    for (let i = 0; i < this.count; i++) {
+      expressions.push({
+        expression: this.expression,
+        type: elementType,
+      });
+    }
+    return compileLiteralExpressions('array_repeat', compiler, expressions);
+  }
+
+  public toString() {
+    return `[${this.expression}; ${this.count}]`;
+  }
+}
+
 type MemberLiteralExpression = {
   identifier: string;
   expression: Expression,
@@ -2475,7 +2539,7 @@ class ConditionalExpression extends Expression {
   ConditionalExpression,
   CastExpression, NewExpression, NewArrayExpression,
   NullExpression, VoidExpression,
-  ArrayLiteralExpression, StructLiteralExpression,
+  ArrayLiteralExpression, ArrayRepeatExpression, StructLiteralExpression,
   SizeofExpression,
 ].forEach((expressionClass) => {
   const typecheck = expressionClass.prototype.typecheck;
@@ -2487,7 +2551,7 @@ class ConditionalExpression extends Expression {
 });
 
 export {
-  ArrayLiteralExpression, ArrowExpression, BinaryExpression, BoolLiteralExpression, CallExpression, CastExpression, CharLiteralExpression, ConditionalExpression, DotExpression, Expression,
+  ArrayLiteralExpression, ArrayRepeatExpression, ArrowExpression, BinaryExpression, BoolLiteralExpression, CallExpression, CastExpression, CharLiteralExpression, ConditionalExpression, DotExpression, Expression,
   IdentifierExpression, IndexExpression, IntLiteralExpression, NewArrayExpression, NewExpression, NullExpression, SizeofExpression, SliceExpression, StringLiteralExpression, StructLiteralExpression, SuffixExpression, UnaryExpression, VoidExpression
 };
 
