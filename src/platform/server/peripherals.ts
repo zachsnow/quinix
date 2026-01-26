@@ -357,7 +357,6 @@ class MemoryBlockStorage implements BlockStorage {
  */
 class FileBlockStorage implements BlockStorage {
   private filePath: string;
-  private fd: fs.promises.FileHandle | null = null;
   public readonly totalSectors: number;
   private readonly sectorSizeBytes: number;
 
@@ -367,22 +366,14 @@ class FileBlockStorage implements BlockStorage {
     this.sectorSizeBytes = sectorSizeWords * 4; // 4 bytes per word
   }
 
-  private async ensureOpen(): Promise<fs.promises.FileHandle> {
-    if (!this.fd) {
-      // Create file if it doesn't exist, open for read/write
-      this.fd = await fs.promises.open(this.filePath, 'a+');
-      await this.fd.close();
-      this.fd = await fs.promises.open(this.filePath, 'r+');
-    }
-    return this.fd;
-  }
-
   async read(lba: number, sectorSize: number): Promise<number[]> {
-    const fd = await this.ensureOpen();
+    // Use synchronous read for now to work with VM's synchronous execution
     const offset = lba * this.sectorSizeBytes;
     const buffer = Buffer.alloc(this.sectorSizeBytes);
 
-    const { bytesRead } = await fd.read(buffer, 0, this.sectorSizeBytes, offset);
+    const fd = fs.openSync(this.filePath, 'r');
+    const bytesRead = fs.readSync(fd, buffer, 0, this.sectorSizeBytes, offset);
+    fs.closeSync(fd);
 
     const words: number[] = [];
     for (let i = 0; i < sectorSize; i++) {
@@ -403,7 +394,7 @@ class FileBlockStorage implements BlockStorage {
   }
 
   async write(lba: number, data: number[], sectorSize: number): Promise<void> {
-    const fd = await this.ensureOpen();
+    // Use synchronous write for now to work with VM's synchronous execution
     const offset = lba * this.sectorSizeBytes;
     const buffer = Buffer.alloc(this.sectorSizeBytes);
 
@@ -416,20 +407,17 @@ class FileBlockStorage implements BlockStorage {
       buffer[i * 4 + 3] = (word >> 24) & 0xff;
     }
 
-    await fd.write(buffer, 0, this.sectorSizeBytes, offset);
+    const fd = fs.openSync(this.filePath, 'r+');
+    fs.writeSync(fd, buffer, 0, this.sectorSizeBytes, offset);
+    fs.closeSync(fd);
   }
 
   async flush(): Promise<void> {
-    if (this.fd) {
-      await this.fd.sync();
-    }
+    // Sync writes are already flushed
   }
 
   async close(): Promise<void> {
-    if (this.fd) {
-      await this.fd.close();
-      this.fd = null;
-    }
+    // Nothing to close with sync operations
   }
 }
 
