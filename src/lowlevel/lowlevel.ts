@@ -15,7 +15,7 @@ import {
 
   AssemblyProgram,
 } from '@/assembly/assembly';
-import { Instruction, Operation } from '@/vm/instructions';
+import { Instruction, Operation, Register } from '@/vm/instructions';
 import { Type, TypedIdentifier, TypedStorage, FunctionType, TemplateType, Storage, ArrayType, SliceType } from './types';
 import { Expression, StringLiteralExpression } from './expressions';
 import { BlockStatement } from './statements';
@@ -1169,6 +1169,10 @@ class LowLevelProgram {
     // Function label
     directives.push(new LabelDirective(new Reference('global::_init')));
 
+    // Save return address on stack (r0 will be used during initialization)
+    directives.push(new InstructionDirective(Instruction.createOperation(Operation.SUB, Compiler.SP, Compiler.SP, Compiler.ONE)).comment('push return address'));
+    directives.push(new InstructionDirective(Instruction.createOperation(Operation.STORE, Compiler.SP, Compiler.RET)));
+
     // Emit global initialization code (code first, then data to avoid executing data as code)
     const initCode: Directive[] = [];
     const initData: Directive[] = [];
@@ -1179,8 +1183,10 @@ class LowLevelProgram {
     });
     directives.push(...initCode);
 
-    // Return to caller
-    directives.push(new InstructionDirective(Instruction.createOperation(Operation.JMP, undefined, Compiler.RET)));
+    // Restore return address and return
+    directives.push(new InstructionDirective(Instruction.createOperation(Operation.LOAD, Register.R1, Compiler.SP)).comment('pop return address'));
+    directives.push(new InstructionDirective(Instruction.createOperation(Operation.ADD, Compiler.SP, Compiler.SP, Compiler.ONE)));
+    directives.push(new InstructionDirective(Instruction.createOperation(Operation.JMP, undefined, Register.R1)).comment('return'));
 
     // Emit global initializer temporary data after return (so it's not executed as code)
     directives.push(...initData);
