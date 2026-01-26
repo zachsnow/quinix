@@ -6,5 +6,9 @@ Baremetal programs have direct access to hardware peripherals and memory. Use th
 
 ## Files
 
-- `alloc.qll` - Simple bump allocator using static memory
+- `alloc.qll` - Binds the shared allocator with heap at `0x8000`
 - `console.qll` - Direct console I/O via peripheral access
+
+## Allocator
+
+The `alloc.qll` binds `shared/alloc.qll` by setting `std::heap = 0x8000` and exporting `system::alloc`/`system::dealloc` for `new`/`delete` support.

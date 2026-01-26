@@ -14,6 +14,7 @@ The Quinix operating system kernel.
 ## Code Layout
 
 - `kernel.qll` - Entry point, initialization, panic handling
+- `alloc.qll` - Binds the shared allocator with heap at `0x10000`
 - `peripherals.qll` - Hardware peripheral configuration
 - `memory.qll` - Memory management
 - `process.qll` - Process management
@@ -24,3 +25,7 @@ The Quinix operating system kernel.
 - `console.qll` - Kernel console
 - `shell.qll` - Built-in shell
 - `support.qasm` - Low-level assembly support
+
+## Allocator
+
+The `alloc.qll` binds `shared/alloc.qll` by setting `std::heap = 0x10000` (the kernel heap region) and exporting `system::alloc`/`system::dealloc` for `new`/`delete` support.
