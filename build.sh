@@ -48,11 +48,8 @@ bunx tsc -p tsconfig.browser.json --noEmit
 echo "Type checking server..."
 bunx tsc -p tsconfig.server.json --noEmit
 
-echo "Building libraries..."
-(cd lib && ./build.sh)
-
-echo "Type checking shared libraries..."
-bun run qllc --library --strict shared/alloc.qll shared/buffered.qll
+# Shared libraries are type-checked when used with a target (bare or user)
+# that provides the required dependencies (console::print, etc.)
 
 echo "Building browser bundle..."
 mkdir -p build

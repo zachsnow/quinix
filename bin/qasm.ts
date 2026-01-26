@@ -16,8 +16,7 @@ const log = logger("qasm");
 interface Options {
   output: string;
   assemble: boolean;
-  std: boolean;
-  nosystem: boolean;
+  target: string;
   files: string[];
 }
 
@@ -39,15 +38,11 @@ const argv = parseArguments<Options>(
         type: "boolean",
         default: false,
       },
-      std: {
-        describe: "include the standard library; it doesn't do much yet",
-        type: "boolean",
-        default: false,
-      },
-      nosystem: {
-        describe: "do not include the system runtime",
-        type: "boolean",
-        default: false,
+      target: {
+        alias: "t",
+        describe: "target: bare, user, or none",
+        type: "string",
+        default: "bare",
       },
     },
     positional: {
@@ -60,40 +55,57 @@ const argv = parseArguments<Options>(
   }
 );
 
+// Validate target
+if (!["bare", "user", "none"].includes(argv.target)) {
+  console.error(`Error: Invalid target "${argv.target}". Must be bare, user, or none.`);
+  process.exit(1);
+}
+
 ///////////////////////////////////////////////////////////////////////
-let libraryPath: string | undefined = undefined;
-function resolveLibrary(filename: string) {
-  if (!libraryPath) {
-    // We are in `./bin/`, running the TypeScript file directly with bun.
-    libraryPath = path.resolve(__dirname, "..");
-    if (!fs.existsSync(path.join(libraryPath, "package.json"))) {
-      libraryPath = path.resolve(__dirname, "..", "..");
-    }
-    if (!fs.existsSync(path.join(libraryPath, "package.json"))) {
-      throw new InternalError("unable to locate library");
-    }
-    libraryPath = path.join(libraryPath, "lib", "bin");
+
+// Resolve the root directory (where shared/, bare/, user/ live).
+function resolveRoot(): string {
+  // We are in `./bin/`, running the TypeScript file directly with bun.
+  let rootPath = path.resolve(__dirname, "..");
+  if (!fs.existsSync(path.join(rootPath, "package.json"))) {
+    rootPath = path.resolve(__dirname, "..", "..");
+  }
+  if (!fs.existsSync(path.join(rootPath, "package.json"))) {
+    throw new InternalError("unable to locate project root");
+  }
+  return rootPath;
+}
+
+// Get all .qasm files from a directory.
+function getQasmFiles(dir: string): string[] {
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
+  return fs.readdirSync(dir)
+    .filter(f => f.endsWith(".qasm"))
+    .map(f => path.join(dir, f))
+    .sort();
+}
+
+// Get auto-include files for the given target.
+function getTargetIncludes(target: string): string[] {
+  if (target === "none") {
+    return [];
   }
 
-  const fullPath = path.join(libraryPath, filename);
-  if (!fs.existsSync(fullPath)) {
-    throw new Error(
-      `unable to locate library ${filename}; library path ${libraryPath}`
-    );
-  }
+  const root = resolveRoot();
+  const sharedFiles = getQasmFiles(path.join(root, "shared"));
+  const targetFiles = getQasmFiles(path.join(root, target));
 
-  return fullPath;
+  return [...sharedFiles, ...targetFiles];
 }
 
 async function main(): Promise<number | undefined> {
-  const filenames = argv.files;
+  // Get auto-include files based on target (these go FIRST, especially entrypoint).
+  const autoIncludes = getTargetIncludes(argv.target);
 
-  if (argv.std) {
-    filenames.push(resolveLibrary("std.qasm"));
-  }
-  if (!argv.nosystem) {
-    filenames.push(resolveLibrary("system.qasm"));
-  }
+  // Combine: auto-includes first, then user files.
+  const filenames = [...autoIncludes, ...argv.files];
 
   // Parse.
   const programTexts = await readFiles(filenames);

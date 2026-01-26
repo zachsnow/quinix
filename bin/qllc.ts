@@ -16,7 +16,7 @@ const log = logger("qllc");
 interface Options {
   output: string;
   files: string[];
-  library: boolean;
+  target: string;
   module: string;
   strict: boolean;
 }
@@ -34,10 +34,11 @@ const argv = parseArguments<Options>(
         default: "out.qasm",
         demandOption: false,
       },
-      library: {
-        describe: "compile as a library; exclude entrypoint",
-        type: "boolean",
-        default: false,
+      target: {
+        alias: "t",
+        describe: "target: bare, user, or none",
+        type: "string",
+        default: "bare",
       },
       module: {
         describe: "module name",
@@ -60,11 +61,57 @@ const argv = parseArguments<Options>(
   }
 );
 
+// Validate target
+if (!["bare", "user", "none"].includes(argv.target)) {
+  console.error(`Error: Invalid target "${argv.target}". Must be bare, user, or none.`);
+  process.exit(1);
+}
+
 ///////////////////////////////////////////////////////////////////////
 
+// Resolve the root directory (where shared/, bare/, user/ live).
+function resolveRoot(): string {
+  // We are in `./bin/`, running the TypeScript file directly with bun.
+  let rootPath = path.resolve(__dirname, "..");
+  if (!fs.existsSync(path.join(rootPath, "package.json"))) {
+    rootPath = path.resolve(__dirname, "..", "..");
+  }
+  if (!fs.existsSync(path.join(rootPath, "package.json"))) {
+    throw new InternalError("unable to locate project root");
+  }
+  return rootPath;
+}
+
+// Get all .qll files from a directory.
+function getQllFiles(dir: string): string[] {
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
+  return fs.readdirSync(dir)
+    .filter(f => f.endsWith(".qll"))
+    .map(f => path.join(dir, f))
+    .sort();
+}
+
+// Get auto-include files for the given target.
+function getTargetIncludes(target: string): string[] {
+  if (target === "none") {
+    return [];
+  }
+
+  const root = resolveRoot();
+  const sharedFiles = getQllFiles(path.join(root, "shared"));
+  const targetFiles = getQllFiles(path.join(root, target));
+
+  return [...sharedFiles, ...targetFiles];
+}
+
 async function main(): Promise<number | undefined> {
-  // Parse programs and combine.
-  const filenames = argv.files;
+  // Get auto-include files based on target.
+  const autoIncludes = getTargetIncludes(argv.target);
+
+  // Parse programs and combine (auto-includes first, then user files).
+  const filenames = [...autoIncludes, ...argv.files];
   const programTexts = await readFiles(filenames);
   const programs: LowLevelProgram[] = programTexts.map((programText, i) => {
     return LowLevelProgram.parse(programText, filenames[i]);
@@ -86,7 +133,7 @@ async function main(): Promise<number | undefined> {
   // Compile.
   const module =
     argv.module || path.basename(argv.output, path.extname(argv.output));
-  const assemblyProgram = program.compile(module, !argv.library);
+  const assemblyProgram = program.compile(module);
   log.debug(`compiled:\n${assemblyProgram}\n`);
 
   // Emit compiled code.

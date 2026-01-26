@@ -407,6 +407,10 @@ class FileBlockStorage implements BlockStorage {
       buffer[i * 4 + 3] = (word >> 24) & 0xff;
     }
 
+    // Use 'a+' to create file if it doesn't exist, then write at offset
+    if (!fs.existsSync(this.filePath)) {
+      fs.writeFileSync(this.filePath, Buffer.alloc(0));
+    }
     const fd = fs.openSync(this.filePath, 'r+');
     fs.writeSync(fd, buffer, 0, this.sectorSizeBytes, offset);
     fs.closeSync(fd);

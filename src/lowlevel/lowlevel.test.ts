@@ -585,22 +585,35 @@ describe('QLLC typechecking', () => {
 });
 
 describe('QLLC end-to-end', () => {
-  const systemFilename = path.resolve(__dirname, '..', '..', 'lib', 'bin', 'system.qasm');
-  const systemText = fs.readFileSync(systemFilename, 'utf-8');
-  const systemAssemblyProgram = AssemblyProgram.parse(systemText, systemFilename);
+  // Load bare entrypoint for tests
+  const entrypointFilename = path.resolve(__dirname, '..', '..', 'bare', 'entrypoint.qasm');
+  const entrypointText = fs.readFileSync(entrypointFilename, 'utf-8');
+  const entrypointAssemblyProgram = AssemblyProgram.parse(entrypointText, entrypointFilename);
 
-  async function run(programText: string, includeSystem: boolean, cycles: number = 500): Promise<VMResult | string> {
+  // Load allocator files for tests that use new/delete
+  const sharedAllocFilename = path.resolve(__dirname, '..', '..', 'shared', 'alloc.qll');
+  const bareAllocFilename = path.resolve(__dirname, '..', '..', 'bare', 'alloc.qll');
+  const sharedAllocText = fs.readFileSync(sharedAllocFilename, 'utf-8');
+  const bareAllocText = fs.readFileSync(bareAllocFilename, 'utf-8');
+  const allocatorProgram = LowLevelProgram.concat([
+    LowLevelProgram.parse(sharedAllocText, sharedAllocFilename),
+    LowLevelProgram.parse(bareAllocText, bareAllocFilename),
+  ]);
+
+  async function run(programText: string, includeAllocator: boolean = false, cycles: number = 500): Promise<VMResult | string> {
     try {
-      const program: LowLevelProgram = LowLevelProgram.concat([LowLevelProgram.parse(programText)]);
+      let programs = [LowLevelProgram.parse(programText)];
+      if (includeAllocator) {
+        programs = [allocatorProgram, ...programs];
+      }
+      const program = LowLevelProgram.concat(programs);
       const errors = program.typecheck().errors;
       if (errors.length) {
         throw new Error(errors.join('\n'));
       }
 
-      let assemblyProgram = program.compile();
-      if (includeSystem) {
-        assemblyProgram = AssemblyProgram.concat([assemblyProgram, systemAssemblyProgram]);
-      }
+      // Combine entrypoint (first) with compiled program
+      const assemblyProgram = AssemblyProgram.concat([entrypointAssemblyProgram, program.compile()]);
 
       const [messages, binaryProgram] = assemblyProgram.assemble();
       if (!binaryProgram) {
@@ -622,8 +635,8 @@ describe('QLLC end-to-end', () => {
     }
   }
 
-  function expectRunToBe(value: number, text: string, includeSystem: boolean = false, cycles?: number) {
-    return expect(run(text, includeSystem, cycles).then((n) => typeof n === 'string' ? n : Immediate.toString(n))).resolves.toBe(Immediate.toString(value));
+  function expectRunToBe(value: number, text: string, includeAllocator: boolean = false, cycles?: number) {
+    return expect(run(text, includeAllocator, cycles).then((n) => typeof n === 'string' ? n : Immediate.toString(n))).resolves.toBe(Immediate.toString(value));
   }
 
   function expectCompileError(errorSubstring: string, text: string) {
@@ -1628,7 +1641,7 @@ describe('QLLC end-to-end', () => {
         ps[3].x = 15;
         return ps[3].x;
       }
-    `, true);
+    `, true, 2000);
   });
 
   test('heap allocate array of structs (len)', () => {

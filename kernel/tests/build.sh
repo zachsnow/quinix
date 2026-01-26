@@ -14,12 +14,16 @@ build_program() {
 
     echo "Building ${program}..."
 
-    # Compile
     cd "${ROOT_DIR}"
-    bun run bin/qllc.ts --library "${SCRIPT_DIR}/${program}" lib/lib.qll lib/system.qll lib/std.qll lib/std.bare.qll
 
-    # Assemble
-    bun run bin/qasm.ts --nosystem -o "${SCRIPT_DIR}/${output}" lib/user.qasm out.qasm lib/support.qasm
+    # Compile with --target=user (auto-includes shared/*.qll and user/*.qll)
+    bun run bin/qllc.ts --target=user -o "${SCRIPT_DIR}/${basename}.qasm" "${SCRIPT_DIR}/${program}"
+
+    # Assemble with --target=user (auto-includes user/*.qasm for entrypoint and syscalls)
+    bun run bin/qasm.ts --target=user -o "${SCRIPT_DIR}/${output}" "${SCRIPT_DIR}/${basename}.qasm"
+
+    # Clean up intermediate file
+    rm "${SCRIPT_DIR}/${basename}.qasm"
 
     # Verify output is binary, not text
     if file "${SCRIPT_DIR}/${output}" | grep -q "text"; then

@@ -15,7 +15,6 @@ import {
 
   AssemblyProgram,
 } from '@/assembly/assembly';
-import { VM } from '@/vm/vm';
 import { Instruction, Operation } from '@/vm/instructions';
 import { Type, TypedIdentifier, TypedStorage, FunctionType, TemplateType, Storage, ArrayType, SliceType } from './types';
 import { Expression, StringLiteralExpression } from './expressions';
@@ -1118,11 +1117,8 @@ class LowLevelProgram {
    * until it has been typechecked.
    *
    * @param module the name of the module we're emitting.
-   * @param entrypoint whether to emit a whole-program entry point that calls
-   * the main function; libraries are compiled without such an entrypoint, while
-   * "proper" programs receive one.
    */
-  public compile(module: string = 'out', entrypoint: boolean = true): AssemblyProgram {
+  public compile(module: string = 'out'): AssemblyProgram {
     if (!this.typechecked) {
       throw new InternalError(`program has not been typechecked`);
     }
@@ -1144,10 +1140,10 @@ class LowLevelProgram {
     const compiler = new Compiler(module);
 
     directives.push(new LabelDirective(compiler.generateReference('program')));
-    if (entrypoint) {
-      // Emit entrypoint: setup, global init, call main, halt
-      directives.push(...this.entrypoint(compiler, globalDeclarations));
-    }
+
+    // Emit @global::_init function for global initialization.
+    directives.push(...this.compileGlobalInit(globalDeclarations));
+
     functionDeclarations.forEach((declaration) => {
       directives.push(...declaration.compile());
     });
@@ -1161,25 +1157,17 @@ class LowLevelProgram {
   }
 
   /**
-   * Emits the "whole program" entrypoint, which:
-   * 1. Sets up SP and ONE
-   * 2. Runs global initialization code
-   * 3. Calls `global::main`
-   * 4. Halts the machine
+   * Emits the @global::_init function which initializes global variables.
+   * This function is called by the entrypoint (in bare/entrypoint.qasm or
+   * user/entrypoint.qasm) before main.
    *
-   * @param compiler the compiler to use to emit code.
    * @param globalDeclarations the global declarations that need initialization.
    */
-  private entrypoint(compiler: Compiler, globalDeclarations: GlobalDeclaration[]): Directive[] {
+  private compileGlobalInit(globalDeclarations: GlobalDeclaration[]): Directive[] {
     const directives: Directive[] = [];
 
-    // Setup SP and ONE
-    const r = compiler.allocateRegister();
-    compiler.emit([
-      new ConstantDirective(Compiler.SP, new ImmediateConstant(VM.DEFAULT_MEMORY_SIZE - 1)).comment('configure sp'),
-      new ConstantDirective(Compiler.ONE, new ImmediateConstant(0x1)).comment('configure one'),
-    ]);
-    directives.push(...compiler.compile());
+    // Function label
+    directives.push(new LabelDirective(new Reference('global::_init')));
 
     // Emit global initialization code (code first, then data to avoid executing data as code)
     const initCode: Directive[] = [];
@@ -1191,20 +1179,10 @@ class LowLevelProgram {
     });
     directives.push(...initCode);
 
-    // Call main (use a fresh compiler since we already compiled the setup)
-    const mainCompiler = new Compiler('entrypoint');
-    const mr = mainCompiler.allocateRegister();
-    mainCompiler.emit([
-      new ConstantDirective(mr, new ReferenceConstant(new Reference(LowLevelProgram.ENTRYPOINT))),
-    ]);
-    const ret = mainCompiler.emitCall([], mr);
-    mainCompiler.emit([
-      new InstructionDirective(Instruction.createOperation(Operation.MOV, Compiler.RET, ret)),
-      new InstructionDirective(Instruction.createOperation(Operation.HALT)),
-    ]);
-    directives.push(...mainCompiler.compile());
+    // Return to caller
+    directives.push(new InstructionDirective(Instruction.createOperation(Operation.JMP, undefined, Compiler.RET)));
 
-    // Emit global initializer temporary data after halt (so it's not executed as code)
+    // Emit global initializer temporary data after return (so it's not executed as code)
     directives.push(...initData);
 
     return directives;
