@@ -90,33 +90,22 @@ namespace shell {
     var entry: kernel::fs::qfs::dirent;
     var found: byte = 0;
 
-    for (var idx: byte = 0; idx < kernel::fs::qfs::MAX_DIR_ENTRIES; idx = idx + 1) {
+    // v2: root directory has 4 entries (1 sector * 4 entries/sector).
+    for (var idx: byte = 0; idx < kernel::fs::qfs::DIRENT_PER_SECTOR; idx = idx + 1) {
       if (!kernel::fs::qfs::_read_dirent(idx, &entry)) {
         break;
       }
 
-      if (entry.flags == kernel::fs::qfs::DIRENT_USED) {
-        // Print filename.
-        for (var n: byte = 0; n < 8; n = n + 1) {
+      if ((entry.flags & kernel::fs::qfs::DIRENT_USED) != 0 &&
+          (entry.flags & kernel::fs::qfs::DIRENT_DELETED) == 0) {
+        // Print filename (up to 24 chars).
+        for (var n: byte = 0; n < 24; n = n + 1) {
           if (entry.name[n] == 0) {
             break;
           }
           var c: byte[1];
           c[0] = entry.name[n];
           std::console::print(c);
-        }
-
-        // Print extension if present.
-        if (entry.extension[0] != 0) {
-          std::console::print(".");
-          for (var e: byte = 0; e < 4; e = e + 1) {
-            if (entry.extension[e] == 0) {
-              break;
-            }
-            var ch: byte[1];
-            ch[0] = entry.extension[e];
-            std::console::print(ch);
-          }
         }
 
         // Print size.

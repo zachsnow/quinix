@@ -1,16 +1,12 @@
 namespace kernel {
   namespace fs {
     /////////////////////////////////////////////////////////////////////
-    // QFS Constants
+    // QFS v2 Constants
     /////////////////////////////////////////////////////////////////////
     namespace qfs {
       // Filesystem layout constants.
       .constant global SUPERBLOCK_SECTOR: byte = 0;
       .constant global FAT_START_SECTOR: byte = 1;
-      .constant global FAT_SECTORS: byte = 8;
-      .constant global ROOT_START_SECTOR: byte = 9;
-      .constant global ROOT_SECTORS: byte = 8;
-      .constant global DATA_START_SECTOR: byte = 17;
 
       // Sector size in words.
       .constant global SECTOR_SIZE: byte = 128;
@@ -23,31 +19,29 @@ namespace kernel {
       // Directory entry flags.
       .constant global DIRENT_FREE: byte = 0x00;
       .constant global DIRENT_USED: byte = 0x01;
+      .constant global DIRENT_DIRECTORY: byte = 0x02;
+      .constant global DIRENT_EXECUTABLE: byte = 0x04;
       .constant global DIRENT_DELETED: byte = 0x80;
 
-      // Directory entry size in words.
-      .constant global DIRENT_SIZE: byte = 16;
+      // Directory entry size in words (32 words = 128 bytes).
+      .constant global DIRENT_SIZE: byte = 32;
 
       // Entries per sector.
       .constant global FAT_ENTRIES_PER_SECTOR: byte = 128;
-      .constant global DIRENT_PER_SECTOR: byte = 8;
+      .constant global DIRENT_PER_SECTOR: byte = 4;
 
-      // Maximum entries.
-      .constant global MAX_FAT_ENTRIES: byte = 1024;
-      .constant global MAX_DIR_ENTRIES: byte = 64;
+      // Magic number: "QFS2" (0x51465332).
+      .constant global QFS_MAGIC: byte = 0x51465332;
 
-      // Magic number: "QFS1" (0x51465331).
-      .constant global QFS_MAGIC: byte = 0x51465331;
-
-      // Filename limits.
-      .constant global MAX_NAME_LEN: byte = 8;
-      .constant global MAX_EXT_LEN: byte = 3;
+      // Filename limit (24 chars, one per word).
+      .constant global MAX_NAME_LEN: byte = 24;
 
       /////////////////////////////////////////////////////////////////////
       // QFS Structures
       /////////////////////////////////////////////////////////////////////
 
-      // Superblock structure (words 0-9 of sector 0).
+      // Superblock structure (words 0-8 of sector 0).
+      // Matches QFS v2 layout.
       type superblock = struct {
         magic: byte;
         version: byte;
@@ -55,20 +49,20 @@ namespace kernel {
         total_sectors: byte;
         fat_start: byte;
         fat_sectors: byte;
-        root_start: byte;
-        root_sectors: byte;
+        root_start: byte;    // rootSector in v2
         data_start: byte;
         free_sectors: byte;
       };
 
-      // Directory entry structure (16 words).
+      // Directory entry structure (32 words).
+      // Layout: flags(1) + first_sector(1) + size(1) + reserved(1) + name(24) + reserved(4)
       type dirent = struct {
         flags: byte;
         first_sector: byte;
         size: byte;
-        name: byte[8];
-        extension: byte[4];
-        reserved: byte[2];
+        reserved0: byte;
+        name: byte[24];
+        reserved1: byte[4];
       };
 
       /////////////////////////////////////////////////////////////////////
@@ -101,7 +95,7 @@ namespace kernel {
           return false;
         }
 
-        // Copy superblock data.
+        // Copy superblock data (v2 layout).
         sb.magic = sector_buffer[0];
         sb.version = sector_buffer[1];
         sb.sector_size = sector_buffer[2];
@@ -109,9 +103,8 @@ namespace kernel {
         sb.fat_start = sector_buffer[4];
         sb.fat_sectors = sector_buffer[5];
         sb.root_start = sector_buffer[6];
-        sb.root_sectors = sector_buffer[7];
-        sb.data_start = sector_buffer[8];
-        sb.free_sectors = sector_buffer[9];
+        sb.data_start = sector_buffer[7];
+        sb.free_sectors = sector_buffer[8];
 
         // Validate magic.
         if (sb.magic != QFS_MAGIC) {
@@ -128,8 +121,8 @@ namespace kernel {
 
       // Read a FAT entry for a given data sector.
       function fat_read(data_sector: byte): byte {
-        var fat_index = data_sector - DATA_START_SECTOR;
-        var fat_sector = FAT_START_SECTOR + fat_index / FAT_ENTRIES_PER_SECTOR;
+        var fat_index = data_sector - sb.data_start;
+        var fat_sector = sb.fat_start + fat_index / FAT_ENTRIES_PER_SECTOR;
         var fat_offset = fat_index % FAT_ENTRIES_PER_SECTOR;
 
         if (!block::read_sector(fat_sector, &sector_buffer[0])) {
@@ -141,8 +134,8 @@ namespace kernel {
 
       // Write a FAT entry for a given data sector.
       function fat_write(data_sector: byte, value: byte): bool {
-        var fat_index = data_sector - DATA_START_SECTOR;
-        var fat_sector = FAT_START_SECTOR + fat_index / FAT_ENTRIES_PER_SECTOR;
+        var fat_index = data_sector - sb.data_start;
+        var fat_sector = sb.fat_start + fat_index / FAT_ENTRIES_PER_SECTOR;
         var fat_offset = fat_index % FAT_ENTRIES_PER_SECTOR;
 
         if (!block::read_sector(fat_sector, &sector_buffer[0])) {
@@ -156,7 +149,7 @@ namespace kernel {
 
       // Allocate a free sector, returns 0 on failure.
       function fat_alloc(): byte {
-        for (var sector = DATA_START_SECTOR; sector < sb.total_sectors; sector = sector + 1) {
+        for (var sector = sb.data_start; sector < sb.total_sectors; sector = sector + 1) {
           if (fat_read(sector) == FAT_FREE) {
             if (!fat_write(sector, FAT_END)) {
               return 0;
@@ -181,7 +174,7 @@ namespace kernel {
         _write_superblock();
       }
 
-      // Write superblock back to disk.
+      // Write superblock back to disk (v2 layout).
       function _write_superblock(): bool {
         // Clear buffer.
         for (var i: byte = 0; i < SECTOR_SIZE; i = i + 1) {
@@ -196,9 +189,8 @@ namespace kernel {
         sector_buffer[4] = sb.fat_start;
         sector_buffer[5] = sb.fat_sectors;
         sector_buffer[6] = sb.root_start;
-        sector_buffer[7] = sb.root_sectors;
-        sector_buffer[8] = sb.data_start;
-        sector_buffer[9] = sb.free_sectors;
+        sector_buffer[7] = sb.data_start;
+        sector_buffer[8] = sb.free_sectors;
 
         return block::write_sector(SUPERBLOCK_SECTOR, &sector_buffer[0]);
       }
@@ -210,7 +202,7 @@ namespace kernel {
       // Read a directory entry from disk into the provided struct.
       // Returns true on success.
       function _read_dirent(index: byte, entry: *dirent): bool {
-        var dir_sector = ROOT_START_SECTOR + index / DIRENT_PER_SECTOR;
+        var dir_sector = sb.root_start + index / DIRENT_PER_SECTOR;
         var entry_offset = (index % DIRENT_PER_SECTOR) * DIRENT_SIZE;
 
         if (!block::read_sector(dir_sector, &sector_buffer[0])) {
@@ -220,15 +212,11 @@ namespace kernel {
         entry->flags = sector_buffer[entry_offset];
         entry->first_sector = sector_buffer[entry_offset + 1];
         entry->size = sector_buffer[entry_offset + 2];
+        entry->reserved0 = sector_buffer[entry_offset + 3];
 
-        // Copy name (8 words).
-        for (var i: byte = 0; i < 8; i = i + 1) {
-          entry->name[i] = sector_buffer[entry_offset + 3 + i];
-        }
-
-        // Copy extension (4 words).
-        for (var i: byte = 0; i < 4; i = i + 1) {
-          entry->extension[i] = sector_buffer[entry_offset + 11 + i];
+        // Copy name (24 words, starting at offset 4).
+        for (var i: byte = 0; i < 24; i = i + 1) {
+          entry->name[i] = sector_buffer[entry_offset + 4 + i];
         }
 
         return true;
@@ -236,7 +224,7 @@ namespace kernel {
 
       // Write a directory entry to disk.
       function _write_dirent(index: byte, entry: *dirent): bool {
-        var dir_sector = ROOT_START_SECTOR + index / DIRENT_PER_SECTOR;
+        var dir_sector = sb.root_start + index / DIRENT_PER_SECTOR;
         var entry_offset = (index % DIRENT_PER_SECTOR) * DIRENT_SIZE;
 
         // Read the sector first.
@@ -248,23 +236,24 @@ namespace kernel {
         sector_buffer[entry_offset] = entry->flags;
         sector_buffer[entry_offset + 1] = entry->first_sector;
         sector_buffer[entry_offset + 2] = entry->size;
+        sector_buffer[entry_offset + 3] = 0;  // reserved
 
-        // Copy name (8 words).
-        for (var i: byte = 0; i < 8; i = i + 1) {
-          sector_buffer[entry_offset + 3 + i] = entry->name[i];
+        // Copy name (24 words, starting at offset 4).
+        for (var i: byte = 0; i < 24; i = i + 1) {
+          sector_buffer[entry_offset + 4 + i] = entry->name[i];
         }
 
-        // Copy extension (4 words).
+        // Clear remaining reserved words.
         for (var i: byte = 0; i < 4; i = i + 1) {
-          sector_buffer[entry_offset + 11 + i] = entry->extension[i];
+          sector_buffer[entry_offset + 28 + i] = 0;
         }
 
         return block::write_sector(dir_sector, &sector_buffer[0]);
       }
 
-      // Compare a string to a fixed-size name array.
-      function _name_match(name: byte[8], str: string): bool {
-        for (var i: byte = 0; i < 8; i = i + 1) {
+      // Compare a string to a fixed-size name array (24 chars).
+      function _name_match(name: byte[24], str: string): bool {
+        for (var i: byte = 0; i < 24; i = i + 1) {
           if (i < len str) {
             if (name[i] != str[i]) {
               return false;
@@ -277,37 +266,23 @@ namespace kernel {
             return true;
           }
         }
-        // Check if string is longer than 8 chars.
-        return len str <= 8;
+        // Check if string is longer than 24 chars.
+        return len str <= 24;
       }
 
-      // Compare extension.
-      function _ext_match(ext: byte[4], str: string): bool {
-        for (var i: byte = 0; i < 3; i = i + 1) {
-          if (i < len str) {
-            if (ext[i] != str[i]) {
-              return false;
-            }
-          } else {
-            if (ext[i] != 0) {
-              return false;
-            }
-            return true;
-          }
-        }
-        return len str <= 3;
-      }
-
-      // Find a directory entry by name and extension.
+      // Find a directory entry by name.
       // Returns the index if found, or -1 if not found.
       // If found, populates *entry with the entry data.
-      function dir_find(name: string, ext: string, entry: *dirent): byte {
-        for (var i: byte = 0; i < MAX_DIR_ENTRIES; i = i + 1) {
+      function dir_find(name: string, entry: *dirent): byte {
+        // In v2, root directory is 1 sector (4 entries).
+        // TODO: Support growing root via FAT chains.
+        var max_entries: byte = DIRENT_PER_SECTOR;
+        for (var i: byte = 0; i < max_entries; i = i + 1) {
           if (!_read_dirent(i, entry)) {
             continue;
           }
-          if (entry->flags == DIRENT_USED) {
-            if (_name_match(entry->name, name) && _ext_match(entry->extension, ext)) {
+          if ((entry->flags & DIRENT_USED) != 0 && (entry->flags & DIRENT_DELETED) == 0) {
+            if (_name_match(entry->name, name)) {
               return i;
             }
           }
@@ -318,11 +293,12 @@ namespace kernel {
       // Find a free directory entry. Returns index or -1 if full.
       function dir_find_free(): byte {
         var entry: dirent;
-        for (var i: byte = 0; i < MAX_DIR_ENTRIES; i = i + 1) {
+        var max_entries: byte = DIRENT_PER_SECTOR;
+        for (var i: byte = 0; i < max_entries; i = i + 1) {
           if (!_read_dirent(i, &entry)) {
             continue;
           }
-          if (entry.flags == DIRENT_FREE || entry.flags == DIRENT_DELETED) {
+          if (entry.flags == DIRENT_FREE || (entry.flags & DIRENT_DELETED) != 0) {
             return i;
           }
         }
@@ -330,38 +306,27 @@ namespace kernel {
       }
 
       // Create a new directory entry.
+      // Create a new directory entry.
       // Returns the index, or -1 on failure.
-      function dir_create(name: string, ext: string, first_sector: byte, size: byte): byte {
+      function dir_create(name: string, first_sector: byte, size: byte): byte {
         var index = dir_find_free();
         if (index == -1) {
           return -1;
         }
 
-        var entry: dirent;
+        var entry: dirent = dirent {};
         entry.flags = DIRENT_USED;
         entry.first_sector = first_sector;
         entry.size = size;
 
-        // Copy name.
-        for (var i: byte = 0; i < 8; i = i + 1) {
+        // Copy name (up to 24 chars).
+        for (var i: byte = 0; i < 24; i = i + 1) {
           if (i < len name) {
             entry.name[i] = name[i];
           } else {
             entry.name[i] = 0;
           }
         }
-
-        // Copy extension.
-        for (var i: byte = 0; i < 4; i = i + 1) {
-          if (i < len ext) {
-            entry.extension[i] = ext[i];
-          } else {
-            entry.extension[i] = 0;
-          }
-        }
-
-        entry.reserved[0] = 0;
-        entry.reserved[1] = 0;
 
         if (!_write_dirent(index, &entry)) {
           return -1;
@@ -377,7 +342,7 @@ namespace kernel {
           return false;
         }
 
-        if (entry.flags != DIRENT_USED) {
+        if ((entry.flags & DIRENT_USED) == 0) {
           return false;
         }
 
@@ -477,10 +442,9 @@ namespace kernel {
         return -1;
       }
 
-      // Parse a filename into name and extension.
-      // Looks for the last "." in the path.
-      function _parse_filename(path: string, name: *byte, name_len: *byte, ext: *byte, ext_len: *byte): void {
-        var dot_pos: byte = -1;
+      // Extract filename from path (strip directory part).
+      // Returns the length of the filename.
+      function _get_filename(path: string, name: *byte): byte {
         var start: byte = 0;
 
         // Find the last "/" to get just the filename.
@@ -490,41 +454,15 @@ namespace kernel {
           }
         }
 
-        // Find the last ".".
-        for (var i = start; i < len path; i = i + 1) {
-          if (path[i] == '.') {
-            dot_pos = i;
-          }
+        // Copy filename (up to MAX_NAME_LEN chars).
+        var name_len: byte = len path - start;
+        if (name_len > MAX_NAME_LEN) {
+          name_len = MAX_NAME_LEN;
         }
-
-        if (dot_pos == -1 || dot_pos == start) {
-          // No extension.
-          *name_len = len path - start;
-          if (*name_len > MAX_NAME_LEN) {
-            *name_len = MAX_NAME_LEN;
-          }
-          for (var i: byte = 0; i < *name_len; i = i + 1) {
-            name[unsafe i] = path[start + i];
-          }
-          *ext_len = 0;
-        } else {
-          // Has extension.
-          *name_len = dot_pos - start;
-          if (*name_len > MAX_NAME_LEN) {
-            *name_len = MAX_NAME_LEN;
-          }
-          for (var i: byte = 0; i < *name_len; i = i + 1) {
-            name[unsafe i] = path[start + i];
-          }
-
-          *ext_len = len path - dot_pos - 1;
-          if (*ext_len > MAX_EXT_LEN) {
-            *ext_len = MAX_EXT_LEN;
-          }
-          for (var i: byte = 0; i < *ext_len; i = i + 1) {
-            ext[unsafe i] = path[dot_pos + 1 + i];
-          }
+        for (var i: byte = 0; i < name_len; i = i + 1) {
+          name[unsafe i] = path[start + i];
         }
+        return name_len;
       }
 
       // Open a file. Returns file slot index, or -1 on failure.
@@ -540,35 +478,13 @@ namespace kernel {
           return -1;
         }
 
-        // Parse filename.
-        var name: byte[8];
-        var ext: byte[4];
-        var name_len: byte = 0;
-        var ext_len: byte = 0;
-
-        // Clear arrays.
-        for (var i: byte = 0; i < 8; i = i + 1) {
-          name[i] = 0;
-        }
-        for (var i: byte = 0; i < 4; i = i + 1) {
-          ext[i] = 0;
-        }
-
-        _parse_filename(path, &name[0], &name_len, &ext[0], &ext_len);
-
-        // Create temp strings for lookup.
-        var name_str: byte[9];
-        var ext_str: byte[4];
-        for (var i: byte = 0; i < name_len; i = i + 1) {
-          name_str[i] = name[i];
-        }
-        for (var i: byte = 0; i < ext_len; i = i + 1) {
-          ext_str[i] = ext[i];
-        }
+        // Extract filename from path.
+        var name: byte[24] = [0; 24];
+        var name_len = _get_filename(path, &name[0]);
 
         // Find file.
         var entry: dirent;
-        var dir_index = dir_find(name_str[0:name_len], ext_str[0:ext_len], &entry);
+        var dir_index = dir_find(name[0:name_len], &entry);
 
         if (mode == MODE_READ) {
           // File must exist.
@@ -579,7 +495,7 @@ namespace kernel {
           // For write/append, create if not exists.
           if (dir_index == -1) {
             // Create empty file.
-            dir_index = dir_create(name_str[0:name_len], ext_str[0:ext_len], 0, 0);
+            dir_index = dir_create(name[0:name_len], 0, 0);
             if (dir_index == -1) {
               return -1;
             }
