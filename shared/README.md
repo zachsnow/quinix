@@ -12,7 +12,7 @@ This code must not depend on any specific runtime environment.
 
 ## Allocator Binding
 
-The allocator in `alloc.qll` provides `std::alloc()` and `std::dealloc()` but requires the global `std::heap` pointer to be set before first use. Each execution context (kernel, lib, bare) provides its own `alloc.qll` that:
+The allocator in `alloc.qll` provides `std::alloc()` and `std::dealloc()` but requires the global `std::heap` pointer to be set before first use. Each execution context (kernel, user, bare) provides its own `alloc.qll` that:
 
 1. Sets `std::heap` to the appropriate memory address for that context
 2. Exports `system::alloc()` and `system::dealloc()` which the compiler uses to implement `new` and `delete`

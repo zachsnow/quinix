@@ -8,24 +8,24 @@ This document describes how the kernel loads and starts user programs.
 
 ### Overview
 
-User programs are compiled QLL binaries that run in isolated virtual address spaces. The kernel handles memory setup, and a minimal user-mode runtime (`lib/user.qasm`) handles program startup.
+User programs are compiled QLL binaries that run in isolated virtual address spaces. The kernel handles memory setup, and the user-mode runtime (`user/entrypoint.qasm`) handles program startup.
 
 ### Compilation
 
-User programs are compiled with special flags:
+User programs are compiled with `--target=user`:
 
 ```bash
-# Compile without entrypoint (kernel provides memory layout)
-qllc --library program.qll lib/lib.qll ...
+# Compile (auto-includes shared/*.qll and user/*.qll)
+qllc --target=user program.qll -o program.qasm
 
-# Assemble with user runtime at start
-qasm --nosystem -o program.qbin lib/user.qasm out.qasm lib/support.qasm
+# Assemble (auto-includes user/entrypoint.qasm and user/support.qasm)
+qasm --target=user program.qasm -o program.qbin
 ```
 
-Key points:
-- `--library` omits the standard entrypoint that sets SP to a hardcoded value
-- `lib/user.qasm` is linked first, providing the entry point at 0x1000
-- `--nosystem` omits the system runtime (heap initialization) since the kernel manages memory
+The `--target=user` flag:
+- Auto-includes the standard library (`shared/*.qll`) and usermode support (`user/*.qll`)
+- Generates a usermode entrypoint that initializes ONE, runs global init, calls main, and exits via syscall
+- Auto-includes `user/entrypoint.qasm` and `user/support.qasm` at assembly time
 
 ### Memory Layout
 
@@ -49,10 +49,11 @@ When the kernel switches to a new process:
    - `IP` = 0x1000 (start of executable)
    - All other registers = 0
 
-2. **User runtime executes** (`lib/user.qasm`):
+2. **User runtime executes** (`user/entrypoint.qasm`):
    - Initializes `r62` (ONE) = 1 (required for QLL calling convention)
+   - Calls `@global::_init` to initialize globals
    - Calls `@global::main`
-   - When main returns, calls `lib::exit` with return value
+   - When main returns, exits via EXIT syscall with return value
 
 3. **Program runs** until it calls `exit` or faults
 
@@ -64,7 +65,7 @@ User programs communicate with the kernel via interrupt 0x80:
 - `r1`, `r2`, `r3` = arguments
 - Return value placed in `r0`
 
-Syscalls defined in `lib/lib.qll`:
+Syscalls defined in `user/lib.qll`:
 - `EXIT (0)` - terminate process
 - `READ (1)` - read from handle
 - `WRITE (2)` - write to handle

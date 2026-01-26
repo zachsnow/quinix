@@ -21,7 +21,7 @@ Execution
 
 ```bash
 bun install       # Install dependencies
-./build.sh        # Generate parsers, type check, build lib/kernel
+./build.sh        # Generate parsers, type check, build kernel
 bun test          # Run test suite
 ```
 
@@ -42,7 +42,9 @@ bun run bin/qrun.ts <file.qll>     # Compile, assemble, and run
 - `src/assembly/` - QASM parser and assembler
 - `src/lowlevel/` - QLL compiler (parser, typechecker, codegen)
 - `src/lib/` - Shared utilities
-- `lib/` - QLL standard library (std.qll, etc.)
+- `shared/` - QLL standard library (std.qll, alloc.qll, etc.)
+- `bare/` - Baremetal target support (entrypoint, allocator binding)
+- `user/` - Usermode target support (syscalls, entrypoint, allocator binding)
 - `kernel/` - OS kernel (in QLL)
 - `examples/` - Example programs in QASM and QLL
 - `docs/` - Architecture documentation
