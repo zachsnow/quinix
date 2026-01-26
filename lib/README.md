@@ -27,3 +27,23 @@ Produces user program binaries in `bin/`.
 
 ## Building usermode programs
 
+Usermode programs use the `lib::` namespace for OS services. Example (`hello.qll`):
+
+```c
+function main(): byte {
+  lib::print("Hello, world!");
+  return 0;
+}
+```
+
+To compile and assemble:
+
+```bash
+# From project root
+bun run bin/qllc.ts --library hello.qll lib/lib.qll lib/system.qll lib/std.qll lib/std.bare.qll
+bun run bin/qasm.ts --nosystem -o hello.qbin lib/user.qasm out.qasm lib/support.qasm
+```
+
+The `--library` flag compiles without a system preamble, and `--nosystem` assembles without the default system header. The `lib/user.qasm` provides the usermode entry point.
+
+See `kernel/tests/build.sh` for a complete example.
