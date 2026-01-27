@@ -8,15 +8,17 @@ The display peripheral provides a DMA-style color display. Programs allocate a f
 
 ## Memory Layout
 
+Memory is word-addressed (each offset is one 32-bit word).
+
 ```
-Offset  Size    Description
-0x00    1 word  Control register (IO - triggers notify)
-0x04    1 word  Width in pixels (read-only)
-0x08    1 word  Height in pixels (read-only)
-0x0C    1 word  Framebuffer pointer (physical address, writable)
+Offset  Description
++0      Control register (IO - triggers notify)
++1      Width in pixels (read-only)
++2      Height in pixels (read-only)
++3      Framebuffer pointer (physical address, writable)
 ```
 
-Total peripheral memory: 16 bytes (4 words)
+Total peripheral memory: 4 words (1 IO + 3 shared)
 
 The framebuffer itself lives elsewhere in physical memory, allocated by the program.
 
@@ -62,8 +64,8 @@ type DisplayRenderer = (pixels: Uint32Array, width: number, height: number) => v
 class DisplayPeripheral extends Peripheral {
   public readonly name = "display";
   public readonly identifier = 0x00000002;
-  public readonly io = 0x4;      // Control register
-  public readonly shared = 0xC;  // Width + height + pointer
+  public readonly io = 0x1;      // Control register (1 word)
+  public readonly shared = 0x3;  // Width + height + pointer (3 words)
 
   constructor(
     private readonly width: number,
@@ -85,9 +87,11 @@ class DisplayPeripheral extends Peripheral {
 
       const pointer = this.mapping.view[3];
       if (pointer && this.renderer) {
-        const pixels = new Uint32Array(this.width * this.height);
-        for (let i = 0; i < pixels.length; i++) {
-          pixels[i] = this.vm.memory[pointer + i];
+        const pixelCount = this.width * this.height;
+        const framebuffer = this.vm.dump(pointer, pixelCount);
+        const pixels = new Uint32Array(pixelCount);
+        for (let i = 0; i < pixelCount; i++) {
+          pixels[i] = framebuffer[i];
         }
         this.renderer(pixels, this.width, this.height);
       }
@@ -133,8 +137,8 @@ Initial implementation will use HTTP+browser as fallback, with SDL2 as a stretch
 
 ## Tasks
 
-1. Add `DisplayPeripheral` class to `src/vm/peripherals.ts`
-2. Add `DisplayRenderer` type and canvas renderer to `src/platform/browser/`
-3. Add HTTP+browser renderer to `src/platform/server/`
-4. Add tests for peripheral memory layout and FLIP command
-5. Create example program that draws to the display
+- [x] Add `DisplayPeripheral` class to `src/vm/peripherals.ts`
+- [x] Add `DisplayRenderer` type and canvas renderer to `src/platform/browser/`
+- [x] Add tests for peripheral memory layout and FLIP command
+- [ ] Add HTTP+browser renderer to `src/platform/server/`
+- [ ] Create example program that draws to the display
