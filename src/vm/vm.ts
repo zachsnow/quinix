@@ -269,6 +269,7 @@ class VM {
   }
 
   public fault(message: string): void {
+    console.error(`[FAULT] ${message}`);
     log.debug(`[FAULT] ${message}`);
 
     if (this.state.faulting) {

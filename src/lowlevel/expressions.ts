@@ -1432,12 +1432,14 @@ class BinaryExpression extends Expression {
 
       case '==':
       case '!=': {
-        // We can equate numerics (including floats).
-        if (!tLeft.numeric) {
-          this.error(context, `expected numeric type, actual ${tLeft}`);
+        // We can equate numerics (including floats) and pointers.
+        const leftOk = tLeft.numeric || tLeft.resolve() instanceof PointerType;
+        const rightOk = tRight.numeric || tRight.resolve() instanceof PointerType;
+        if (!leftOk) {
+          this.error(context, `expected numeric or pointer type, actual ${tLeft}`);
         }
-        if (!tRight.numeric) {
-          this.error(context, `expected numeric type, actual ${tRight}`);
+        if (!rightOk) {
+          this.error(context, `expected numeric or pointer type, actual ${tRight}`);
         }
         if (!tLeft.isEqualTo(tRight)) {
           this.error(context, `expected ${tLeft}, actual ${tRight}`);

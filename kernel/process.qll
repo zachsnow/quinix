@@ -56,13 +56,23 @@ namespace kernel {
       // the QLLC stack pointer, which initialize to the top of the stack.
       log("process: creating task");
       var task = scheduler::create_task();
+      // Initialize all registers to 0
+      for (var i: byte = 0; i < 64; i = i + 1) {
+        task->state.registers[i] = 0;
+      }
       log("process: setting task ip");
       task->state.ip = executable_base;
       // Stack pointer uses virtual address (must match create_table"s layout)
       var heap_base = executable_base + executable_size + 0x1000;
       var stack_base = heap_base + heap_size + 0x1000;
       log("process: setting task sp");
-      task->state.registers[63] = stack_base + stack_size;
+      var sp = stack_base + stack_size;
+      task->state.registers[63] = sp;
+      // Verify the value was set correctly
+      var verify = task->state.registers[63];
+      if (verify != sp) {
+        log("process: ERROR: sp mismatch!");
+      }
       // Set the task"s page table for context switching
       task->table = table;
 
