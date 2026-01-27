@@ -61,13 +61,13 @@ or *sources* of the operation.
 
 **Comparison operators**
 
-`eq d s0 s1`: if `s0` is equal to `s1`, store `0x0` into `d`; otherwise, store `0x1`
+`eq d s0 s1`: if `s0` is equal to `s1`, store `0x1` into `d`; otherwise, store `0x0`
 
-`neq d s0 s1`: if `s0` is not equal to `s1`, store `0x0` into `d`; otherwise, store `0x1`
+`neq d s0 s1`: if `s0` is not equal to `s1`, store `0x1` into `d`; otherwise, store `0x0`
 
-`lt d s s`: if `s0` is less than to `s1`, store `0x0` into `d`; otherwise, store `0x1`
+`lt d s s`: if `s0` is less than `s1`, store `0x1` into `d`; otherwise, store `0x0`
 
-`gt d s s`: if `s0` is greater than to `s1`, store `0x0` into `d`; otherwise, store `0x1`
+`gt d s s`: if `s0` is greater than `s1`, store `0x1` into `d`; otherwise, store `0x0`
 
 **Branching operators**
 
