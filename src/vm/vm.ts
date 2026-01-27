@@ -958,7 +958,7 @@ class VM {
             this.fault(
               `memory fault: ${Address.toString(
                 virtualAddress
-              )} invalid mapping writing -- ${decoded}`
+              )} invalid mapping writing at IP=${Address.toString(virtualIp)} -- ${decoded}`
             );
             return "continue";
           }
