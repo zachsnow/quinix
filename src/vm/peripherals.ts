@@ -374,7 +374,7 @@ type DisplayRenderer = (pixels: Uint32Array, width: number, height: number) => v
  */
 class DisplayPeripheral extends Peripheral {
   public readonly name = "display";
-  public readonly identifier = 0x00000002;
+  public readonly identifier = 0x00000005;
 
   public readonly io = 0x1;      // Control register (1 word)
   public readonly shared = 0x3;  // Width + height + pointer (3 words)

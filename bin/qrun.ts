@@ -5,11 +5,12 @@ import { parseArguments } from "@server/cli";
 interface Options {
   file: string;
   verbose: boolean;
+  "--": string[];
 }
 
 const argv = parseArguments<Options>(
   "qrun",
-  "$0 <file>",
+  "$0 <file> [-- <qvm-args...>]",
   "compile and run the given file; uses --target=bare",
   {
     options: {
@@ -28,6 +29,9 @@ const argv = parseArguments<Options>(
     },
   }
 );
+
+// Get any extra args after -- to pass to qvm
+const extraArgs = argv["--"] || [];
 
 async function main(): Promise<number> {
   const file = argv.file;
@@ -49,7 +53,7 @@ async function main(): Promise<number> {
   }
 
   console.log("Executing...");
-  const vmArgs = verbose ? ["-v", "out.qbin"] : ["out.qbin"];
+  const vmArgs = verbose ? ["-v", "out.qbin", ...extraArgs] : ["out.qbin", ...extraArgs];
   const vmResult = await $`bun run bin/qvm.ts ${vmArgs}`;
   return vmResult.exitCode;
 }
