@@ -70,7 +70,7 @@ namespace shell {
   }
 
   function cmd_help(): void {
-    std::console::print("Commands: help, pwd, ls, cat, echo, exit\n");
+    std::console::print("Commands: help, pwd, ls, cat, run, exit\n");
   }
 
   function cmd_pwd(): void {
@@ -169,8 +169,18 @@ namespace shell {
     std::console::print("\n");
   }
 
-  function cmd_echo(args: byte[], args_len: byte): void {
-    _print_n(args, args_len);
+  function cmd_run(args: byte[], args_len: byte): void {
+    if (args_len == 0) {
+      std::console::print("run: missing program path\n");
+      return;
+    }
+    len args = args_len;
+    var pid = load_executable(args, 0);
+    if (pid == 0) {
+      std::console::print("run: failed to load program\n");
+      return;
+    }
+    wait_for_process(pid);
     std::console::print("\n");
   }
 
@@ -196,12 +206,13 @@ namespace shell {
     while (true) {
       std::console::print("$ ");
 
-      if (!std::console::input(line)) {
+      var input_len = std::console::input(line);
+      if (input_len == -1) {
         std::console::print("input error\n");
-      } else if (len line == 0) {
+      } else if (input_len == 0) {
         // Empty line, do nothing
       } else {
-        var line_len = len line;
+        var line_len: byte = input_len;
 
         // Find the first space to split command from args.
         var cmd_end: byte = line_len;
@@ -240,8 +251,8 @@ namespace shell {
           cmd_ls();
         } else if (str_eq_n("cat", cmd, cmd_len)) {
           cmd_cat(args, args_len);
-        } else if (str_eq_n("echo", cmd, cmd_len)) {
-          cmd_echo(args, args_len);
+        } else if (str_eq_n("run", cmd, cmd_len)) {
+          cmd_run(args, args_len);
         } else if (str_eq_n("exit", cmd, cmd_len)) {
           cmd_exit();
         } else {

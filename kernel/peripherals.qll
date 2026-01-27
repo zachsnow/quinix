@@ -82,32 +82,39 @@ namespace kernel {
     type init_table_entry = struct {
       identifier: byte;
       init: (* peripheral_table_entry) => void;
+      required: bool;
     };
 
     global init_table: init_table_entry[] = [
       init_table_entry {
         identifier = timer_identifier,
         init = _init_timer,
+        required = true,
       },
       init_table_entry {
         identifier = debug_output_identifier,
         init = _init_debug_output,
+        required = true,
       },
       init_table_entry {
         identifier = debug_input_identifier,
         init = _init_debug_input,
+        required = true,
       },
       init_table_entry {
         identifier = debug_file_identifier,
         init = _init_debug_file,
+        required = true,
       },
       init_table_entry {
         identifier = mmu_identifier,
         init = _init_mmu,
+        required = true,
       },
       init_table_entry {
         identifier = block_device_identifier,
         init = _init_block_device,
+        required = false,
       },
     ];
 
@@ -123,7 +130,9 @@ namespace kernel {
           return;
         }
       }
-      kernel::panic("peripherals: peripheral not found.");
+      if (entry.required) {
+        kernel::panic("peripherals: required peripheral not found.");
+      }
     }
 
     //

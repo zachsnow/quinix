@@ -45,22 +45,25 @@ namespace kernel {
       return;
     }
 
-    // Otherwise hard-code access to the debug output peripheral if it is
-    // located where we expect.
-    var debug_output_identifier = 0x3;
-    var debug_output_identifier_ptr = <unsafe * byte> 0x201;
-    var debug_output_ptr = <unsafe * byte> 0x202;
-    if(*debug_output_identifier_ptr == debug_output_identifier){
-      var debug_output_base = <unsafe * byte> *debug_output_ptr;
-      var debug_output_control = debug_output_base;
-      var debug_output_size = <unsafe * byte>(<unsafe byte>debug_output_base + 2);
-      var debug_output_buffer = <unsafe * byte>(<unsafe byte>debug_output_base + 3);
-      std::buffered::write(debug_output_control, debug_output_size, debug_output_buffer, message);
-      std::buffered::write(debug_output_control, debug_output_size, debug_output_buffer, "\n");
-      return;
+    // Otherwise search the peripheral table for debug output.
+    var debug_output_id: byte = 0x3;
+    var table_count = <unsafe * byte>0x200;
+    var table_base = <unsafe * byte>0x201;
+    for (var i: byte = 0; i < *table_count; i = i + 1) {
+      var entry_id = table_base[unsafe i * 2];
+      if (entry_id == debug_output_id) {
+        var entry_addr = table_base[unsafe i * 2 + 1];
+        var base = <unsafe * byte>entry_addr;
+        var ctrl = base;
+        var sz = <unsafe * byte>(<unsafe byte>base + 2);
+        var buf = <unsafe * byte>(<unsafe byte>base + 3);
+        std::buffered::write(ctrl, sz, buf, message);
+        std::buffered::write(ctrl, sz, buf, "\n");
+        return;
+      }
     }
 
-    // Otherwise, we"re effed.
+    // Otherwise, we're effed.
     support::halt(error::NO_LOG);
   }
 
@@ -78,59 +81,51 @@ namespace kernel {
   }
 }
 
-// Load a program from the file peripheral and create a process for it.
-function _load_program(path: byte[], parent_id: byte): byte {
-  // Set the file path
-  if(!std::buffered::write(
-    &kernel::peripherals::debug_file->control,
-    &kernel::peripherals::debug_file->size,
-    &kernel::peripherals::debug_file->buffer[unsafe 0],
-    path
-  )){
-    kernel::panic("unable to write program path");
-  }
-
-  // Allocate a buffer to hold the file
-  var binary = new byte[0x1000];  // 4KB should be enough
-  if (len binary == 0) {
-    kernel::panic("unable to allocate memory for program");
-  }
-
-  // Read the file contents in chunks (peripheral buffer is limited)
-  var total_read: byte = 0;
-  var capacity = kernel::peripherals::debug_file->capacity;
-  var control = &kernel::peripherals::debug_file->control;
-  var size = &kernel::peripherals::debug_file->size;
-  var buffer = &kernel::peripherals::debug_file->buffer[unsafe 0];
-
-  while(total_read < cap binary){
-    // Trigger a read
-    *control = std::buffered::READ;
-    while(*control == std::buffered::PENDING){}
-    if(*control != std::buffered::READY){
-      kernel::panic("unable to read program");
-    }
-
-    // Copy data from peripheral buffer to binary
-    var chunk_size = *size;
-    for(var i: byte = 0; i < chunk_size && total_read + i < cap binary; i = i + 1){
-      binary[total_read + i] = buffer[unsafe i];
-    }
-    total_read = total_read + chunk_size;
-
-    // If we read less than capacity, we"re done
-    if(chunk_size < capacity){
-      break;
+// Check if a process with the given PID exists.
+function process_exists(pid: byte): bool {
+  var procs = kernel::process::processes;
+  for (var i: byte = 0; i < len procs; i = i + 1) {
+    if (procs[i]->id == pid) {
+      return true;
     }
   }
-  len binary = total_read;
+  return false;
+}
 
-  // Create process
+// Wait for a process to exit.
+function wait_for_process(pid: byte): void {
+  kernel::support::enable_interrupts();
+  while (process_exists(pid)) {
+    kernel::support::wait_for_interrupt();
+  }
+  kernel::support::disable_interrupts();
+}
+
+// Load an executable from QFS and create a process.
+function load_executable(path: byte[], parent_id: byte): byte {
+  var slot = kernel::fs::qfs::file_open(path, kernel::fs::qfs::MODE_READ);
+  if (slot == -1) {
+    return 0;
+  }
+
+  var binary = new byte[0x1000];
+  var ptr = &binary[0];
+  var total: byte = 0;
+  var n = kernel::fs::qfs::file_read(slot, ptr, 0x1000);
+  while (n > 0) {
+    total = total + n;
+    ptr = <unsafe *byte>(<unsafe byte>ptr + n);
+    n = kernel::fs::qfs::file_read(slot, ptr, 0x1000 - total);
+  }
+  len binary = total;
+  kernel::fs::qfs::file_close(slot);
+
+  if (total == 0) {
+    delete binary;
+    return 0;
+  }
+
   var pid = kernel::process::create_process(binary, parent_id);
-  if(!pid){
-    kernel::panic("unable to create process");
-  }
-
   delete binary;
   return pid;
 }

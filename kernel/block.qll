@@ -6,17 +6,17 @@ namespace kernel {
     // Block device peripheral identifier.
     .constant global identifier: byte = 0x20;
 
-    // Shared region layout offsets.
-    .constant global OFFSET_STATUS: byte = 0x0;
-    .constant global OFFSET_LBA: byte = 0x1;
-    .constant global OFFSET_COUNT: byte = 0x2;
-    .constant global OFFSET_BUFFER_PTR: byte = 0x3;
-    .constant global OFFSET_TOTAL_SECTORS: byte = 0x4;
-    .constant global OFFSET_SECTOR_SIZE: byte = 0x5;
-    .constant global OFFSET_ERROR_CODE: byte = 0x6;
-    .constant global SHARED_SIZE: byte = 0x7;
+    // Memory layout offsets (COMMAND at 0 is IO trigger).
+    .constant global OFFSET_COMMAND: byte = 0x0;
+    .constant global OFFSET_STATUS: byte = 0x1;
+    .constant global OFFSET_LBA: byte = 0x2;
+    .constant global OFFSET_COUNT: byte = 0x3;
+    .constant global OFFSET_BUFFER_PTR: byte = 0x4;
+    .constant global OFFSET_TOTAL_SECTORS: byte = 0x5;
+    .constant global OFFSET_SECTOR_SIZE: byte = 0x6;
+    .constant global OFFSET_ERROR_CODE: byte = 0x7;
 
-    // Commands (written to IO region).
+    // Commands.
     .constant global CMD_NOP: byte = 0x0;
     .constant global CMD_READ: byte = 0x1;
     .constant global CMD_WRITE: byte = 0x2;
@@ -55,9 +55,8 @@ namespace kernel {
     }
 
     function _command(cmd: byte): void {
-      // IO region is at base + SHARED_SIZE.
-      var io = &base[unsafe SHARED_SIZE];
-      *io = cmd;
+      // Write command to offset 0 (triggers IO).
+      base[unsafe OFFSET_COMMAND] = cmd;
     }
 
     // Read a single sector into buffer.

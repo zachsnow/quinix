@@ -24,13 +24,16 @@ namespace std::buffered {
     return *size;
   }
 
-  function read(control: *byte, size: *byte, buffer: *byte, data: byte[]): bool {
+  // Read from a buffered peripheral.
+  // Returns: number of bytes read, or -1 on error.
+  // Note: The caller must set `len data` based on the return value.
+  function read(control: *byte, size: *byte, buffer: *byte, data: byte[]): byte {
     *control = READ;
 
     while (*control == PENDING) {}
 
     if (*control != READY) {
-      return false;
+      return -1;
     }
 
     var read_size = *size;
@@ -38,11 +41,10 @@ namespace std::buffered {
       read_size = cap data;
     }
 
-    for (var i = 0; i < read_size; i = i + 1) {
+    for (var i: byte = 0; i < read_size; i = i + 1) {
       data[i] = buffer[unsafe i];
     }
-    len data = read_size;
 
-    return true;
+    return read_size;
   }
 }

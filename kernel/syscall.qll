@@ -147,19 +147,20 @@ namespace kernel {
         var temp_buffer: byte[256];
         var read_limit: byte = data_len > 256 ? 256 : data_len;
         var temp_slice = temp_buffer[0:read_limit];
-        if (!std::buffered::read(
+        var read_count = std::buffered::read(
           &peripherals::debug_input->control,
           &peripherals::debug_input->size,
           &peripherals::debug_input->buffer[unsafe 0],
           temp_slice
-        )) {
+        );
+        if (read_count == -1) {
           return 0;
         }
         // Copy to user buffer.
-        for (var i: byte = 0; i < len temp_slice; i = i + 1) {
+        for (var i: byte = 0; i < read_count; i = i + 1) {
           data_ptr[unsafe i] = temp_buffer[i];
         }
-        return len temp_slice;
+        return read_count;
       }
 
       // Handle QFS file handles.

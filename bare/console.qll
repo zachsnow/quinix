@@ -9,7 +9,9 @@ namespace std::console {
     return std::buffered::write(control, size, buffer, s);
   }
 
-  function input(buffer: string): bool {
+  // Read input into buffer.
+  // Returns: number of bytes read, or -1 on error.
+  function input(buffer: string): byte {
     var control: *byte = <unsafe *byte>0x402;
     var size: *byte = <unsafe *byte>0x404;
     var buf: *byte = <unsafe *byte>0x405;

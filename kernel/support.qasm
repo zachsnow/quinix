@@ -1,3 +1,24 @@
+; Kernel entrypoint
+; Sets up SP and ONE, calls global init, calls main, halts.
+@_entrypoint:
+  constant r63 0xFFFFF      ; SP = top of 1MB memory
+  constant r62 0x1          ; ONE = 1
+
+  ; Call global init
+  constant r0 @_after_init
+  constant r1 @global::_init
+  jmp r1
+@_after_init:
+
+  ; Call main
+  constant r0 @_after_main
+  constant r1 @global::main
+  jmp r1
+@_after_main:
+
+  ; Halt with main's return value in r0
+  halt
+
 ; Disable interrupts (write false to address 0x0).
 @global::kernel::support::disable_interrupts:
   constant r1 0x0000        ; Address 0x0 is interrupt enable flag.
@@ -19,11 +40,16 @@
   load r0 r2              ; Put in return register.
   halt
 
-; Wait for interrupts.
+; Wait for interrupts (does not return).
 @global::kernel::support::wait:
   wait
   constant r0 0xffffffff  ; Error -- we should never reach this point.
   halt
+
+; Wait for an interrupt and then return.
+@global::kernel::support::wait_for_interrupt:
+  wait
+  jmp r0                  ; Return after interrupt.
 
 ; Set an interrupt handler; the address given *must*
 ; correspond to interrupt pointer, not a function pointer.

@@ -87,11 +87,13 @@ namespace kernel {
 
         // Check if block device is available.
         if (block::base == null) {
+          kernel::log("qfs: no block device");
           return false;
         }
 
         // Read superblock.
         if (!block::read_sector(SUPERBLOCK_SECTOR, &sector_buffer[0])) {
+          kernel::log("qfs: read superblock failed");
           return false;
         }
 
@@ -108,6 +110,7 @@ namespace kernel {
 
         // Validate magic.
         if (sb.magic != QFS_MAGIC) {
+          kernel::log("qfs: bad magic");
           return false;
         }
 
@@ -707,7 +710,9 @@ namespace kernel {
       return file.handle == handle;
     }
 
-    function read(handle: handle, data: byte[]): bool {
+    // Read from a handle into data buffer.
+    // Returns: number of bytes read, or -1 on error.
+    function read(handle: handle, data: byte[]): byte {
       var process = process::current_process();
 
       if(handle == handle::INPUT){
@@ -721,7 +726,7 @@ namespace kernel {
 
       var index = std::vector::find_by(process->files, _find_file, handle);
       if(index == -1){
-        return false;
+        return -1;
       }
       var file = process->files[index];
       if(!std::buffered::write(
@@ -730,7 +735,7 @@ namespace kernel {
         &peripherals::debug_file->buffer[unsafe 0],
         file.path
       )){
-        return false;
+        return -1;
       }
       return std::buffered::read(
         &peripherals::debug_file->control,

@@ -432,17 +432,15 @@ class FileBlockStorage implements BlockStorage {
  * and buffer address in main memory. The peripheral reads/writes
  * directly to/from that memory region.
  *
- * Memory layout (shared region):
- *   0x00  STATUS        - Device status (read-only from client perspective)
- *   0x01  LBA           - Logical block address for operation
- *   0x02  COUNT         - Number of sectors to transfer (1-255)
- *   0x03  BUFFER_PTR    - DMA address in main memory
- *   0x04  TOTAL_SECTORS - Device capacity (read-only)
- *   0x05  SECTOR_SIZE   - Words per sector (read-only)
- *   0x06  ERROR_CODE    - Last error code (read-only)
- *
- * IO region (triggers operation on write):
- *   0x00  COMMAND       - Command to execute
+ * Memory layout:
+ *   0x00  COMMAND       - Command to execute (IO - triggers on write)
+ *   0x01  STATUS        - Device status (read-only from client perspective)
+ *   0x02  LBA           - Logical block address for operation
+ *   0x03  COUNT         - Number of sectors to transfer (1-255)
+ *   0x04  BUFFER_PTR    - DMA address in main memory
+ *   0x05  TOTAL_SECTORS - Device capacity (read-only)
+ *   0x06  SECTOR_SIZE   - Words per sector (read-only)
+ *   0x07  ERROR_CODE    - Last error code (read-only)
  *
  * Commands:
  *   0x00  NOP           - No operation
@@ -465,20 +463,21 @@ class BlockDevicePeripheral extends Peripheral {
   public readonly name = 'block-device';
   public readonly identifier = 0x00000020;
 
-  // IO region: just the command byte
+  // IO region: command byte at offset 0
   public readonly io: Offset = 0x1;
 
-  // Shared region for status and parameters
+  // Shared region for status and parameters (after IO)
   public readonly shared: Offset = 0x7;
 
-  // Shared memory layout
-  private readonly STATUS_ADDR = 0x0;
-  private readonly LBA_ADDR = 0x1;
-  private readonly COUNT_ADDR = 0x2;
-  private readonly BUFFER_PTR_ADDR = 0x3;
-  private readonly TOTAL_SECTORS_ADDR = 0x4;
-  private readonly SECTOR_SIZE_ADDR = 0x5;
-  private readonly ERROR_CODE_ADDR = 0x6;
+  // Memory layout (COMMAND at offset 0 is IO, rest is shared)
+  private readonly COMMAND_ADDR = 0x0;
+  private readonly STATUS_ADDR = 0x1;
+  private readonly LBA_ADDR = 0x2;
+  private readonly COUNT_ADDR = 0x3;
+  private readonly BUFFER_PTR_ADDR = 0x4;
+  private readonly TOTAL_SECTORS_ADDR = 0x5;
+  private readonly SECTOR_SIZE_ADDR = 0x6;
+  private readonly ERROR_CODE_ADDR = 0x7;
 
   // Commands
   private readonly CMD_NOP = 0x0;
@@ -515,7 +514,10 @@ class BlockDevicePeripheral extends Peripheral {
       this.unmapped();
     }
 
-    // Initialize read-only fields
+    log.debug(`${this.name}: mapped at base=${Immediate.toString(mapping.base)}, totalSectors=${this.storage.totalSectors}, sectorSize=${this.sectorSize}`);
+
+    // Initialize fields
+    this.mapping.view[this.COMMAND_ADDR] = this.CMD_NOP;
     this.mapping.view[this.STATUS_ADDR] = this.STATUS_READY;
     this.mapping.view[this.TOTAL_SECTORS_ADDR] = this.storage.totalSectors;
     this.mapping.view[this.SECTOR_SIZE_ADDR] = this.sectorSize;
@@ -527,11 +529,10 @@ class BlockDevicePeripheral extends Peripheral {
       this.unmapped();
     }
 
-    // Read command from IO region (offset 0 in the io view, which is at base + shared)
-    const ioBase = this.mapping.base + this.shared;
-    const command = this.vm.dump(ioBase, 1)[0];
+    // Read command from offset 0 (the IO trigger)
+    const command = this.mapping.view[this.COMMAND_ADDR];
 
-    log.debug(`${this.name}: command ${Immediate.toString(command, 1)}`);
+    log.debug(`${this.name}: notify address=${Immediate.toString(address)}, command=${Immediate.toString(command, 1)}`);
 
     if (command === this.CMD_NOP) {
       return;
@@ -542,6 +543,7 @@ class BlockDevicePeripheral extends Peripheral {
     this.mapping.view[this.ERROR_CODE_ADDR] = this.ERR_NONE;
 
     if (command === this.CMD_READ) {
+      log.debug(`${this.name}: dispatching CMD_READ`);
       this.doRead();
     } else if (command === this.CMD_WRITE) {
       this.doWrite();
@@ -583,18 +585,24 @@ class BlockDevicePeripheral extends Peripheral {
       return;
     }
 
+    log.debug(`${this.name}: readSectors lba=${lba} remaining=${remaining} bufferPtr=${Immediate.toString(bufferPtr)} offset=${offset}`);
+
     this.storage.read(lba, this.sectorSize)
       .then((data) => {
         if (!this.vm) {
           this.unmapped();
         }
 
+        log.debug(`${this.name}: read complete, data[0]=${Immediate.toString(data[0])}, data[1]=${Immediate.toString(data[1])}`);
+
         // Write sector data to main memory via DMA
         const targetAddr = bufferPtr + offset;
+        log.debug(`${this.name}: writing to targetAddr=${Immediate.toString(targetAddr)}`);
         const view = this.vm.dump(targetAddr, this.sectorSize);
         for (let i = 0; i < data.length; i++) {
           view[i] = data[i];
         }
+        log.debug(`${this.name}: after write view[0]=${Immediate.toString(view[0])}, view[1]=${Immediate.toString(view[1])}`);
 
         // Continue with next sector
         this.readSectors(lba + 1, remaining - 1, bufferPtr, offset + this.sectorSize);
