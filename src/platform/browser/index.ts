@@ -14,7 +14,8 @@ import bareConsole from '@/../bare/console.qll' with { type: 'text' };
 import bareAlloc from '@/../bare/alloc.qll' with { type: 'text' };
 
 const stdlib = [sharedStd, sharedBuffered, sharedAlloc, bareConsole, bareAlloc].join('\n');
-import { BrowserInputPeripheral, BrowserOutputPeripheral } from './peripherals';
+import { BrowserInputPeripheral, BrowserOutputPeripheral, createCanvasRenderer } from './peripherals';
+import { DisplayPeripheral } from '@/vm/peripherals';
 
 type BrowserVMOptions = {
   cycles?: number;
@@ -38,6 +39,6 @@ function createBrowserVM(options?: BrowserVMOptions): VM {
 }
 
 export {
-  BrowserInputPeripheral, BrowserOutputPeripheral, createBrowserVM, LowLevelProgram, stdlib, VM
+  BrowserInputPeripheral, BrowserOutputPeripheral, createBrowserVM, createCanvasRenderer, DisplayPeripheral, LowLevelProgram, stdlib, VM
 };
 

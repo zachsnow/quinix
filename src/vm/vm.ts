@@ -467,6 +467,20 @@ class VM {
   }
 
   /**
+   * Write a value to memory and trigger peripheral notify if applicable.
+   * Used for testing and debugging.
+   */
+  public poke(address: Address, value: number): void {
+    this.memory[address] = value;
+
+    // Check if this address belongs to a peripheral's IO region
+    const peripheralMapping = this.peripheralAddresses[address];
+    if (peripheralMapping) {
+      peripheralMapping.peripheral.notify(address - peripheralMapping.base);
+    }
+  }
+
+  /**
    * Add a breakpoint at runtime.
    */
   public addBreakpoint(breakpoint: Breakpoint): void {

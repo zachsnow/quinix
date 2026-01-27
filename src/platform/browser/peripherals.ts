@@ -5,6 +5,7 @@ import {
   stringToCodePoints,
 } from "@/lib/util";
 import { BufferedPeripheral } from "@/vm/peripherals";
+import type { DisplayRenderer } from "@/vm/peripherals";
 
 /**
  * A peripheral to write to a DOM element.
@@ -124,5 +125,36 @@ class BrowserInputPeripheral extends BufferedPeripheral {
   }
 }
 
-export { BrowserInputPeripheral, BrowserOutputPeripheral };
+/**
+ * Creates a DisplayRenderer that draws to an HTML canvas.
+ * Pixels are in RGBA format matching canvas ImageData.
+ */
+function createCanvasRenderer(canvas: HTMLCanvasElement): DisplayRenderer {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("Could not get 2d context from canvas");
+  }
+
+  return (pixels: Uint32Array, width: number, height: number) => {
+    // Resize canvas if needed
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+
+    const imageData = ctx.createImageData(width, height);
+
+    for (let i = 0; i < pixels.length; i++) {
+      const pixel = pixels[i];
+      imageData.data[i * 4 + 0] = pixel & 0xff;          // R
+      imageData.data[i * 4 + 1] = (pixel >> 8) & 0xff;   // G
+      imageData.data[i * 4 + 2] = (pixel >> 16) & 0xff;  // B
+      imageData.data[i * 4 + 3] = (pixel >> 24) & 0xff;  // A
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  };
+}
+
+export { BrowserInputPeripheral, BrowserOutputPeripheral, createCanvasRenderer };
 

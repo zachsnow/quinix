@@ -1,5 +1,6 @@
 import { Address } from "@/lib/types";
 import { Instruction, Operation, Program, Register } from "./instructions";
+import { DisplayPeripheral } from "./peripherals";
 import { VM } from "./vm";
 
 // Float conversion helpers for tests
@@ -407,5 +408,133 @@ describe("VM", () => {
       expect(run(unaryOp(Operation.FTOI, floatToInt(-3.7)))).resolves.toBe((-3 >>> 0)),
       expect(run(unaryOp(Operation.FTOI, floatToInt(0.0)))).resolves.toBe(0),
     ]);
+  });
+
+  // Display peripheral tests
+  describe("DisplayPeripheral", () => {
+    // Helper: create a program that reads peripheral info and stores it, then halts
+    function createDisplayTestProgram(
+      displayBase: Address,
+      fbAddress: Address,
+      testPixels: number[]
+    ): Instruction[] {
+      const instructions: Instruction[] = [];
+
+      // Write test pixels to framebuffer
+      for (let i = 0; i < testPixels.length; i++) {
+        instructions.push(
+          Instruction.createOperation(Operation.CONSTANT, 0),
+          Instruction.createImmediate(fbAddress + i),
+          Instruction.createOperation(Operation.CONSTANT, 1),
+          Instruction.createImmediate(testPixels[i]),
+          Instruction.createOperation(Operation.STORE, 0, 1)
+        );
+      }
+
+      // Set framebuffer pointer (at displayBase + 3)
+      instructions.push(
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(displayBase + 3),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(fbAddress),
+        Instruction.createOperation(Operation.STORE, 0, 1)
+      );
+
+      // Write FLIP command (0x01) to control register (at displayBase)
+      instructions.push(
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(displayBase),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(0x01),
+        Instruction.createOperation(Operation.STORE, 0, 1)
+      );
+
+      instructions.push(Instruction.createOperation(Operation.HALT));
+      return instructions;
+    }
+
+    test("maps with correct dimensions", async () => {
+      const display = new DisplayPeripheral(320, 200);
+      const vm = new VM({ peripherals: [display] });
+
+      // Run a minimal program just to init peripherals
+      const program = new Program([Instruction.createOperation(Operation.HALT)]);
+      await vm.run(program.encode());
+
+      // Peripheral base is at 0x300 (PERIPHERAL_MEMORY_BASE_ADDR)
+      const baseAddress = 0x300;
+
+      // Check dimensions are set correctly
+      const width = vm.dump(baseAddress + 1, 1)[0];
+      const height = vm.dump(baseAddress + 2, 1)[0];
+      const pointer = vm.dump(baseAddress + 3, 1)[0];
+
+      expect(width).toBe(320);
+      expect(height).toBe(200);
+      expect(pointer).toBe(0);  // Initially null
+    });
+
+    test("FLIP calls renderer with framebuffer data", async () => {
+      let capturedPixels: Uint32Array | null = null;
+      let capturedWidth = 0;
+      let capturedHeight = 0;
+
+      const renderer = (pixels: Uint32Array, width: number, height: number) => {
+        capturedPixels = pixels.slice();
+        capturedWidth = width;
+        capturedHeight = height;
+      };
+
+      const display = new DisplayPeripheral(4, 2, renderer);
+      const vm = new VM({ peripherals: [display] });
+
+      const displayBase = 0x300;
+      const fbAddress = 0x3000;
+      const testPixels = [
+        0xFF0000FF,  // Red
+        0xFF00FF00,  // Green
+        0xFFFF0000,  // Blue
+        0xFFFFFFFF,  // White
+        0xFF000000,  // Black (opaque)
+        0x80808080,  // Gray semi-transparent
+        0x00000000,  // Transparent
+        0xFFFF00FF,  // Magenta
+      ];
+
+      const program = new Program(createDisplayTestProgram(displayBase, fbAddress, testPixels));
+      await vm.run(program.encode());
+
+      expect(capturedPixels).not.toBeNull();
+      expect(capturedWidth).toBe(4);
+      expect(capturedHeight).toBe(2);
+      expect(Array.from(capturedPixels!)).toEqual(testPixels);
+
+      // Verify control is back to READY
+      expect(vm.dump(displayBase, 1)[0]).toBe(0x00);
+    });
+
+    test("FLIP with null pointer does not call renderer", async () => {
+      let rendererCalled = false;
+      const renderer = () => { rendererCalled = true; };
+
+      const display = new DisplayPeripheral(4, 4, renderer);
+      const vm = new VM({ peripherals: [display] });
+
+      const displayBase = 0x300;
+
+      // Program that just writes FLIP without setting pointer
+      const program = new Program([
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(displayBase),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(0x01),
+        Instruction.createOperation(Operation.STORE, 0, 1),
+        Instruction.createOperation(Operation.HALT),
+      ]);
+      await vm.run(program.encode());
+
+      expect(rendererCalled).toBe(false);
+      expect(vm.dump(displayBase, 1)[0]).toBe(0x00);
+    });
   });
 });

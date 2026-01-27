@@ -351,6 +351,95 @@ class TimerPeripheral extends Peripheral {
   }
 }
 
-export { BufferedPeripheral, Peripheral, TimerPeripheral };
-export type { PeripheralMapping };
+/**
+ * Callback type for display rendering.
+ * Called on FLIP with the framebuffer pixels.
+ */
+type DisplayRenderer = (pixels: Uint32Array, width: number, height: number) => void;
+
+/**
+ * A framebuffer-based color display peripheral.
+ *
+ * Memory layout:
+ *   0x00: Control register (IO)
+ *   0x04: Width (read-only)
+ *   0x08: Height (read-only)
+ *   0x0C: Framebuffer pointer (physical address)
+ *
+ * Control values:
+ *   0x00: READY
+ *   0x01: FLIP - read framebuffer and update display
+ *   0x02: PENDING
+ *   0xFF: ERROR
+ */
+class DisplayPeripheral extends Peripheral {
+  public readonly name = "display";
+  public readonly identifier = 0x00000002;
+
+  public readonly io = 0x1;      // Control register (1 word)
+  public readonly shared = 0x3;  // Width + height + pointer (3 words)
+
+  private readonly CONTROL_ADDR = 0x0;
+  private readonly WIDTH_ADDR = 0x1;
+  private readonly HEIGHT_ADDR = 0x2;
+  private readonly POINTER_ADDR = 0x3;
+
+  private readonly READY = 0x00;
+  private readonly FLIP = 0x01;
+  private readonly PENDING = 0x02;
+  private readonly ERROR = 0xff;
+
+  constructor(
+    private readonly width: number,
+    private readonly height: number,
+    private readonly renderer?: DisplayRenderer
+  ) {
+    super();
+  }
+
+  public map(vm: VM, mapping: PeripheralMapping): void {
+    super.map(vm, mapping);
+
+    if (!this.mapping) {
+      this.unmapped();
+    }
+
+    // Initialize read-only dimensions
+    this.mapping.view[this.WIDTH_ADDR] = this.width;
+    this.mapping.view[this.HEIGHT_ADDR] = this.height;
+    this.mapping.view[this.POINTER_ADDR] = 0;  // Null pointer initially
+    this.mapping.view[this.CONTROL_ADDR] = this.READY;
+  }
+
+  public notify(address: Address): void {
+    if (!this.mapping || !this.vm) {
+      this.unmapped();
+    }
+
+    const control = this.mapping.view[this.CONTROL_ADDR];
+
+    if (control === this.FLIP) {
+      this.mapping.view[this.CONTROL_ADDR] = this.PENDING;
+
+      const pointer = this.mapping.view[this.POINTER_ADDR];
+      if (pointer && this.renderer) {
+        const pixelCount = this.width * this.height;
+
+        // Read framebuffer from physical memory using dump view
+        const framebuffer = this.vm.dump(pointer, pixelCount);
+        const pixels = new Uint32Array(pixelCount);
+        for (let i = 0; i < pixelCount; i++) {
+          pixels[i] = framebuffer[i];
+        }
+
+        this.renderer(pixels, this.width, this.height);
+      }
+
+      this.mapping.view[this.CONTROL_ADDR] = this.READY;
+    }
+  }
+}
+
+export { BufferedPeripheral, DisplayPeripheral, Peripheral, TimerPeripheral };
+export type { DisplayRenderer, PeripheralMapping };
 
