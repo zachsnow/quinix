@@ -38,6 +38,22 @@ enum Operation {
   NOP,
 
   WAIT,
+
+  // Floating point arithmetic
+  FADD,
+  FSUB,
+  FMUL,
+  FDIV,
+
+  // Floating point comparison
+  FEQ,
+  FLT,
+  FGT,
+
+  // Floating point conversion
+  ITOF,
+  UTOF,
+  FTOI,
 }
 
 namespace Operation {
@@ -74,6 +90,16 @@ namespace Operation {
     "jnz s s",
     "nop",
     "wait",
+    "fadd d s s",
+    "fsub d s s",
+    "fmul d s s",
+    "fdiv d s s",
+    "feq d s s",
+    "flt d s s",
+    "fgt d s s",
+    "itof d s",
+    "utof d s",
+    "ftoi d s",
   ].map((spec) => {
     const parts = spec.split(" ");
     const name = parts[0];

@@ -96,7 +96,7 @@ abstract class Type extends Syntax {
     return (
       cType instanceof PointerType ||
       cType instanceof FunctionType ||
-      (cType instanceof BuiltinType)
+      (cType instanceof BuiltinType && !cType.isFloat)
     );
   }
 
@@ -107,7 +107,14 @@ abstract class Type extends Syntax {
    * @param context the context in which to resolve type names.
    */
   public get numeric(): boolean {
-    return this.isConvertibleTo(Type.Byte);
+    return this.isConvertibleTo(Type.Byte) || this.isConvertibleTo(Type.Float);
+  }
+
+  /**
+   * Whether this type is a floating point type.
+   */
+  public get isFloat(): boolean {
+    return this.isConvertibleTo(Type.Float);
   }
 
   /**
@@ -157,7 +164,7 @@ class TypedIdentifier {
   }
 }
 
-const Builtins = ['byte', 'void', '<error>'] as const;
+const Builtins = ['byte', 'float', 'void', '<error>'] as const;
 type Builtin = (typeof Builtins)[number];
 
 
@@ -1223,6 +1230,7 @@ namespace Type {
   // Builtins.
   export const Void = new BuiltinType('void');
   export const Byte = new BuiltinType('byte');
+  export const Float = new BuiltinType('float');
   export const Error = new BuiltinType('<error>');
 }
 

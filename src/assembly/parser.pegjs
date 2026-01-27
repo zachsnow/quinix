@@ -25,6 +25,7 @@ Comment
 
 Constant
   = "constant" _ r:DestinationRegister _ reference:Reference { return new ConstantDirective(r, new ReferenceConstant(reference)).at(location(), text(), options); }
+  / "constant" _ r:DestinationRegister _ number:Float { return new ConstantDirective(r, new ImmediateConstant(number)).at(location(), text(), options); }
   / "constant" _ r:DestinationRegister _ number:Number { return new ConstantDirective(r, new ImmediateConstant(number)).at(location(), text(), options); }
 
 Data
@@ -56,12 +57,22 @@ BinaryUpdateOperation
   / "neq" { return Operation.NEQ; }
   / "lt" { return Operation.LT; }
   / "gt" { return Operation.GT; }
+  / "fadd" { return Operation.FADD; }
+  / "fsub" { return Operation.FSUB; }
+  / "fmul" { return Operation.FMUL; }
+  / "fdiv" { return Operation.FDIV; }
+  / "feq" { return Operation.FEQ; }
+  / "flt" { return Operation.FLT; }
+  / "fgt" { return Operation.FGT; }
 
 UnaryUpdateOperation
   = "load" { return Operation.LOAD; }
   / "store" { return Operation.STORE; }
   / "mov" { return Operation.MOV; }
   / "not" { return Operation.NOT; }
+  / "itof" { return Operation.ITOF; }
+  / "utof" { return Operation.UTOF; }
+  / "ftoi" { return Operation.FTOI; }
 
 BinaryOperation
   = "jz" { return Operation.JZ; }
@@ -95,6 +106,13 @@ Identifier
 
 QuotedIdentifier
   = "`" characters:[^`\n]* "`" { return characters.join(''); }
+
+Float
+  = sign:"-"? whole:[0-9]+ "." frac:[0-9]+ exp:Exponent? "f" { return floatToInt(parseFloat((sign || '') + whole.join('') + '.' + frac.join('') + (exp || ''))); }
+  / sign:"-"? whole:[0-9]+ exp:Exponent "f" { return floatToInt(parseFloat((sign || '') + whole.join('') + (exp || ''))); }
+
+Exponent
+  = [eE] sign:[+-]? digits:[0-9]+ { return 'e' + (sign || '') + digits.join(''); }
 
 Number
   = "0x" number:[0-9a-fA-F]+ { return parseInt(number.join(''), 16); }

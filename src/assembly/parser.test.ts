@@ -2,6 +2,16 @@ import { Operation } from "@/vm/instructions";
 import { AssemblyProgram, ConstantDirective, DataDirective } from "./assembly";
 import { parse } from "./parser";
 
+// Float conversion helper for tests
+const floatBuffer = new ArrayBuffer(4);
+const floatIntView = new Uint32Array(floatBuffer);
+const floatFloatView = new Float32Array(floatBuffer);
+
+function floatToInt(f: number): number {
+  floatFloatView[0] = f;
+  return floatIntView[0];
+}
+
 describe("Parser", () => {
   test("Data directives", () => {
     let assemblyProgram = AssemblyProgram.parse(`data @foo 0x0`);
@@ -39,6 +49,35 @@ describe("Parser", () => {
     expect(assemblyProgram.directives.length).toBe(1);
     expect(assemblyProgram.directives[0]).toBeInstanceOf(ConstantDirective);
     expect(assemblyProgram.directives[0].toString()).toBe(`constant r0 @foo`);
+  });
+
+  test("Float literals", () => {
+    // Assemble and check the immediate value (second word after constant instruction)
+    // Use >>> 0 to ensure unsigned comparison
+    // Basic float
+    let assemblyProgram = AssemblyProgram.parse(`constant r0 3.14f`);
+    let [, program] = assemblyProgram.assemble();
+    expect(program!.instructions[1].immediate! >>> 0).toBe(floatToInt(3.14));
+
+    // Negative float
+    assemblyProgram = AssemblyProgram.parse(`constant r0 -1.5f`);
+    [, program] = assemblyProgram.assemble();
+    expect(program!.instructions[1].immediate! >>> 0).toBe(floatToInt(-1.5));
+
+    // Float with exponent
+    assemblyProgram = AssemblyProgram.parse(`constant r0 1.5e2f`);
+    [, program] = assemblyProgram.assemble();
+    expect(program!.instructions[1].immediate! >>> 0).toBe(floatToInt(150.0));
+
+    // Float with negative exponent
+    assemblyProgram = AssemblyProgram.parse(`constant r0 1.5e-2f`);
+    [, program] = assemblyProgram.assemble();
+    expect(program!.instructions[1].immediate! >>> 0).toBe(floatToInt(0.015));
+
+    // Integer with exponent (also a float)
+    assemblyProgram = AssemblyProgram.parse(`constant r0 1e3f`);
+    [, program] = assemblyProgram.assemble();
+    expect(program!.instructions[1].immediate! >>> 0).toBe(floatToInt(1000.0));
   });
 
   test("All instructions parse correctly", () => {

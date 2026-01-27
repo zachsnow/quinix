@@ -19,6 +19,13 @@ IntLiteral
   / "0b" digits:[01]+ { return parseInt(digits.join(''), 2); }
   / digits:[0-9]+ { return parseInt(digits.join(''), 10); }
 
+FloatLiteral
+  = sign:"-"? whole:[0-9]+ "." frac:[0-9]+ exp:Exponent? "f" { return floatToInt(parseFloat((sign || '') + whole.join('') + '.' + frac.join('') + (exp || ''))); }
+  / sign:"-"? whole:[0-9]+ exp:Exponent "f" { return floatToInt(parseFloat((sign || '') + whole.join('') + (exp || ''))); }
+
+Exponent
+  = [eE] sign:[+-]? digits:[0-9]+ { return 'e' + (sign || '') + digits.join(''); }
+
 CharLiteral
   = "'" character:SingleQuoteChar "'" { return character; }
 
@@ -54,7 +61,7 @@ Whitespace
 
 Tokens
   = LenToken / CapacityToken
-  / NullToken / VoidToken / ByteToken
+  / NullToken / VoidToken / ByteToken / FloatToken
   / SizeofToken / DefaultToken
   / NewToken / DeleteToken
   / UnsafeToken
@@ -69,6 +76,7 @@ LenToken = tok:"len" !Identifier { return tok; }
 CapacityToken = tok:"cap" !Identifier { return tok; }
 NullToken = tok:"null" !Identifier { return tok; }
 ByteToken = tok:"byte" !Identifier { return tok; }
+FloatToken = tok:"float" !Identifier { return tok; }
 VoidToken = tok:"void" !Identifier { return tok; }
 SizeofToken = tok:"sizeof" !Identifier { return tok; }
 NewToken = tok:"new" !Identifier { return tok; }

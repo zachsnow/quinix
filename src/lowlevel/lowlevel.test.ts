@@ -2127,4 +2127,155 @@ describe('QLLC end-to-end', () => {
       }
     `);
   });
+
+  // Test float operations by converting result to int
+  function expectFloatResultToBe(expr: string, intValue: number) {
+    return expectRunToBe(intValue, `
+      function main(): byte {
+        return <byte>(${expr});
+      }
+    `);
+  }
+
+  function expectFloatComparisonToBe(expr: string, value: boolean) {
+    return expectRunToBe(value ? 1 : 0, `
+      function main(): byte {
+        return <byte>(${expr});
+      }
+    `);
+  }
+
+  describe('float', () => {
+    test('float literal converted to int', () => {
+      return expectFloatResultToBe('3.14f', 3);
+    });
+
+    test('float negative literal converted to int', () => {
+      // -2.5 truncated to int is -2, which as unsigned byte is 0xFFFFFFFE
+      return expectFloatResultToBe('-2.5f', -2);
+    });
+
+    test('float exponent literal converted to int', () => {
+      return expectFloatResultToBe('1.5e2f', 150);
+    });
+
+    test('float arithmetic: add', () => {
+      // 1.5 + 2.5 = 4.0, converts to 4
+      return expectFloatResultToBe('1.5f + 2.5f', 4);
+    });
+
+    test('float arithmetic: sub', () => {
+      // 5.0 - 2.0 = 3.0, converts to 3
+      return expectFloatResultToBe('5.0f - 2.0f', 3);
+    });
+
+    test('float arithmetic: mul', () => {
+      // 3.0 * 4.0 = 12.0, converts to 12
+      return expectFloatResultToBe('3.0f * 4.0f', 12);
+    });
+
+    test('float arithmetic: div', () => {
+      // 10.0 / 4.0 = 2.5, converts to 2
+      return expectFloatResultToBe('10.0f / 4.0f', 2);
+    });
+
+    test('float unary negation', () => {
+      // -(5.0) = -5.0, converts to -5
+      return expectFloatResultToBe('-(5.0f)', -5);
+    });
+
+    test('float comparison: eq true', () => {
+      return expectFloatComparisonToBe('3.0f == 3.0f', true);
+    });
+
+    test('float comparison: eq false', () => {
+      return expectFloatComparisonToBe('3.0f == 4.0f', false);
+    });
+
+    test('float comparison: neq true', () => {
+      return expectFloatComparisonToBe('3.0f != 4.0f', true);
+    });
+
+    test('float comparison: neq false', () => {
+      return expectFloatComparisonToBe('3.0f != 3.0f', false);
+    });
+
+    test('float comparison: lt true', () => {
+      return expectFloatComparisonToBe('2.0f < 3.0f', true);
+    });
+
+    test('float comparison: lt false', () => {
+      return expectFloatComparisonToBe('3.0f < 2.0f', false);
+    });
+
+    test('float comparison: gt true', () => {
+      return expectFloatComparisonToBe('3.0f > 2.0f', true);
+    });
+
+    test('float comparison: gt false', () => {
+      return expectFloatComparisonToBe('2.0f > 3.0f', false);
+    });
+
+    test('float comparison: lte true (less)', () => {
+      return expectFloatComparisonToBe('2.0f <= 3.0f', true);
+    });
+
+    test('float comparison: lte true (equal)', () => {
+      return expectFloatComparisonToBe('3.0f <= 3.0f', true);
+    });
+
+    test('float comparison: lte false', () => {
+      return expectFloatComparisonToBe('4.0f <= 3.0f', false);
+    });
+
+    test('float comparison: gte true (greater)', () => {
+      return expectFloatComparisonToBe('4.0f >= 3.0f', true);
+    });
+
+    test('float comparison: gte true (equal)', () => {
+      return expectFloatComparisonToBe('3.0f >= 3.0f', true);
+    });
+
+    test('float comparison: gte false', () => {
+      return expectFloatComparisonToBe('2.0f >= 3.0f', false);
+    });
+
+    test('float conversion: int to float', () => {
+      // 42 -> 42.0f -> 42
+      return expectFloatResultToBe('<float>42', 42);
+    });
+
+    test('float conversion: float to int', () => {
+      return expectRunToBe(42, `
+        function main(): byte {
+          return <byte>42.5f;
+        }
+      `);
+    });
+
+    test('float variable', () => {
+      return expectRunToBe(3, `
+        function main(): byte {
+          var f: float = 2.5f;
+          f = f + 1.0f;
+          return <byte>f;
+        }
+      `);
+    });
+
+    test('float in struct', () => {
+      return expectRunToBe(3, `
+        type Point = struct { f: float; };
+        function main(): byte {
+          var p: Point = Point { f = 3.14f };
+          return <byte>p.f;
+        }
+      `);
+    });
+
+    test('float complex expression', () => {
+      // (1.0 + 2.0) * 3.0 - 1.0 = 8.0 -> 8
+      return expectFloatResultToBe('(1.0f + 2.0f) * 3.0f - 1.0f', 8);
+    });
+  });
 });

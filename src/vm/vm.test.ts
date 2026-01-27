@@ -2,6 +2,21 @@ import { Address } from "@/lib/types";
 import { Instruction, Operation, Program, Register } from "./instructions";
 import { VM } from "./vm";
 
+// Float conversion helpers for tests
+const floatBuffer = new ArrayBuffer(4);
+const floatIntView = new Uint32Array(floatBuffer);
+const floatFloatView = new Float32Array(floatBuffer);
+
+function floatToInt(f: number): number {
+  floatFloatView[0] = f;
+  return floatIntView[0];
+}
+
+function intToFloat(i: number): number {
+  floatIntView[0] = i >>> 0;
+  return floatFloatView[0];
+}
+
 describe("VM", () => {
   async function run(instructions: Instruction[]): Promise<number> {
     const program = new Program(instructions);
@@ -301,5 +316,96 @@ describe("VM", () => {
         Instruction.createOperation(Operation.LOAD, 0, 0),
       ])
     ).resolves.toBe(0x30);
+  });
+
+  // Float arithmetic tests
+  test("float: fadd", () => {
+    return Promise.all([
+      expect(run(binaryOp(Operation.FADD, floatToInt(1.5), floatToInt(2.5)))).resolves.toBe(floatToInt(4.0)),
+      expect(run(binaryOp(Operation.FADD, floatToInt(0.0), floatToInt(0.0)))).resolves.toBe(floatToInt(0.0)),
+      expect(run(binaryOp(Operation.FADD, floatToInt(-1.0), floatToInt(1.0)))).resolves.toBe(floatToInt(0.0)),
+      expect(run(binaryOp(Operation.FADD, floatToInt(0.1), floatToInt(0.2)))).resolves.toBe(floatToInt(0.1 + 0.2)),
+    ]);
+  });
+
+  test("float: fsub", () => {
+    return Promise.all([
+      expect(run(binaryOp(Operation.FSUB, floatToInt(4.0), floatToInt(1.5)))).resolves.toBe(floatToInt(2.5)),
+      expect(run(binaryOp(Operation.FSUB, floatToInt(0.0), floatToInt(1.0)))).resolves.toBe(floatToInt(-1.0)),
+      expect(run(binaryOp(Operation.FSUB, floatToInt(1.0), floatToInt(1.0)))).resolves.toBe(floatToInt(0.0)),
+    ]);
+  });
+
+  test("float: fmul", () => {
+    return Promise.all([
+      expect(run(binaryOp(Operation.FMUL, floatToInt(2.0), floatToInt(3.0)))).resolves.toBe(floatToInt(6.0)),
+      expect(run(binaryOp(Operation.FMUL, floatToInt(1.5), floatToInt(2.0)))).resolves.toBe(floatToInt(3.0)),
+      expect(run(binaryOp(Operation.FMUL, floatToInt(0.0), floatToInt(100.0)))).resolves.toBe(floatToInt(0.0)),
+      expect(run(binaryOp(Operation.FMUL, floatToInt(-2.0), floatToInt(3.0)))).resolves.toBe(floatToInt(-6.0)),
+    ]);
+  });
+
+  test("float: fdiv", () => {
+    return Promise.all([
+      expect(run(binaryOp(Operation.FDIV, floatToInt(6.0), floatToInt(2.0)))).resolves.toBe(floatToInt(3.0)),
+      expect(run(binaryOp(Operation.FDIV, floatToInt(7.0), floatToInt(2.0)))).resolves.toBe(floatToInt(3.5)),
+      expect(run(binaryOp(Operation.FDIV, floatToInt(-6.0), floatToInt(2.0)))).resolves.toBe(floatToInt(-3.0)),
+    ]);
+  });
+
+  // Float comparison tests
+  test("float: feq", () => {
+    return Promise.all([
+      expect(run(binaryOp(Operation.FEQ, floatToInt(1.0), floatToInt(1.0)))).resolves.toBe(1),
+      expect(run(binaryOp(Operation.FEQ, floatToInt(1.0), floatToInt(2.0)))).resolves.toBe(0),
+      expect(run(binaryOp(Operation.FEQ, floatToInt(-1.0), floatToInt(-1.0)))).resolves.toBe(1),
+      expect(run(binaryOp(Operation.FEQ, floatToInt(0.0), floatToInt(0.0)))).resolves.toBe(1),
+    ]);
+  });
+
+  test("float: flt", () => {
+    return Promise.all([
+      expect(run(binaryOp(Operation.FLT, floatToInt(1.0), floatToInt(2.0)))).resolves.toBe(1),
+      expect(run(binaryOp(Operation.FLT, floatToInt(2.0), floatToInt(1.0)))).resolves.toBe(0),
+      expect(run(binaryOp(Operation.FLT, floatToInt(1.0), floatToInt(1.0)))).resolves.toBe(0),
+      expect(run(binaryOp(Operation.FLT, floatToInt(-1.0), floatToInt(0.0)))).resolves.toBe(1),
+    ]);
+  });
+
+  test("float: fgt", () => {
+    return Promise.all([
+      expect(run(binaryOp(Operation.FGT, floatToInt(2.0), floatToInt(1.0)))).resolves.toBe(1),
+      expect(run(binaryOp(Operation.FGT, floatToInt(1.0), floatToInt(2.0)))).resolves.toBe(0),
+      expect(run(binaryOp(Operation.FGT, floatToInt(1.0), floatToInt(1.0)))).resolves.toBe(0),
+      expect(run(binaryOp(Operation.FGT, floatToInt(0.0), floatToInt(-1.0)))).resolves.toBe(1),
+    ]);
+  });
+
+  // Float conversion tests
+  test("float: itof", () => {
+    return Promise.all([
+      expect(run(unaryOp(Operation.ITOF, 42))).resolves.toBe(floatToInt(42.0)),
+      expect(run(unaryOp(Operation.ITOF, 0))).resolves.toBe(floatToInt(0.0)),
+      expect(run(unaryOp(Operation.ITOF, -1 >>> 0))).resolves.toBe(floatToInt(-1.0)),
+      expect(run(unaryOp(Operation.ITOF, -42 >>> 0))).resolves.toBe(floatToInt(-42.0)),
+    ]);
+  });
+
+  test("float: utof", () => {
+    return Promise.all([
+      expect(run(unaryOp(Operation.UTOF, 42))).resolves.toBe(floatToInt(42.0)),
+      expect(run(unaryOp(Operation.UTOF, 0))).resolves.toBe(floatToInt(0.0)),
+      expect(run(unaryOp(Operation.UTOF, 0xffffffff))).resolves.toBe(floatToInt(4294967295.0)),
+    ]);
+  });
+
+  test("float: ftoi", () => {
+    return Promise.all([
+      expect(run(unaryOp(Operation.FTOI, floatToInt(42.0)))).resolves.toBe(42),
+      expect(run(unaryOp(Operation.FTOI, floatToInt(3.7)))).resolves.toBe(3),
+      expect(run(unaryOp(Operation.FTOI, floatToInt(3.2)))).resolves.toBe(3),
+      expect(run(unaryOp(Operation.FTOI, floatToInt(-3.7)))).resolves.toBe((-3 >>> 0)),
+      expect(run(unaryOp(Operation.FTOI, floatToInt(0.0)))).resolves.toBe(0),
+    ]);
   });
 });
