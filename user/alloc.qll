@@ -1,9 +1,10 @@
 // Userspace allocator wrapper.
-// Sets heap to 0x3000 (virtual heap address) and provides system::alloc/dealloc.
+// Sets heap to 0x4000 (virtual heap address) and provides system::alloc/dealloc.
+// Must match kernel's memory layout: exec(0x1000, 8KB) + gap(4KB) + heap(0x4000)
 namespace system {
   function _ensure_heap(): void {
     if (!std::heap) {
-      std::heap = <unsafe * byte>0x3000;
+      std::heap = <unsafe * byte>0x4000;
     }
   }
 

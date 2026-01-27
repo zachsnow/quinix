@@ -615,6 +615,52 @@ namespace kernel {
         return bytes_read;
       }
 
+      // Read words from a file (for binary/executable loading).
+      // Returns number of words read.
+      function file_read_words(slot: byte, buffer: *byte, count: byte): byte {
+        if (slot < 0 || slot >= MAX_OPEN_FILES) {
+          return 0;
+        }
+        if (!open_files[slot].in_use) {
+          return 0;
+        }
+
+        var state = &open_files[slot];
+        var words_read: byte = 0;
+        var sector_words = SECTOR_SIZE;
+
+        while (words_read < count && state->position < state->file_size) {
+          // Calculate position in words (position is still in bytes).
+          var word_position = state->position / 4;
+          var word_in_sector = word_position % sector_words;
+
+          // Make sure we have the right sector loaded.
+          if (state->current_sector == 0) {
+            break;
+          }
+
+          if (!_load_file_buffer(state->current_sector)) {
+            break;
+          }
+
+          // Read a word directly.
+          buffer[unsafe words_read] = file_buffer[word_in_sector];
+
+          words_read = words_read + 1;
+          state->position = state->position + 4;  // Advance by 4 bytes (1 word)
+
+          // Move to next sector if needed.
+          if ((state->position / 4) % sector_words == 0) {
+            var next = fat_read(state->current_sector);
+            if (next != FAT_END && next != FAT_FREE) {
+              state->current_sector = next;
+            }
+          }
+        }
+
+        return words_read;
+      }
+
       // Write bytes to a file. Returns number of bytes written.
       function file_write(slot: byte, buffer: *byte, count: byte): byte {
         if (slot < 0 || slot >= MAX_OPEN_FILES) {

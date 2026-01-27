@@ -103,29 +103,38 @@ function wait_for_process(pid: byte): void {
 
 // Load an executable from QFS and create a process.
 function load_executable(path: byte[], parent_id: byte): byte {
+  kernel::log("load: opening file");
   var slot = kernel::fs::qfs::file_open(path, kernel::fs::qfs::MODE_READ);
   if (slot == -1) {
+    kernel::log("load: file not found");
     return 0;
   }
 
+  // Allocate buffer for binary (in words, not bytes).
   var binary = new byte[0x1000];
   var ptr = &binary[0];
   var total: byte = 0;
-  var n = kernel::fs::qfs::file_read(slot, ptr, 0x1000);
+
+  // Read words (not bytes) since binaries are 32-bit word-oriented.
+  kernel::log("load: reading file");
+  var n = kernel::fs::qfs::file_read_words(slot, ptr, 0x1000);
   while (n > 0) {
     total = total + n;
     ptr = <unsafe *byte>(<unsafe byte>ptr + n);
-    n = kernel::fs::qfs::file_read(slot, ptr, 0x1000 - total);
+    n = kernel::fs::qfs::file_read_words(slot, ptr, 0x1000 - total);
   }
   len binary = total;
   kernel::fs::qfs::file_close(slot);
 
+  kernel::log("load: creating process");
   if (total == 0) {
+    kernel::log("load: no data read");
     delete binary;
     return 0;
   }
 
   var pid = kernel::process::create_process(binary, parent_id);
+  kernel::log("load: process created");
   delete binary;
   return pid;
 }

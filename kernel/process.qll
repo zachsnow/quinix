@@ -2,9 +2,9 @@ namespace kernel {
   namespace process {
     // Configuration
     .constant global DEFAULT_EXECUTABLE_BASE: byte = 0x1000;
-    .constant global DEFAULT_EXECUTABLE_SIZE: byte = 0x1000;  // 4KB
-    .constant global DEFAULT_HEAP_SIZE: byte = 0x8000;        // 32KB
-    .constant global DEFAULT_STACK_SIZE: byte = 0x1000;       // 4KB
+    .constant global DEFAULT_EXECUTABLE_SIZE: byte = 0x2000;  // 8KB
+    .constant global DEFAULT_HEAP_SIZE: byte = 0x10000;       // 64KB to match user alloc.qll
+    .constant global DEFAULT_STACK_SIZE: byte = 0x10000;      // 64KB
     .constant global MAX_PROCESSES: byte = 32;
 
     type process = struct {
@@ -29,6 +29,7 @@ namespace kernel {
     }
 
     function create_process(binary: byte[], parent_id: byte): byte {
+      log("process: create_process start");
       // Check process limit
       if(len processes >= MAX_PROCESSES){
         log("process: max processes reached");
@@ -43,6 +44,7 @@ namespace kernel {
       var heap_size = DEFAULT_HEAP_SIZE;
       var stack_size = DEFAULT_STACK_SIZE;
 
+      log("process: creating table");
       var table = memory::create_table(executable_base, executable_size, heap_size, stack_size);
       if(!table){
         log("process: failed to create memory table");
@@ -52,16 +54,20 @@ namespace kernel {
       // Create a task. We start execution at the executable base (0x1000),
       // just like the VM does.  We initialize all registers to 0x0 except
       // the QLLC stack pointer, which initialize to the top of the stack.
+      log("process: creating task");
       var task = scheduler::create_task();
+      log("process: setting task ip");
       task->state.ip = executable_base;
       // Stack pointer uses virtual address (must match create_table"s layout)
       var heap_base = executable_base + executable_size + 0x1000;
       var stack_base = heap_base + heap_size + 0x1000;
+      log("process: setting task sp");
       task->state.registers[63] = stack_base + stack_size;
       // Set the task"s page table for context switching
       task->table = table;
 
       // Create a process.
+      log("process: creating process struct");
       var process = new process = process {
         id = task->id,
         parent_id = parent_id,
@@ -82,6 +88,7 @@ namespace kernel {
       }
 
       // Add the task to the task queue.
+      log("process: enqueuing task");
       scheduler::enqueue_task(process->task);
 
       log("process: created process");

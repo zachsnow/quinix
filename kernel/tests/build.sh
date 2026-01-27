@@ -37,5 +37,6 @@ build_program() {
 # Build all .qll files in the tests directory
 build_program "hello-a.qll"
 build_program "hello-b.qll"
+build_program "hello.qll"
 
 echo "All test programs built."

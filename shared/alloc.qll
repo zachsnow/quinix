@@ -1,7 +1,7 @@
 // Shared memory allocator.
 // The heap pointer must be set before first allocation.
 namespace std {
-  .constant global HEAP_SIZE: byte = 0x2000;
+  .constant global HEAP_SIZE: byte = 0x10000;  // 64KB for kernel heap
   .constant global SPLIT_THRESHOLD: byte = 0x100;
 
   // Must be set by context (kernel, lib, bare) before first allocation.

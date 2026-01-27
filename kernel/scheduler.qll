@@ -62,9 +62,16 @@ namespace kernel {
     global id: byte = 0;
 
     function create_task(): * task {
+      log("scheduler: creating task");
       var task = new task;
+      log("scheduler: task allocated");
+      if (!task) {
+        log("scheduler: task allocation failed");
+        return null;
+      }
       task->id = id;
       id = id + 1;
+      log("scheduler: task created");
       return task;
     }
 

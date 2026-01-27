@@ -4,10 +4,8 @@ namespace kernel::memory {
   .constant global KERNEL_RESERVED: byte = 0x20000;         // 128KB for kernel
   .constant global CHUNK_SIZE: byte = 0x1000;               // 4KB chunks
 
-  // Kernel heap (for kernel data structures)
-  .constant global KERNEL_HEAP_SIZE: byte = 0x10000;  // 64KB
-  global kernel_heap_base: byte = 0x0;
-  global kernel_heap_current: byte = 0x0;
+  // Kernel heap is managed by std::alloc (shared/alloc.qll).
+  // See kernel/alloc.qll which sets std::heap to 0x10000.
 
   // User memory pool (for process memory)
   global user_pool_base: byte = 0x0;
@@ -82,13 +80,9 @@ namespace kernel::memory {
   }
 
   function allocate_kernel_memory(size: byte): * byte {
-    if(kernel_heap_current + size > KERNEL_HEAP_SIZE){
-      panic("memory: kernel heap exhausted");
-    }
-
-    var address = kernel_heap_base + kernel_heap_current;
-    kernel_heap_current = kernel_heap_current + size;
-    return <unsafe * byte>address;
+    // Use the shared allocator (std::alloc via system::alloc).
+    var arr = new byte[size];
+    return &arr[0];
   }
 
   function create_table(executable_base: byte, executable_size: byte, heap_size: byte, stack_size: byte): * table {
@@ -100,6 +94,9 @@ namespace kernel::memory {
 
     // Find an available physical location.
     var base = allocate_physical_memory(executable_size + heap_size + stack_size);
+    if (!base) {
+      return null;
+    }
 
     // Allocate table memory: [count: 1 word][page0][page1][page2]
     // We map 3 pages: executable, heap, and stack.
@@ -112,13 +109,17 @@ namespace kernel::memory {
 
     // Set count
     *t = page_count;
+    log("memory: table at kernel addr, phys base:");
 
     // Set pages
+    // Note: WRITE is included because the executable section also contains
+    // initialized globals and data. A proper implementation would have a
+    // separate read-only code section and a writable data section.
     *table_page(t, 0) = page {
       virtual_address = executable_base,
       physical_address = base,
       size = executable_size,
-      flags = flags::PRESENT | flags::READ | flags::EXECUTE,
+      flags = flags::PRESENT | flags::READ | flags::WRITE | flags::EXECUTE,
     };
     *table_page(t, 1) = page {
       virtual_address = heap_base,
@@ -189,19 +190,10 @@ namespace kernel::memory {
   function init(): void {
     log("memory: initializing...");
 
-    // Calculate memory layout
-    // Kernel heap sits at the end of kernel reserved space
-    kernel_heap_base = KERNEL_RESERVED - KERNEL_HEAP_SIZE;
-    kernel_heap_current = 0;
-
     // User pool starts after kernel reserved space
     user_pool_base = KERNEL_RESERVED;
     user_pool_current = 0;
     user_pool_size = TOTAL_PHYSICAL_MEMORY - KERNEL_RESERVED;
-
-    log("memory: kernel heap base");
-    log("memory: user pool base");
-    log("memory: user pool size");
 
     // Initialize MMU peripheral
     mmu_base_address = kernel::peripherals::mmu;
