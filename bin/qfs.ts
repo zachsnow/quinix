@@ -48,8 +48,8 @@ function printUsage(): void {
   console.log(`qfs - QFS filesystem tool
 
 Usage:
-  qfs create <image> [--sectors N]    Create empty filesystem image
-  qfs create <image> --from <dir>     Create image from directory
+  qfs create [image] [--sectors N]    Create empty filesystem (default: out.qfs)
+  qfs create [image] --from <dir>     Create image from directory
   qfs add <image> <file> [--name N]   Add file to image
   qfs mkdir <image> <path>            Create directory
   qfs list <image> [path]             List files in image
@@ -172,12 +172,7 @@ function calculateRequiredSectors(entries: FileEntry[]): number {
 }
 
 async function cmdCreate(args: string[], options: Options): Promise<void> {
-  if (args.length < 1) {
-    console.error('Usage: qfs create <image> [--sectors N] [--from <dir>]');
-    process.exit(1);
-  }
-
-  const outputPath = args[0];
+  const outputPath = args[0] || 'out.qfs';
 
   // If --from is specified, scan directory first to determine size
   let filesToAdd: FileEntry[] = [];

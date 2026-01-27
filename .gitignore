@@ -11,5 +11,5 @@ out.qasm
 *.qbin
 /lib/bin/*.qasm
 tsconfig.build.tsbuildinfo
-*.qimg
+*.qfs
 .worktrees/
