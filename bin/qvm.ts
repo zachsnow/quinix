@@ -16,6 +16,8 @@ import {
   DebugOutputPeripheral,
   FileBlockStorage,
 } from "@server/peripherals";
+import { createSDLRenderer } from "@server/sdl-renderer";
+import { DisplayPeripheral } from "@/vm/peripherals";
 import { SECTOR_SIZE_WORDS, sectorsFromFileSize } from "@server/qfs";
 import { Peripheral, TimerPeripheral } from "@/vm/peripherals";
 import { Breakpoint, VM, Watchpoint } from "@/vm/vm";
@@ -30,6 +32,8 @@ interface Options {
   cycles?: string;
   size?: string;
   disk?: string;
+  display?: string;
+  "display-scale"?: string;
   break: string;
   "break-write": string;
   watchpoint: string;
@@ -55,6 +59,15 @@ const argv = parseArguments<Options>(
       disk: {
         alias: "d",
         describe: "QFS disk image file",
+        type: "string",
+      },
+      display: {
+        alias: "D",
+        describe: "enable display peripheral (WIDTHxHEIGHT, e.g. 320x200)",
+        type: "string",
+      },
+      "display-scale": {
+        describe: "display window scale factor (default: 2)",
         type: "string",
       },
       break: {
@@ -155,7 +168,32 @@ if (argv.disk) {
   blockDevice = new BlockDevicePeripheral(storage, SECTOR_SIZE_WORDS);
 }
 
-// 4. Run program.
+// 4. Create display peripheral if enabled.
+let displayCleanup: (() => void) | null = null;
+let displayPeripheral: DisplayPeripheral | null = null;
+if (argv.display) {
+  const match = argv.display.match(/^(\d+)x(\d+)$/);
+  if (!match) {
+    console.error("error: display format should be WIDTHxHEIGHT (e.g. 320x200)");
+    process.exit(1);
+  }
+  const width = parseInt(match[1], 10);
+  const height = parseInt(match[2], 10);
+  const scale = argv["display-scale"] ? parseInt(argv["display-scale"], 10) : 2;
+
+  try {
+    const { renderer, cleanup } = createSDLRenderer("Quinix Display", scale);
+    displayCleanup = cleanup;
+    displayPeripheral = new DisplayPeripheral(width, height, renderer);
+    log.debug(`display: ${width}x${height} @ ${scale}x scale`);
+  } catch (e) {
+    console.error(`error: failed to initialize display: ${e}`);
+    console.error("hint: make sure SDL2 is installed (brew install sdl2)");
+    process.exit(1);
+  }
+}
+
+// 5. Run program.
 const peripherals: Peripheral[] = [
   new TimerPeripheral(),
   new DebugBreakPeripheral(),
@@ -163,6 +201,9 @@ const peripherals: Peripheral[] = [
   new DebugInputPeripheral(),
   new DebugFilePeripheral(filename ? path.dirname(filename) : "."),
 ];
+if (displayPeripheral) {
+  peripherals.push(displayPeripheral);
+}
 if (blockDevice) {
   peripherals.push(blockDevice);
 }
@@ -208,9 +249,15 @@ vm.run(programData)
     if (argv.stats) {
       console.info(`\nVM statistics:\n${vm.stats}`);
     }
+    if (displayCleanup) {
+      displayCleanup();
+    }
     process.exit(r);
   });
 
 process.on("SIGINT", function () {
   vm.kill();
+  if (displayCleanup) {
+    displayCleanup();
+  }
 });
