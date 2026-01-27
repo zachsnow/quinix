@@ -45,7 +45,34 @@ or *sources* of the operation.
 `rem d s0 s1`: store the remainder of `s0` integer-divided by `s1` into `d`
 
 > All integer arithmetic expressions are 32-bit, including multiplication.
-> The QPU does not support floating point arithmetic.
+
+**Floating point arithmetic**
+
+Floating point values are IEEE 754 single-precision floats stored in 32-bit words. They use the same general-purpose registers as integers.
+
+`fadd d s0 s1`: store `s0` plus `s1` (as floats) into `d`
+
+`fsub d s0 s1`: store `s0` minus `s1` (as floats) into `d`
+
+`fmul d s0 s1`: store `s0` times `s1` (as floats) into `d`
+
+`fdiv d s0 s1`: store `s0` divided by `s1` (as floats) into `d`
+
+**Floating point comparison**
+
+`feq d s0 s1`: if `s0` equals `s1` (as floats), store `0x1` into `d`; otherwise, store `0x0`
+
+`flt d s0 s1`: if `s0` is less than `s1` (as floats), store `0x1` into `d`; otherwise, store `0x0`
+
+`fgt d s0 s1`: if `s0` is greater than `s1` (as floats), store `0x1` into `d`; otherwise, store `0x0`
+
+**Float/integer conversion**
+
+`itof d s`: convert signed integer `s` to float, store in `d`
+
+`utof d s`: convert unsigned integer `s` to float, store in `d`
+
+`ftoi d s`: convert float `s` to signed integer (truncating toward zero), store in `d`
 
 **Bitwise operators**
 
