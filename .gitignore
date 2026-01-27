@@ -12,3 +12,4 @@ out.qasm
 /lib/bin/*.qasm
 tsconfig.build.tsbuildinfo
 *.qimg
+.worktrees/
