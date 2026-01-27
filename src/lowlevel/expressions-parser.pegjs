@@ -5,7 +5,8 @@ Expression
     = ConditionalExpression
 
 PrimaryExpression
-    = i:IntLiteral { return new IntLiteralExpression(i).at(location(), text(), options); }
+    = f:FloatLiteral { return new FloatLiteralExpression(f).at(location(), text(), options); }
+    / i:IntLiteral { return new IntLiteralExpression(i).at(location(), text(), options); }
     / CharExpression
     / StringExpression
     / b:BoolLiteral {  return new BoolLiteralExpression(b).at(location(), text(), options); }

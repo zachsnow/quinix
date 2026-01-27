@@ -353,7 +353,7 @@ class GlobalDeclaration extends BaseValueDeclaration {
       compiler.emitStaticCopy(dr, sliceReg, 3, 'copy slice descriptor');
       compiler.deallocateRegister(sliceReg);
     }
-    else if (this.type.integral) {
+    else if (this.type.integral || this.type.isFloat) {
       compiler.emitStaticStore(dr, sr, 1, `store to global ${this.qualifiedIdentifier}`);
     }
     else {
@@ -502,7 +502,7 @@ class FunctionDeclaration extends BaseValueDeclaration {
     });
 
     // If we return a non-integral, we instead pass a pointer to the place to write the return value.
-    if (!this.returnType.integral && !this.returnType.isConvertibleTo(Type.Void)) {
+    if (!this.returnType.integral && !this.returnType.isFloat && !this.returnType.isConvertibleTo(Type.Void)) {
       parameters.unshift({
         identifier: '$return',
         size: 1,

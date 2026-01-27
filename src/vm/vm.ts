@@ -12,6 +12,21 @@ import { Peripheral } from "./peripherals";
 
 const log = logger("vm");
 
+// Float conversion helpers using typed arrays for bit reinterpretation
+const floatBuffer = new ArrayBuffer(4);
+const floatIntView = new Uint32Array(floatBuffer);
+const floatFloatView = new Float32Array(floatBuffer);
+
+function intToFloat(i: number): number {
+  floatIntView[0] = i >>> 0;
+  return floatFloatView[0];
+}
+
+function floatToInt(f: number): number {
+  floatFloatView[0] = f;
+  return floatIntView[0];
+}
+
 type Registers = number[];
 
 /**
@@ -1095,6 +1110,69 @@ class VM {
 
         case Operation.NOP:
           break;
+
+        // Floating point arithmetic
+        case Operation.FADD: {
+          const a = intToFloat(registers[decoded.sr0!]);
+          const b = intToFloat(registers[decoded.sr1!]);
+          registers[decoded.dr!] = floatToInt(a + b);
+          break;
+        }
+        case Operation.FSUB: {
+          const a = intToFloat(registers[decoded.sr0!]);
+          const b = intToFloat(registers[decoded.sr1!]);
+          registers[decoded.dr!] = floatToInt(a - b);
+          break;
+        }
+        case Operation.FMUL: {
+          const a = intToFloat(registers[decoded.sr0!]);
+          const b = intToFloat(registers[decoded.sr1!]);
+          registers[decoded.dr!] = floatToInt(a * b);
+          break;
+        }
+        case Operation.FDIV: {
+          const a = intToFloat(registers[decoded.sr0!]);
+          const b = intToFloat(registers[decoded.sr1!]);
+          registers[decoded.dr!] = floatToInt(a / b);
+          break;
+        }
+
+        // Floating point comparison
+        case Operation.FEQ: {
+          const a = intToFloat(registers[decoded.sr0!]);
+          const b = intToFloat(registers[decoded.sr1!]);
+          registers[decoded.dr!] = a === b ? 1 : 0;
+          break;
+        }
+        case Operation.FLT: {
+          const a = intToFloat(registers[decoded.sr0!]);
+          const b = intToFloat(registers[decoded.sr1!]);
+          registers[decoded.dr!] = a < b ? 1 : 0;
+          break;
+        }
+        case Operation.FGT: {
+          const a = intToFloat(registers[decoded.sr0!]);
+          const b = intToFloat(registers[decoded.sr1!]);
+          registers[decoded.dr!] = a > b ? 1 : 0;
+          break;
+        }
+
+        // Floating point conversion
+        case Operation.ITOF: {
+          const i = registers[decoded.sr0!] | 0; // signed
+          registers[decoded.dr!] = floatToInt(i);
+          break;
+        }
+        case Operation.UTOF: {
+          const u = registers[decoded.sr0!] >>> 0; // unsigned
+          registers[decoded.dr!] = floatToInt(u);
+          break;
+        }
+        case Operation.FTOI: {
+          const f = intToFloat(registers[decoded.sr0!]);
+          registers[decoded.dr!] = Math.trunc(f) >>> 0;
+          break;
+        }
 
         default:
           this.fault(`unimplemented instruction: ${decoded.operation}`);

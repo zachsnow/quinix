@@ -190,8 +190,8 @@ class VarStatement extends Statement {
     // Handle type conversions (e.g., array-to-slice, pointer-to-array-to-slice).
     er = compiler.emitConversion(er, this.expression.concreteType, this.inferredType);
 
-    // Store to that address.
-    if (this.inferredType.integral) {
+    // Store to that address. Float and integral types are single-word values.
+    if (this.inferredType.integral || this.inferredType.isFloat) {
       compiler.emitStaticStore(r, er, 1, `${this}`);
     }
     else {
@@ -268,7 +268,9 @@ class AssignmentStatement extends Statement {
     // of the array.
     this.assignable.compileAssignmentCheck(compiler, ar, er);
 
-    if (this.assignable.concreteType.integral) {
+    // Float and integral types are single-word values stored directly.
+    // Non-integral types (structs, arrays) require copying.
+    if (this.assignable.concreteType.integral || this.assignable.concreteType.isFloat) {
       compiler.emitStaticStore(ar, er, 1, `${this}`);
     }
     else {
@@ -622,7 +624,7 @@ class ReturnStatement extends Statement {
       r = compiler.emitConversion(r, this.expression.concreteType, this.returnType);
     }
 
-    if (!this.returnType.integral && !this.returnType.isConvertibleTo(Type.Void)) {
+    if (!this.returnType.integral && !this.returnType.isFloat && !this.returnType.isConvertibleTo(Type.Void)) {
       // We need to copy the value pointed to by `r` into the first function parameter called `$return`.
       const dr = compiler.allocateRegister();
       compiler.emitIdentifier('$return', 'parameter', dr, true);

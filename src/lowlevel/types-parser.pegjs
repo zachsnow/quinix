@@ -8,6 +8,7 @@ PrimaryType
     = StructType
     / FunctionType
     / b:ByteToken { return new BuiltinType(b).at(location(), text(), options); }
+    / b:FloatToken { return new BuiltinType(b).at(location(), text(), options); }
     / b:VoidToken { return new BuiltinType(b).at(location(), text(), options); }
     / id:QualifiedIdentifier { return new IdentifierType(id).at(location(), text(), options); }
     / "(" _ t:Type _ ")" { return t; }

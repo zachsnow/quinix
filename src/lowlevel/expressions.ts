@@ -69,7 +69,8 @@ abstract class Expression extends Syntax {
    * @param lvalue whether this expression is being compield as an "lvalue".
    */
   protected dereference(lvalue?: boolean) {
-    return !lvalue && this.concreteType.integral;
+    // Dereference single-word types (integrals and floats) when not an lvalue.
+    return !lvalue && (this.concreteType.integral || this.concreteType.isFloat);
   }
 
   /**
@@ -268,6 +269,52 @@ class IntLiteralExpression extends Expression {
   }
 }
 
+// Float conversion helpers for parsing and display
+const floatBuffer = new ArrayBuffer(4);
+const floatIntView = new Uint32Array(floatBuffer);
+const floatFloatView = new Float32Array(floatBuffer);
+
+function intToFloat(i: number): number {
+  floatIntView[0] = i >>> 0;
+  return floatFloatView[0];
+}
+
+class FloatLiteralExpression extends Expression {
+  // The 32-bit integer representation of the float
+  public readonly immediate: Immediate;
+
+  public constructor(immediate: Immediate) {
+    super();
+    this.immediate = immediate;
+  }
+
+  public substitute(typeTable: TypeTable): Expression {
+    return new FloatLiteralExpression(
+      this.immediate,
+    ).at(this.location).tag(this.tags);
+  }
+
+  public typecheck(context: TypeChecker, contextualType?: Type): Type {
+    return Type.Float;
+  }
+
+  public compile(compiler: Compiler, lvalue?: boolean): Register {
+    const r = compiler.allocateRegister();
+    compiler.emit([
+      new ConstantDirective(r, new ImmediateConstant(this.immediate)),
+    ]);
+    return r;
+  }
+
+  public toString() {
+    return intToFloat(this.immediate) + 'f';
+  }
+
+  public constant(): Immediate | undefined {
+    return this.immediate;
+  }
+}
+
 class BoolLiteralExpression extends Expression {
   public readonly value: boolean;
 
@@ -336,7 +383,7 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
     if (literalExpression.expression !== undefined) {
       let er = literalExpression.expression.compile(compiler);
       er = compiler.emitConversion(er, literalExpression.expression.concreteType, literalExpression.type);
-      if (literalExpression.type.integral) {
+      if (literalExpression.type.integral || literalExpression.type.isFloat) {
         compiler.emitStaticStore(ri, er, 1, 'store integral');
       }
       else {
@@ -1175,6 +1222,8 @@ writeOnce(NewArrayExpression, 'elementType');
 class CastExpression extends Expression {
   // Whether this cast extracts a pointer from a slice.
   private sliceToPointer: boolean = false;
+  // Conversion type: 'itof' | 'ftoi' | null
+  private floatConversion: 'itof' | 'ftoi' | null = null;
 
   public constructor(
     private readonly type: Type,
@@ -1195,7 +1244,11 @@ class CastExpression extends Expression {
   public typecheck(context: TypeChecker, contextual?: Type): Type {
     this.type.kindcheck(context, new KindChecker());
 
-    const type = this.expression.typecheck(context, this.type);
+    // Don't use contextual typing for float/byte casts to avoid int literals becoming float literals.
+    // We want `<float>42` to typecheck as int->float conversion, not contextually typed float.
+    // But we still want contextual typing for pointer casts like `<* byte>null`.
+    const targetIsScalar = this.type.isFloat || this.type.isConvertibleTo(Type.Byte);
+    const type = this.expression.typecheck(context, targetIsScalar ? undefined : this.type);
 
     // We can safely cast away nominal differences.
     if (this.type.isConvertibleTo(type)) {
@@ -1203,6 +1256,16 @@ class CastExpression extends Expression {
         this.warning(context, `unnecessary unsafe cast between ${this.type} and ${type}`);
       }
       return this.type.tag(['.unsafe']);
+    }
+
+    // We can safely cast between integral and float types.
+    if (this.type.isFloat && type.integral) {
+      this.floatConversion = 'itof';
+      return this.type;
+    }
+    if (this.type.integral && type.isFloat) {
+      this.floatConversion = 'ftoi';
+      return this.type;
     }
 
     // We can unsafely cast between integral types.
@@ -1244,6 +1307,16 @@ class CastExpression extends Expression {
     if (this.sliceToPointer) {
       compiler.emit([
         new InstructionDirective(Instruction.createOperation(Operation.LOAD, r, r)).comment('slice data pointer'),
+      ]);
+    }
+    // Float conversions.
+    if (this.floatConversion === 'itof') {
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.ITOF, r, r)).comment('int to float'),
+      ]);
+    } else if (this.floatConversion === 'ftoi') {
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.FTOI, r, r)).comment('float to int'),
       ]);
     }
     return r;
@@ -1289,18 +1362,32 @@ class BinaryExpression extends Expression {
       case '+':
       case '-':
       case '*':
-      case '/':
-      case '%':
-      case '|':
-      case '&':
-      case '<<':
-      case '>>': {
-        // We can do arithmetic on numbers of the same type.
+      case '/': {
+        // Arithmetic on numbers of the same type.
         if (!tLeft.numeric) {
           this.error(context, `expected numeric type, actual ${tLeft}`);
         }
         if (!tRight.numeric) {
           this.error(context, `expected numeric type, actual ${tRight}`);
+        }
+        if (!tLeft.isEqualTo(tRight)) {
+          this.error(context, `expected ${tLeft}, actual ${tRight}`);
+        }
+
+        return tLeft;
+      }
+
+      case '%':
+      case '|':
+      case '&':
+      case '<<':
+      case '>>': {
+        // These operators only work on integrals, not floats.
+        if (!tLeft.integral) {
+          this.error(context, `expected integral type, actual ${tLeft}`);
+        }
+        if (!tRight.integral) {
+          this.error(context, `expected integral type, actual ${tRight}`);
         }
         if (!tLeft.isEqualTo(tRight)) {
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
@@ -1331,7 +1418,7 @@ class BinaryExpression extends Expression {
       case '<=':
       case '>':
       case '>=':
-        // We can only compare numerics.
+        // We can compare numerics.
         if (!tLeft.numeric) {
           this.error(context, `expected numeric type, actual ${tLeft}`);
         }
@@ -1345,12 +1432,12 @@ class BinaryExpression extends Expression {
 
       case '==':
       case '!=': {
-        // We can only equate integrals.
-        if (!tLeft.integral) {
-          this.error(context, `expected integral type, actual ${tLeft}`);
+        // We can equate numerics (including floats).
+        if (!tLeft.numeric) {
+          this.error(context, `expected numeric type, actual ${tLeft}`);
         }
-        if (!tRight.integral) {
-          this.error(context, `expected integral type, actual ${tRight}`);
+        if (!tRight.numeric) {
+          this.error(context, `expected numeric type, actual ${tRight}`);
         }
         if (!tLeft.isEqualTo(tRight)) {
           this.error(context, `expected ${tLeft}, actual ${tRight}`);
@@ -1364,6 +1451,29 @@ class BinaryExpression extends Expression {
   }
 
   private get operation(): Operation {
+    // Use float operations when operands are floats
+    const isFloat = this.left.concreteType.isFloat;
+
+    if (isFloat) {
+      const floatOperations: { [operator: string]: Operation } = {
+        '+': Operation.FADD,
+        '-': Operation.FSUB,
+        '*': Operation.FMUL,
+        '/': Operation.FDIV,
+        '==': Operation.FEQ,
+        '!=': Operation.FEQ, // FEQ then invert
+        '<': Operation.FLT,
+        '>': Operation.FGT,
+        '<=': Operation.FGT, // Inverted
+        '>=': Operation.FLT, // Inverted
+      };
+      const operation = floatOperations[this.operator.toString()];
+      if (operation !== undefined) {
+        return operation;
+      }
+      throw new InternalError(`unsupported float operator ${this.operator}`);
+    }
+
     const operations: { [operator: string]: Operation } = {
       '+': Operation.ADD,
       '-': Operation.SUB,
@@ -1454,8 +1564,9 @@ class BinaryExpression extends Expression {
       }
 
       case '<':
-      case '>': {
-        // LT/GT now return 1 when true, 0 when false (standard semantics)
+      case '>':
+      case '==': {
+        // LT/GT/EQ return 1 when true, 0 when false (standard semantics)
         const lr = this.left.compile(compiler);
         const rr = this.right.compile(compiler);
 
@@ -1463,6 +1574,31 @@ class BinaryExpression extends Expression {
         compiler.emit([
           new InstructionDirective(Instruction.createOperation(this.operation, r, lr, rr)),
         ]);
+        compiler.deallocateRegister(lr);
+        compiler.deallocateRegister(rr);
+        return r;
+      }
+
+      case '!=': {
+        // For floats: use FEQ then invert with EQ(r, 0)
+        // For integrals: use NEQ directly
+        const lr = this.left.compile(compiler);
+        const rr = this.right.compile(compiler);
+
+        const r = compiler.allocateRegister();
+        if (this.left.concreteType.isFloat) {
+          const zr = compiler.allocateRegister();
+          compiler.emit([
+            new InstructionDirective(Instruction.createOperation(Operation.FEQ, r, lr, rr)),
+            new ConstantDirective(zr, new ImmediateConstant(0)),
+            new InstructionDirective(Instruction.createOperation(Operation.EQ, r, r, zr)),
+          ]);
+          compiler.deallocateRegister(zr);
+        } else {
+          compiler.emit([
+            new InstructionDirective(Instruction.createOperation(Operation.NEQ, r, lr, rr)),
+          ]);
+        }
         compiler.deallocateRegister(lr);
         compiler.deallocateRegister(rr);
         return r;
@@ -1625,9 +1761,10 @@ class UnaryExpression extends Expression {
         // Compile as `0 - e`.
         const er = this.expression.compile(compiler);
         const zr = compiler.allocateRegister();
+        const isFloat = this.expression.concreteType.isFloat;
         compiler.emit([
           new ConstantDirective(zr, new ImmediateConstant(0)).comment(`${this}`),
-          new InstructionDirective(Instruction.createOperation(Operation.SUB, er, zr, er)),
+          new InstructionDirective(Instruction.createOperation(isFloat ? Operation.FSUB : Operation.SUB, er, zr, er)),
         ]);
         compiler.deallocateRegister(zr);
         return er;
@@ -1854,7 +1991,7 @@ class CallExpression extends Expression {
       return {
         register: r,
         size: expectedType.size,
-        integral: expectedType.integral,
+        integral: expectedType.integral || expectedType.isFloat,
       };
     });
 
@@ -1863,7 +2000,8 @@ class CallExpression extends Expression {
     // address of this storage as the first argument. Then when we
     // compile return statements that return non-integral values, we write
     // to this location.
-    if (!this.functionType.returnType.integral && !this.functionType.returnType.isConvertibleTo(Type.Void)) {
+    const returnType = this.functionType.returnType;
+    if (!returnType.integral && !returnType.isFloat && !returnType.isConvertibleTo(Type.Void)) {
       if (!(compiler instanceof StorageCompiler)) {
         throw new InternalError(`expected storage when compiling non-integral return`);
       }
@@ -2532,7 +2670,7 @@ class ConditionalExpression extends Expression {
 }
 
 [IdentifierExpression,
-  IntLiteralExpression, StringLiteralExpression, BoolLiteralExpression,
+  IntLiteralExpression, FloatLiteralExpression, CharLiteralExpression, StringLiteralExpression, BoolLiteralExpression,
   BinaryExpression, UnaryExpression,
   CallExpression,
   DotExpression, ArrowExpression, IndexExpression, SliceExpression, SuffixExpression,
@@ -2552,6 +2690,6 @@ class ConditionalExpression extends Expression {
 
 export {
   ArrayLiteralExpression, ArrayRepeatExpression, ArrowExpression, BinaryExpression, BoolLiteralExpression, CallExpression, CastExpression, CharLiteralExpression, ConditionalExpression, DotExpression, Expression,
-  IdentifierExpression, IndexExpression, IntLiteralExpression, NewArrayExpression, NewExpression, NullExpression, SizeofExpression, SliceExpression, StringLiteralExpression, StructLiteralExpression, SuffixExpression, UnaryExpression, VoidExpression
+  FloatLiteralExpression, IdentifierExpression, IndexExpression, IntLiteralExpression, NewArrayExpression, NewExpression, NullExpression, SizeofExpression, SliceExpression, StringLiteralExpression, StructLiteralExpression, SuffixExpression, UnaryExpression, VoidExpression
 };
 
