@@ -1094,20 +1094,21 @@ class NewArrayExpression extends Expression {
     }
 
     // Allocate the heap storage.
-    // Note: emitNew clobbers sr, so we'll recompute it after the call.
+    // Note: emitNew deallocates sr, so we need a fresh register for the size afterward.
     const hr = compiler.emitNew(sr, 'new[]');
 
-    // Recompute sr from cr since emitNew clobbers the argument register.
+    // Recompute size in a fresh register since emitNew deallocated sr.
+    const sizeReg = compiler.allocateRegister();
     if (this.elementType.size > 1) {
       const mr = compiler.allocateRegister();
       compiler.emit([
         new ConstantDirective(mr, new ImmediateConstant(this.elementType.size)).comment('new[]: element size (recompute)'),
-        new InstructionDirective(Instruction.createOperation(Operation.MUL, sr, cr, mr)).comment('new[]: data size (recompute)'),
+        new InstructionDirective(Instruction.createOperation(Operation.MUL, sizeReg, cr, mr)).comment('new[]: data size (recompute)'),
       ]);
       compiler.deallocateRegister(mr);
     }
     else {
-      compiler.emitMove(sr, cr, 'new[]: data size (recompute)');
+      compiler.emitMove(sizeReg, cr, 'new[]: data size (recompute)');
     }
 
     // Allocate stack storage for the slice descriptor (3 words: pointer, length, capacity).
@@ -1159,7 +1160,7 @@ class NewArrayExpression extends Expression {
     // Ellipsis means we are using the value represented by `er` multiple times.
     if (this.ellipsis || isZero) {
       if (this.elementType.integral || isZero) {
-        compiler.emitDynamicStore(hr, er, sr, 'new[]: zero initialize');
+        compiler.emitDynamicStore(hr, er, sizeReg, 'new[]: zero initialize');
       }
       else {
         this.compileStructuralEllipsis(compiler, hr, er, cr);
@@ -1169,8 +1170,8 @@ class NewArrayExpression extends Expression {
     else {
       // `er` is a pointer to an array (source for initialization).
       // Array layout: [elem0][elem1]... (no length header)
-      // Copy sr bytes from source to destination.
-      compiler.emitDynamicCopy(hr, er, sr, 'new[]: initialize');
+      // Copy sizeReg bytes from source to destination.
+      compiler.emitDynamicCopy(hr, er, sizeReg, 'new[]: initialize');
       compiler.deallocateRegister(er);
     }
 
@@ -1183,7 +1184,7 @@ class NewArrayExpression extends Expression {
     compiler.emitIncrement(sliceR, 1);
     compiler.emitStaticStore(sliceR, cr, 1, 'slice.capacity');
 
-    compiler.deallocateRegister(sr);
+    compiler.deallocateRegister(sizeReg);
     compiler.deallocateRegister(hr);
     compiler.deallocateRegister(cr);
     compiler.deallocateRegister(zeroR);

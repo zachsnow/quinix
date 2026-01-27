@@ -12,8 +12,12 @@ function main(): byte {
   // Initialize display
   var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
 
+  // Pre-compute background color to avoid nested function calls
+  // (workaround for register allocation issue with complex expressions)
+  var bg = gfx::rgb(0x20, 0x20, 0x60);
+
   // Clear to dark blue
-  gfx::clear(&fb, gfx::rgb(0x20, 0x20, 0x60));
+  gfx::clear(&fb, bg);
 
   // Draw some shapes
   // White border
@@ -30,9 +34,9 @@ function main(): byte {
   gfx::line(&fb, 280, 80, 150, 140, gfx::color::MAGENTA);
 
   // Text
-  gfx::font::draw_string(&fb, 20, 150, "Hello, Quinix!", gfx::color::WHITE, gfx::rgb(0x20, 0x20, 0x60));
-  gfx::font::draw_string(&fb, 20, 160, "320x200 @ 32bpp", gfx::color::GRAY, gfx::rgb(0x20, 0x20, 0x60));
-  gfx::font::draw_string(&fb, 20, 170, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", gfx::color::WHITE, gfx::rgb(0x20, 0x20, 0x60));
+  gfx::font::draw_string(&fb, 20, 150, "Hello, Quinix!", gfx::color::WHITE, bg);
+  gfx::font::draw_string(&fb, 20, 160, "320x200 @ 32bpp", gfx::color::GRAY, bg);
+  gfx::font::draw_string(&fb, 20, 170, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", gfx::color::WHITE, bg);
 
   // Flip to display
   display::flip(DISPLAY_BASE);

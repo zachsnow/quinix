@@ -298,7 +298,8 @@ class Compiler {
       this.emitPush(r, 'push caller-save register');
     });
 
-    // Push arguments and deallocate them.
+    // Push arguments to stack and deallocate the argument registers.
+    // The caller should not reuse argument registers after emitCall returns.
     let argSize = 0;
     args.forEach((arg) => {
       if (arg.integral) {
@@ -312,6 +313,7 @@ class Compiler {
         this.deallocateRegister(r);
       }
 
+      this.deallocateRegister(arg.register);
       argSize += arg.size;
     });
 
