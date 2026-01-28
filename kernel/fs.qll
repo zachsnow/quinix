@@ -371,7 +371,8 @@ namespace kernel {
       // Maximum open files.
       .constant global MAX_OPEN_FILES: byte = 8;
 
-      // Open file state.
+      // Open file state. Each open file has its own buffer to allow
+      // concurrent access to multiple files.
       type file_state = struct {
         in_use: bool;
         dir_index: byte;      // Directory entry index
@@ -381,15 +382,13 @@ namespace kernel {
         position: byte;       // Current position in file (bytes)
         mode: byte;           // Open mode
         modified: bool;       // Whether file has been modified
+        buffer: byte[128];    // Per-file sector buffer
+        buffer_sector: byte;  // Sector currently in buffer
+        buffer_dirty: bool;   // Buffer has unflushed writes
       };
 
       // Table of open files.
       global open_files: file_state[8] = [file_state {}; 8];
-
-      // Data buffer for file I/O (separate from sector_buffer).
-      global file_buffer: byte[128] = [0; 128];
-      global file_buffer_sector: byte = 0;
-      global file_buffer_dirty: bool = false;
 
       // Shift helper: get bit shift for byte position (0-3).
       // Returns 0, 8, 16, or 24.
@@ -409,29 +408,29 @@ namespace kernel {
         return 0xFFFFFFFF - _byte_mask(pos);
       }
 
-      // Flush the file buffer if dirty.
-      function _flush_file_buffer(): bool {
-        if (file_buffer_dirty && file_buffer_sector != 0) {
-          if (!block::write_sector(file_buffer_sector, &file_buffer[0])) {
+      // Flush a file's buffer if dirty.
+      function _flush_buffer(state: *file_state): bool {
+        if (state->buffer_dirty && state->buffer_sector != 0) {
+          if (!block::write_sector(state->buffer_sector, &state->buffer[0])) {
             return false;
           }
-          file_buffer_dirty = false;
+          state->buffer_dirty = false;
         }
         return true;
       }
 
-      // Load a sector into the file buffer.
-      function _load_file_buffer(sector: byte): bool {
-        if (file_buffer_sector == sector) {
+      // Load a sector into a file's buffer.
+      function _load_buffer(state: *file_state, sector: byte): bool {
+        if (state->buffer_sector == sector) {
           return true;
         }
-        if (!_flush_file_buffer()) {
+        if (!_flush_buffer(state)) {
           return false;
         }
-        if (!block::read_sector(sector, &file_buffer[0])) {
+        if (!block::read_sector(sector, &state->buffer[0])) {
           return false;
         }
-        file_buffer_sector = sector;
+        state->buffer_sector = sector;
         return true;
       }
 
@@ -550,7 +549,7 @@ namespace kernel {
         }
 
         // Flush buffer if needed.
-        _flush_file_buffer();
+        _flush_buffer(&open_files[slot]);
 
         // Update directory entry if modified.
         if (open_files[slot].modified) {
@@ -591,12 +590,12 @@ namespace kernel {
             break;
           }
 
-          if (!_load_file_buffer(state->current_sector)) {
+          if (!_load_buffer(state, state->current_sector)) {
             break;
           }
 
           // Read a byte.
-          var word = file_buffer[word_offset];
+          var word = state->buffer[word_offset];
           var b = (word >> _byte_shift(byte_in_word)) & 0xFF;
           buffer[unsafe bytes_read] = b;
 
@@ -639,12 +638,12 @@ namespace kernel {
             break;
           }
 
-          if (!_load_file_buffer(state->current_sector)) {
+          if (!_load_buffer(state, state->current_sector)) {
             break;
           }
 
           // Read a word directly.
-          buffer[unsafe words_read] = file_buffer[word_in_sector];
+          buffer[unsafe words_read] = state->buffer[word_in_sector];
 
           words_read = words_read + 1;
           state->position = state->position + 4;  // Advance by 4 bytes (1 word)
@@ -704,7 +703,7 @@ namespace kernel {
           }
 
           // Load current sector.
-          if (!_load_file_buffer(state->current_sector)) {
+          if (!_load_buffer(state, state->current_sector)) {
             break;
           }
 
@@ -714,12 +713,12 @@ namespace kernel {
           var byte_in_word = pos_in_sector % 4;
 
           // Write a byte.
-          var word = file_buffer[word_offset];
+          var word = state->buffer[word_offset];
           var mask = _byte_mask_inv(byte_in_word);
           var b = buffer[unsafe bytes_written] & 0xFF;
           word = (word & mask) | (b << _byte_shift(byte_in_word));
-          file_buffer[word_offset] = word;
-          file_buffer_dirty = true;
+          state->buffer[word_offset] = word;
+          state->buffer_dirty = true;
 
           bytes_written = bytes_written + 1;
           state->position = state->position + 1;
