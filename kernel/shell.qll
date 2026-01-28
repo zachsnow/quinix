@@ -10,18 +10,6 @@ namespace shell {
     cwd_len = 1;
   }
 
-  function str_eq(a: string, b: string): bool {
-    if (len a != len b) {
-      return false;
-    }
-    for (var i = 0; i < len a; i = i + 1) {
-      if (a[i] != b[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   function str_eq_n(a: string, b: byte[], b_len: byte): bool {
     if (len a != b_len) {
       return false;

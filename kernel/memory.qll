@@ -46,15 +46,6 @@ namespace kernel::memory {
     return <unsafe * page>(base + i * sizeof page);
   }
 
-  // All active tables (currently unused - processes track their own tables).
-  // global tables: std::vector<* table>;
-
-  // Chunks represet physical memory.
-  type chunk = byte;
-  global chunk_size: byte = 0x4000;
-  global max_chunks: byte = 0x400;
-  global physical_chunks: std::vector<chunk> = null;
-
   function allocate_physical_memory(size: byte): byte {
     // Round up to chunk size
     var chunks_needed = (size + CHUNK_SIZE - 1) / CHUNK_SIZE;
