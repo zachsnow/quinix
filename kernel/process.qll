@@ -11,9 +11,13 @@ namespace kernel {
       id: byte;
       parent_id: byte;  // 0 means no parent
       task: * scheduler::task;
-      table: * memory::table;
       files: fs::files;
     };
+
+    // Get the memory table for a process (stored in its task for context switching).
+    function get_table(p: * process): * memory::table {
+      return p->task->table;
+    }
 
     global processes: std::vector<* process> = null;
 
@@ -81,7 +85,6 @@ namespace kernel {
         id = task->id,
         parent_id = parent_id,
         task = task,
-        table = table,
         files = fs::create_files(),
       };
 
@@ -135,7 +138,7 @@ namespace kernel {
       }
       std::vector::remove(processes, i);
 
-      memory::destroy_table(process->table);
+      memory::destroy_table(get_table(process));
       scheduler::destroy_task(process->task);
       fs::destroy_files(process->files);
       delete process;

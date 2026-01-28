@@ -55,13 +55,13 @@ namespace kernel {
 
     function _translate_pointer<T>(p: * byte): * T {
       var current_process = process::current_process();
-      return <unsafe * T>memory::translate(current_process->table, p);
+      return <unsafe * T>memory::translate(process::get_table(current_process), p);
     }
 
     // Translate a user virtual address to physical
     function _translate(p: * byte): * byte {
       var current = process::current_process();
-      return memory::translate(current->table, p);
+      return memory::translate(process::get_table(current), p);
     }
 
     // Get the data pointer from a user-space slice (translated to physical)
