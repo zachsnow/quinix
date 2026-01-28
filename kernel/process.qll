@@ -62,11 +62,10 @@ namespace kernel {
       }
       log("process: setting task ip");
       task->state.ip = executable_base;
-      // Stack pointer uses virtual address (must match create_table"s layout)
-      var heap_base = executable_base + executable_size + 0x1000;
-      var stack_base = heap_base + heap_size + 0x1000;
+      // Stack pointer uses virtual address (from memory layout helpers)
+      var sbase = memory::stack_base(executable_base, executable_size, heap_size);
       log("process: setting task sp");
-      var sp = stack_base + stack_size;
+      var sp = sbase + stack_size;
       task->state.registers[63] = sp;
       // Verify the value was set correctly
       var verify = task->state.registers[63];

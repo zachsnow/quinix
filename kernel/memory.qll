@@ -3,6 +3,17 @@ namespace kernel::memory {
   .constant global TOTAL_PHYSICAL_MEMORY: byte = 0x100000;  // 1MB
   .constant global KERNEL_RESERVED: byte = 0x20000;         // 128KB for kernel
   .constant global CHUNK_SIZE: byte = 0x1000;               // 4KB chunks
+  .constant global GUARD_PAGE_SIZE: byte = 0x1000;          // Unmapped guard between sections
+
+  // Virtual memory layout helpers. These compute the virtual addresses for
+  // heap and stack given the executable base and section sizes.
+  function heap_base(executable_base: byte, executable_size: byte): byte {
+    return executable_base + executable_size + GUARD_PAGE_SIZE;
+  }
+
+  function stack_base(executable_base: byte, executable_size: byte, heap_size: byte): byte {
+    return heap_base(executable_base, executable_size) + heap_size + GUARD_PAGE_SIZE;
+  }
 
   // Kernel heap is managed by std::alloc (shared/alloc.qll).
   // See kernel/alloc.qll which sets std::heap to 0x10000.
@@ -77,11 +88,9 @@ namespace kernel::memory {
   }
 
   function create_table(executable_base: byte, executable_size: byte, heap_size: byte, stack_size: byte): * table {
-    // Default virtual memory layout; leave some space after the executable
-    // unmapped in case we "run off the end"; leave some space between the
-    // heap and the stack so we can tell if we run out of space.
-    var heap_base = executable_base + executable_size + 0x1000;
-    var stack_base = heap_base + heap_size + 0x1000;
+    // Virtual memory layout uses guard pages between sections.
+    var hbase = heap_base(executable_base, executable_size);
+    var sbase = stack_base(executable_base, executable_size, heap_size);
 
     // Find an available physical location.
     var base = allocate_physical_memory(executable_size + heap_size + stack_size);
@@ -113,13 +122,13 @@ namespace kernel::memory {
       flags = flags::PRESENT | flags::READ | flags::WRITE | flags::EXECUTE,
     };
     *table_page(t, 1) = page {
-      virtual_address = heap_base,
+      virtual_address = hbase,
       physical_address = base + executable_size,
       size = heap_size,
       flags = flags::PRESENT | flags::READ | flags::WRITE,
     };
     *table_page(t, 2) = page {
-      virtual_address = stack_base,
+      virtual_address = sbase,
       physical_address = base + executable_size + heap_size,
       size = stack_size,
       flags = flags::PRESENT | flags::READ | flags::WRITE,
