@@ -5,14 +5,11 @@ import path from "path";
 import { logger } from "@/lib/logger";
 import { InternalError } from "@/lib/util";
 import { LowLevelProgram } from "@/lowlevel/lowlevel";
-import { parseArguments } from "@server/cli";
+import { getTargetIncludes, isValidTarget, parseArguments } from "@server/cli";
 import { readFiles } from "@server/fs";
 
 const log = logger("qllc");
 
-///////////////////////////////////////////////////////////////////////
-// Configure CLI.
-///////////////////////////////////////////////////////////////////////
 interface Options {
   output: string;
   files: string[];
@@ -62,53 +59,16 @@ const argv = parseArguments<Options>(
 );
 
 // Validate target
-if (!["bare", "user", "none"].includes(argv.target)) {
+if (!isValidTarget(argv.target)) {
   console.error(`Error: Invalid target "${argv.target}". Must be bare, user, or none.`);
   process.exit(1);
 }
 
 ///////////////////////////////////////////////////////////////////////
 
-// Resolve the root directory (where shared/, bare/, user/ live).
-function resolveRoot(): string {
-  // We are in `./bin/`, running the TypeScript file directly with bun.
-  let rootPath = path.resolve(__dirname, "..");
-  if (!fs.existsSync(path.join(rootPath, "package.json"))) {
-    rootPath = path.resolve(__dirname, "..", "..");
-  }
-  if (!fs.existsSync(path.join(rootPath, "package.json"))) {
-    throw new InternalError("unable to locate project root");
-  }
-  return rootPath;
-}
-
-// Get all .qll files from a directory.
-function getQllFiles(dir: string): string[] {
-  if (!fs.existsSync(dir)) {
-    return [];
-  }
-  return fs.readdirSync(dir)
-    .filter(f => f.endsWith(".qll"))
-    .map(f => path.join(dir, f))
-    .sort();
-}
-
-// Get auto-include files for the given target.
-function getTargetIncludes(target: string): string[] {
-  if (target === "none") {
-    return [];
-  }
-
-  const root = resolveRoot();
-  const sharedFiles = getQllFiles(path.join(root, "shared"));
-  const targetFiles = getQllFiles(path.join(root, target));
-
-  return [...sharedFiles, ...targetFiles];
-}
-
 async function main(): Promise<number | undefined> {
   // Get auto-include files based on target.
-  const autoIncludes = getTargetIncludes(argv.target);
+  const autoIncludes = getTargetIncludes(argv.target, ".qll");
 
   // Parse programs and combine (auto-includes first, then user files).
   const filenames = [...autoIncludes, ...argv.files];

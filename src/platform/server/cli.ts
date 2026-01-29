@@ -1,6 +1,9 @@
+import fs from "fs";
 import inspector from "inspector";
+import path from "path";
 import { parseArgs } from "util";
 import { setVerbose } from "@/lib/logger";
+import { InternalError } from "@/lib/util";
 
 interface DefaultOptions {
   verbose: boolean;
@@ -182,4 +185,56 @@ function parseArguments<Options>(
   return values as Options & DefaultOptions;
 }
 
-export { parseArguments };
+// Valid compilation targets.
+const VALID_TARGETS = ["bare", "user", "none"] as const;
+type Target = (typeof VALID_TARGETS)[number];
+
+function isValidTarget(target: string): target is Target {
+  return VALID_TARGETS.includes(target as Target);
+}
+
+// Resolve the root directory (where shared/, bare/, user/ live).
+function resolveRoot(): string {
+  // We are in `./bin/`, running the TypeScript file directly with bun.
+  let rootPath = path.resolve(__dirname, "..");
+  if (!fs.existsSync(path.join(rootPath, "package.json"))) {
+    rootPath = path.resolve(__dirname, "..", "..");
+  }
+  if (!fs.existsSync(path.join(rootPath, "package.json"))) {
+    throw new InternalError("unable to locate project root");
+  }
+  return rootPath;
+}
+
+// Get all files with the given extension from a directory.
+function getFilesWithExtension(dir: string, extension: string): string[] {
+  if (!fs.existsSync(dir)) {
+    return [];
+  }
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(extension))
+    .map((f) => path.join(dir, f))
+    .sort();
+}
+
+// Get auto-include files for the given target.
+function getTargetIncludes(target: string, extension: string): string[] {
+  if (target === "none") {
+    return [];
+  }
+  const root = resolveRoot();
+  const sharedFiles = getFilesWithExtension(path.join(root, "shared"), extension);
+  const targetFiles = getFilesWithExtension(path.join(root, target), extension);
+  return [...sharedFiles, ...targetFiles];
+}
+
+export {
+  getFilesWithExtension,
+  getTargetIncludes,
+  isValidTarget,
+  parseArguments,
+  resolveRoot,
+  VALID_TARGETS,
+};
+export type { Target };
