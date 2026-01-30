@@ -58,7 +58,7 @@ namespace shell {
   }
 
   function cmd_help(): void {
-    std::console::print("Commands: help, pwd, ls, cat, run, exit\n");
+    std::console::print("Commands: help, pwd, ls, cat, touch, rm, run, exit\n");
   }
 
   function cmd_pwd(): void {
@@ -157,6 +157,67 @@ namespace shell {
     std::console::print("\n");
   }
 
+  function cmd_touch(args: byte[], args_len: byte): void {
+    if (args_len == 0) {
+      std::console::print("touch: missing filename\n");
+      return;
+    }
+
+    // Check if filesystem is initialized.
+    if (!kernel::fs::qfs::initialized) {
+      if (!kernel::fs::qfs::init()) {
+        std::console::print("touch: filesystem not available\n");
+        return;
+      }
+    }
+
+    // Check if file already exists.
+    len args = args_len;
+    var entry: kernel::fs::qfs::dirent;
+    var existing = kernel::fs::qfs::dir_find(args, &entry);
+    if (existing != -1) {
+      // File already exists - nothing to do.
+      return;
+    }
+
+    // Create empty file.
+    var index = kernel::fs::qfs::dir_create(args, 0, 0);
+    if (index == -1) {
+      std::console::print("touch: failed to create file\n");
+    }
+  }
+
+  function cmd_rm(args: byte[], args_len: byte): void {
+    if (args_len == 0) {
+      std::console::print("rm: missing filename\n");
+      return;
+    }
+
+    // Check if filesystem is initialized.
+    if (!kernel::fs::qfs::initialized) {
+      if (!kernel::fs::qfs::init()) {
+        std::console::print("rm: filesystem not available\n");
+        return;
+      }
+    }
+
+    // Find the file.
+    len args = args_len;
+    var entry: kernel::fs::qfs::dirent;
+    var index = kernel::fs::qfs::dir_find(args, &entry);
+    if (index == -1) {
+      std::console::print("rm: file not found: ");
+      _print_n(args, args_len);
+      std::console::print("\n");
+      return;
+    }
+
+    // Delete the file.
+    if (!kernel::fs::qfs::dir_delete(index)) {
+      std::console::print("rm: failed to delete file\n");
+    }
+  }
+
   function cmd_run(args: byte[], args_len: byte): void {
     if (args_len == 0) {
       std::console::print("run: missing program path\n");
@@ -239,6 +300,10 @@ namespace shell {
           cmd_ls();
         } else if (str_eq_n("cat", cmd, cmd_len)) {
           cmd_cat(args, args_len);
+        } else if (str_eq_n("touch", cmd, cmd_len)) {
+          cmd_touch(args, args_len);
+        } else if (str_eq_n("rm", cmd, cmd_len)) {
+          cmd_rm(args, args_len);
         } else if (str_eq_n("run", cmd, cmd_len)) {
           cmd_run(args, args_len);
         } else if (str_eq_n("exit", cmd, cmd_len)) {

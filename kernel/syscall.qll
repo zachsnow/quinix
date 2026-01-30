@@ -241,13 +241,59 @@ namespace kernel {
       return 0;
     }
 
+    // Create a new empty file.
+    // arg0: pointer to null-terminated path string
+    // Returns 0 on success, -1 on failure.
     function _create(sc: syscall): byte {
-      // TODO: implement
+      var path_addr = <unsafe *byte>sc.arg0;
+
+      // Copy path to kernel buffer.
+      var path_buffer: byte[64];
+      if (!_copy_string(path_addr, path_buffer, 64)) {
+        return -1;
+      }
+
+      // Check if file already exists.
+      var entry: fs::qfs::dirent;
+      var existing = fs::qfs::dir_find(path_buffer, &entry);
+      if (existing != -1) {
+        // File already exists - success (like touch).
+        return 0;
+      }
+
+      // Create empty file (no sectors allocated, size 0).
+      var index = fs::qfs::dir_create(path_buffer, 0, 0);
+      if (index == -1) {
+        return -1;
+      }
+
       return 0;
     }
 
+    // Delete a file.
+    // arg0: pointer to null-terminated path string
+    // Returns 0 on success, -1 on failure.
     function _destroy(sc: syscall): byte {
-      // TODO: implement
+      var path_addr = <unsafe *byte>sc.arg0;
+
+      // Copy path to kernel buffer.
+      var path_buffer: byte[64];
+      if (!_copy_string(path_addr, path_buffer, 64)) {
+        return -1;
+      }
+
+      // Find the file.
+      var entry: fs::qfs::dirent;
+      var index = fs::qfs::dir_find(path_buffer, &entry);
+      if (index == -1) {
+        return -1;
+      }
+
+      // Delete the file.
+      if (!fs::qfs::dir_delete(index)) {
+        return -1;
+      }
+
       return 0;
     }
 
