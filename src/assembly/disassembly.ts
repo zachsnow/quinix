@@ -10,7 +10,8 @@ class Disassembler {
   private readonly words: Uint32Array;
   private readonly instructions: Instruction[] = [];
   private readonly isImmediate: boolean[] = [];
-  private codeBoundary: number = 0;
+  private codeEnd: number = 0;        // End of user code (before boundary halts)
+  private dataSectionStart: number = 0; // Start of data section (after boundary halts)
   private readonly codeLabels: Map<number, string> = new Map();
   private readonly dataLabels: Map<number, string> = new Map();
 
@@ -30,17 +31,28 @@ class Disassembler {
 
   /**
    * First pass: decode all words into instructions, tracking which are immediates.
+   * After 2 consecutive halts, treat remaining words as data (immediates).
    */
   private decodeInstructions(): void {
     let expectImmediate = false;
+    let consecutiveHalts = 0;
+    let inDataSection = false;
 
     for (let i = 0; i < this.words.length; i++) {
       const word = this.words[i];
+
+      // After 2 consecutive halts, everything is data
+      if (inDataSection) {
+        this.instructions.push(Instruction.createImmediate(word));
+        this.isImmediate.push(true);
+        continue;
+      }
 
       if (expectImmediate) {
         this.instructions.push(Instruction.createImmediate(word));
         this.isImmediate.push(true);
         expectImmediate = false;
+        consecutiveHalts = 0;
         continue;
       }
 
@@ -50,40 +62,82 @@ class Disassembler {
 
       if (instruction.operation === Operation.CONSTANT) {
         expectImmediate = true;
+        consecutiveHalts = 0;
+      } else if (instruction.immediate === undefined && instruction.operation === Operation.HALT) {
+        consecutiveHalts++;
+        if (consecutiveHalts >= 2) {
+          inDataSection = true;
+        }
+      } else {
+        consecutiveHalts = 0;
       }
     }
   }
 
   /**
    * Find the boundary between code and data sections.
-   * Primary: 2 consecutive halts.
-   * Fallback: 3+ consecutive bad instructions.
+   *
+   * The assembler adds 2 boundary halts after code and 2 trailing halts after data.
+   * When there's no data, we get 4 consecutive halts at the end.
+   *
+   * Strategy:
+   * 1. Strip exactly 2 trailing halts from the very end
+   * 2. Find 2 consecutive halts for the boundary
+   * 3. Keep any user halts before the boundary
    */
   private findCodeBoundary(): void {
+    // Strip exactly 2 trailing halts from the end (the assembler always adds 2)
+    // Check both actual HALT instructions and immediate 0 values (which encode the same)
+    let effectiveEnd = this.instructions.length;
+    let trailingHaltsStripped = 0;
+    while (effectiveEnd > 0 && trailingHaltsStripped < 2) {
+      const inst = this.instructions[effectiveEnd - 1];
+      const isHalt = (inst.immediate === undefined && inst.operation === Operation.HALT) ||
+                     (inst.immediate === 0);
+      if (isHalt) {
+        effectiveEnd--;
+        trailingHaltsStripped++;
+      } else {
+        break;
+      }
+    }
+
+    // Now scan forward for 2+ consecutive halts (the boundary sentinels)
+    // Check both actual HALT instructions and immediate 0 values
     let consecutiveHalts = 0;
+    let firstHaltIndex = -1;
     let consecutiveBad = 0;
 
-    for (let i = 0; i < this.instructions.length; i++) {
+    for (let i = 0; i < effectiveEnd; i++) {
       const inst = this.instructions[i];
+      const isHalt = (inst.immediate === undefined && inst.operation === Operation.HALT) ||
+                     (inst.immediate === 0);
 
-      // Check for 2 consecutive halts
-      if (inst.immediate === undefined && inst.operation === Operation.HALT) {
+      // Track consecutive halts
+      if (isHalt) {
+        if (consecutiveHalts === 0) {
+          firstHaltIndex = i;
+        }
         consecutiveHalts++;
+      } else {
+        // End of halt sequence - check if we found the boundary (need 2+)
         if (consecutiveHalts >= 2) {
-          // Boundary is after the second halt
-          this.codeBoundary = i + 1;
+          // Skip only the last 2 halts (boundary sentinels), keep any user halts before
+          const boundaryStart = firstHaltIndex + consecutiveHalts - 2;
+          this.codeEnd = boundaryStart;
+          this.dataSectionStart = firstHaltIndex + consecutiveHalts;
           return;
         }
-      } else {
         consecutiveHalts = 0;
+        firstHaltIndex = -1;
       }
 
       // Check for bad instructions (invalid opcode or registers)
       if (this.isBadInstruction(inst)) {
         consecutiveBad++;
         if (consecutiveBad >= 3) {
-          // Boundary is where the bad instructions started
-          this.codeBoundary = i - 2;
+          this.codeEnd = i - 2;
+          this.dataSectionStart = i - 2;
           return;
         }
       } else {
@@ -91,8 +145,17 @@ class Disassembler {
       }
     }
 
-    // No clear boundary found - treat everything as code
-    this.codeBoundary = this.instructions.length;
+    // Check if effectiveEnd ends with 2+ halts (boundary with no data after)
+    if (consecutiveHalts >= 2) {
+      const boundaryStart = firstHaltIndex + consecutiveHalts - 2;
+      this.codeEnd = boundaryStart;
+      this.dataSectionStart = firstHaltIndex + consecutiveHalts;
+      return;
+    }
+
+    // No boundary halts found - emit everything up to effectiveEnd
+    this.codeEnd = effectiveEnd;
+    this.dataSectionStart = effectiveEnd;
   }
 
   /**
@@ -130,7 +193,7 @@ class Disassembler {
     const referencedAddresses: Set<number> = new Set();
 
     // Find all constant instructions and collect their immediate values
-    for (let i = 0; i < this.codeBoundary - 1; i++) {
+    for (let i = 0; i < this.codeEnd - 1; i++) {
       const inst = this.instructions[i];
       if (inst.immediate === undefined && inst.operation === Operation.CONSTANT) {
         const nextInst = this.instructions[i + 1];
@@ -150,7 +213,7 @@ class Disassembler {
 
     for (const addr of referencedAddresses) {
       const index = addr - PROGRAM_BASE;
-      if (index < this.codeBoundary) {
+      if (index < this.codeEnd) {
         codeAddrs.push(addr);
       } else {
         dataAddrs.push(addr);
@@ -176,9 +239,9 @@ class Disassembler {
   private emit(): string {
     const lines: string[] = [];
 
-    // Emit code section
+    // Emit code section (excluding boundary halts - assembler will add them)
     let i = 0;
-    while (i < this.codeBoundary) {
+    while (i < this.codeEnd) {
       const addr = PROGRAM_BASE + i;
       const inst = this.instructions[i];
 
@@ -208,7 +271,7 @@ class Disassembler {
 
     // Find end of data section (exclude trailing halt sentinels)
     let dataEnd = this.instructions.length;
-    while (dataEnd > this.codeBoundary) {
+    while (dataEnd > this.dataSectionStart) {
       const inst = this.instructions[dataEnd - 1];
       const value = inst.immediate ?? inst.encode();
       if (value === 0) {
@@ -220,7 +283,7 @@ class Disassembler {
 
     // Emit data section
     let nextUnreferencedLabel = 0;
-    i = this.codeBoundary;
+    i = this.dataSectionStart;
     while (i < dataEnd) {
       const addr = PROGRAM_BASE + i;
       let label = this.dataLabels.get(addr);
