@@ -219,7 +219,7 @@ function getFilesWithExtension(dir: string, extension: string): string[] {
 }
 
 // Get auto-include files for the given target.
-function getTargetIncludes(target: string, extension: string): string[] {
+function getTargetIncludes(target: Target, extension: string): string[] {
   if (target === "none") {
     return [];
   }

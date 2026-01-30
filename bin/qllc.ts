@@ -58,15 +58,13 @@ const argv = parseArguments<Options>(
   }
 );
 
-// Validate target
-if (!isValidTarget(argv.target)) {
-  console.error(`Error: Invalid target "${argv.target}". Must be bare, user, or none.`);
-  process.exit(1);
-}
-
-///////////////////////////////////////////////////////////////////////
-
 async function main(): Promise<number | undefined> {
+  // Validate target
+  if (!isValidTarget(argv.target)) {
+    console.error(`Error: Invalid target "${argv.target}". Must be bare, user, or none.`);
+    process.exit(1);
+  }
+
   // Get auto-include files based on target.
   const autoIncludes = getTargetIncludes(argv.target, ".qll");
 

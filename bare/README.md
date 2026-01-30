@@ -7,7 +7,7 @@ Baremetal programs have direct access to hardware peripherals and memory. Use th
 ## Files
 
 - `alloc.qll` - Binds the shared allocator with heap at `0x8000`
-- `console.qll` - Direct console I/O via peripheral access
+- `console.qll` - Direct console I/O via debug peripheral access
 - `entrypoint.qasm` - Baremetal program entry point (sets SP, calls main, halts)
 
 ## Allocator

@@ -10,7 +10,7 @@ interface Options {
 const argv = parseArguments<Options>(
   "qrun",
   "$0 <file>",
-  "compile and run the given file",
+  "compile and run the given file; uses --target=bare",
   {
     options: {
       verbose: {

@@ -42,8 +42,6 @@ const argv = parseArguments<Options>(
   }
 );
 
-///////////////////////////////////////////////////////////////////////
-
 const minLength = parseInt(argv.minLength, 10);
 
 // Instruction encoding helpers
@@ -66,6 +64,7 @@ function isAddInstruction(word: number): boolean {
 function isPrintableAscii(codepoint: number): boolean {
   // Printable ASCII range: space (0x20) to tilde (0x7E)
   // Also allow common control chars: tab (0x09), newline (0x0A), carriage return (0x0D)
+  // Given we have good support for unicode this is pretty insufficient, but it's a start.
   return (
     (codepoint >= 0x20 && codepoint <= 0x7e) ||
     codepoint === 0x09 ||
