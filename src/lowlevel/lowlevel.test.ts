@@ -1483,9 +1483,10 @@ describe('QLLC end-to-end', () => {
   });
 
   test('heap allocate too much', () => {
+    // Request more than HEAP_SIZE (0x10000 = 64KB) to test allocation failure.
     return expectRunToBe(0, `
       function main(): byte {
-        var b = new byte [0x2000];
+        var b = new byte [0x20000];
         return <unsafe byte>b;
       }
     `, true);

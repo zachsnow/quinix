@@ -628,9 +628,14 @@ class ReturnStatement extends Statement {
       // We need to copy the value pointed to by `r` into the first function parameter called `$return`.
       const dr = compiler.allocateRegister();
       compiler.emitIdentifier('$return', 'parameter', dr, true);
+      // Save the destination pointer before copy since emitStaticCopy advances dr.
+      const savedDr = compiler.allocateRegister();
+      compiler.emitMove(savedDr, dr, 'save return destination');
       compiler.emitStaticCopy(dr, r, this.returnType.size, 'copy return data');
-      compiler.emitMove(r, dr);
+      // Return the destination pointer (original value before advancement).
+      compiler.emitMove(r, savedDr);
       compiler.deallocateRegister(dr);
+      compiler.deallocateRegister(savedDr);
     }
 
     compiler.emitReturn(r);

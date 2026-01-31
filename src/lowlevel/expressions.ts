@@ -9,7 +9,7 @@ import {
 import { Immediate } from '@/lib/types';
 import { Instruction, Operation, Register, } from '@/vm/instructions';
 import { duplicates, IFileRange, InternalError, IParseOptions, stringToCodePoints, Syntax, writeOnce } from '@/lib/util';
-import { Compiler, StorageCompiler } from './compiler';
+import { Compiler, FunctionCompiler, StorageCompiler } from './compiler';
 import { TypeTable } from './tables';
 import { KindChecker, TypeChecker } from './typechecker';
 import { ArrayType, FunctionType, PointerType, SliceType, Storage, StructType, TemplateType, Type, VariableType } from './types';
@@ -380,6 +380,10 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
 
   // Evaluate each value (if there is one) and store it in the data.
   literalExpressions.forEach((literalExpression, i) => {
+    // Track whether we need to manually advance ri.
+    // emitStaticCopy now advances ri automatically for size > 1.
+    let needsIncrement = true;
+
     if (literalExpression.expression !== undefined) {
       let er = literalExpression.expression.compile(compiler);
       er = compiler.emitConversion(er, literalExpression.expression.concreteType, literalExpression.type);
@@ -388,6 +392,10 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
       }
       else {
         compiler.emitStaticCopy(ri, er, literalExpression.type.size, 'copy non-integral');
+        // emitStaticCopy already advanced ri for size > 1.
+        if (literalExpression.type.size > 1) {
+          needsIncrement = false;
+        }
       }
       compiler.deallocateRegister(er);
     }
@@ -400,7 +408,7 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
       compiler.deallocateRegister(zr);
     }
 
-    if (i < literalExpressions.length - 1) {
+    if (needsIncrement && i < literalExpressions.length - 1) {
       compiler.emitIncrement(ri, literalExpression.type.size, 'next literal expression');
     }
   });
@@ -950,11 +958,23 @@ class NewExpression extends Expression {
     }
 
     // Write to the destination.
-    if (this.type.integral || isZero) {
-      compiler.emitStaticStore(dr, er, this.type.size, 'initialize integral new');
+    // Note: both emitStaticStore (for size > 1) and emitStaticCopy modify dr,
+    // so we save and restore it to return the correct pointer.
+    if (this.type.size > 1) {
+      const savedDr = compiler.allocateRegister();
+      compiler.emitMove(savedDr, dr, 'save new pointer');
+      if (this.type.integral || isZero) {
+        compiler.emitStaticStore(dr, er, this.type.size, 'initialize integral new');
+      }
+      else {
+        compiler.emitStaticCopy(dr, er, this.type.size, 'initialize new');
+      }
+      compiler.emitMove(dr, savedDr);
+      compiler.deallocateRegister(savedDr);
     }
     else {
-      compiler.emitStaticCopy(dr, er, this.type.size, 'initialize new');
+      // Size == 1: emitStaticStore doesn't modify dr.
+      compiler.emitStaticStore(dr, er, 1, 'initialize new');
     }
 
     compiler.deallocateRegister(er);
@@ -1131,6 +1151,11 @@ class NewArrayExpression extends Expression {
       isZero = true;
     }
 
+    // Save hr before initialization operations that may clobber it.
+    // We need the original pointer for the slice descriptor.
+    const savedHr = compiler.allocateRegister();
+    compiler.emitMove(savedHr, hr, 'save heap pointer');
+
     // Ellipsis means we are using the value represented by `er` multiple times.
     if (this.ellipsis || isZero) {
       if (this.elementType.integral || isZero) {
@@ -1150,7 +1175,9 @@ class NewArrayExpression extends Expression {
     }
 
     // Build the slice descriptor: [pointer][length][capacity]
-    compiler.emitStaticStore(sliceR, hr, 1, 'slice.pointer');
+    // Use saved pointer value since hr was modified during initialization.
+    compiler.emitStaticStore(sliceR, savedHr, 1, 'slice.pointer');
+    compiler.deallocateRegister(savedHr);
     compiler.emitIncrement(sliceR, 1);
     compiler.emitStaticStore(sliceR, cr, 1, 'slice.length');
     compiler.emitIncrement(sliceR, 1);
@@ -1180,6 +1207,7 @@ class NewArrayExpression extends Expression {
 
     const loopR = compiler.allocateRegister();
     const di = compiler.allocateRegister(); // The index within the destination.
+    const si = compiler.allocateRegister(); // Copy of source pointer (reset each iteration).
     const ci = compiler.allocateRegister(); // Counts the number of *elements* that have been written.
     const tr = compiler.allocateRegister();
 
@@ -1188,11 +1216,14 @@ class NewArrayExpression extends Expression {
       new ConstantDirective(ci, new ImmediateConstant(0)).comment('initialize counter'),
       new InstructionDirective(Instruction.createOperation(Operation.MOV, di, dr)).comment('new[]: destination[0]'),
       new LabelDirective(loopRef),
+      // Reset source pointer each iteration (emitStaticCopy advances it).
+      new InstructionDirective(Instruction.createOperation(Operation.MOV, si, er)).comment('reset source pointer'),
     ]);
 
-    compiler.emitStaticCopy(di, er, this.elementType.size, 'structural ellipsis');
+    // Copy from si to di. Both are advanced by emitStaticCopy.
+    compiler.emitStaticCopy(di, si, this.elementType.size, 'structural ellipsis');
+    // di is now advanced to next element position (no need to increment separately).
 
-    compiler.emitIncrement(di, this.elementType.size, 'increment index');
     compiler.emitIncrement(ci, 1, 'increment counter');
     // EQ(ci, cr) returns 1 when ci == cr (done), 0 when ci != cr (continue)
     // JZ jumps when condition is zero, so it jumps when ci != cr (continue looping)
@@ -1203,6 +1234,7 @@ class NewArrayExpression extends Expression {
 
     compiler.deallocateRegister(loopR);
     compiler.deallocateRegister(di);
+    compiler.deallocateRegister(si);
     compiler.deallocateRegister(ci);
     compiler.deallocateRegister(tr);
   }
@@ -1982,14 +2014,18 @@ class CallExpression extends Expression {
     // TODO: remove this when possible.
     compiler.emitNullCheck(tr);
 
-    // Compile the arguments.
+    // Use push-as-you-go approach if we're in a function context.
+    // This saves the frame pointer before pushing arguments, allowing
+    // local variable access to work correctly as SP changes.
+    if (compiler instanceof FunctionCompiler) {
+      return this.compileWithPushAsYouGo(compiler, tr, lvalue);
+    }
+
+    // Fall back to original approach for non-function contexts.
     const args = this.argumentExpressions.map((argumentExpression, i) => {
       const expectedType = this.functionType.argumentTypes[i];
       let r = argumentExpression.compile(compiler, lvalue);
-
-      // Handle type conversions (e.g., array-to-slice, pointer-to-array-to-slice).
       r = compiler.emitConversion(r, argumentExpression.concreteType, expectedType);
-
       return {
         register: r,
         size: expectedType.size,
@@ -1997,11 +2033,6 @@ class CallExpression extends Expression {
       };
     });
 
-    // If this function call returns a non-integral value (e.g. a struct)
-    // then we allocate storage for it in the current frame and pass the
-    // address of this storage as the first argument. Then when we
-    // compile return statements that return non-integral values, we write
-    // to this location.
     const returnType = this.functionType.returnType;
     if (!returnType.integral && !returnType.isFloat && !returnType.isConvertibleTo(Type.Void)) {
       if (!(compiler instanceof StorageCompiler)) {
@@ -2018,8 +2049,93 @@ class CallExpression extends Expression {
       });
     }
 
-    // Compile the call; this deallocates the argument and target registers.
     return compiler.emitCall(args, tr);
+  }
+
+  private compileWithPushAsYouGo(compiler: FunctionCompiler, tr: Register, lvalue?: boolean): Register {
+    // Save the frame pointer before pushing any arguments.
+    // This allows local variable access to work as SP changes.
+    const savedFp = compiler.saveFramePointer();
+
+    // Get caller-save registers to preserve (excluding target and saved frame pointer).
+    const callerSave = compiler.registers.callerSave.filter((r) => r !== tr && r !== savedFp);
+
+    // Push caller-save registers.
+    callerSave.forEach((r) => {
+      compiler.emitPush(r, 'push caller-save register');
+    });
+
+    // Track total argument size for popping later.
+    let argSize = 0;
+
+    // If this function call returns a non-integral value (e.g. a struct)
+    // then we allocate storage for it in the current frame and pass the
+    // address of this storage as the first argument.
+    const returnType = this.functionType.returnType;
+    if (!returnType.integral && !returnType.isFloat && !returnType.isConvertibleTo(Type.Void)) {
+      const identifier = compiler.generateIdentifier('return');
+      compiler.allocateStorage(identifier, this.functionType.returnType.size);
+      const r = compiler.allocateRegister();
+      compiler.emitIdentifier(identifier, 'local', r, false);
+      compiler.emitPush(r, 'push return destination');
+      compiler.deallocateRegister(r);
+      argSize += 1;
+    }
+
+    // Compile and push each argument immediately.
+    this.argumentExpressions.forEach((argumentExpression, i) => {
+      const expectedType = this.functionType.argumentTypes[i];
+      let r = argumentExpression.compile(compiler, lvalue);
+
+      // Handle type conversions (e.g., array-to-slice, pointer-to-array-to-slice).
+      r = compiler.emitConversion(r, argumentExpression.concreteType, expectedType);
+
+      const integral = expectedType.integral || expectedType.isFloat;
+      const size = expectedType.size;
+
+      if (integral) {
+        compiler.emitPush(r, 'push argument');
+      } else {
+        // Non-integral: allocate stack space and copy.
+        compiler.emitPushMany(size, 'allocate argument storage');
+        const sp = compiler.allocateRegister();
+        compiler.emitMove(sp, Compiler.SP);
+        compiler.emitStaticCopy(sp, r, size, 'store argument');
+        compiler.deallocateRegister(sp);
+      }
+
+      compiler.deallocateRegister(r);
+      argSize += size;
+    });
+
+    // Restore the frame pointer before the call.
+    compiler.restoreFramePointer();
+
+    // Emit the call.
+    const returnToRef = compiler.generateReference();
+    compiler.emit([
+      new ConstantDirective(Compiler.RET, new ReferenceConstant(returnToRef)).comment('set up return address'),
+      new InstructionDirective(Instruction.createOperation(Operation.JMP, undefined, tr)).comment('call'),
+      new LabelDirective(returnToRef).comment('return address'),
+    ]);
+
+    // Save the return value.
+    const dr = compiler.allocateRegister();
+    compiler.emitMove(dr, Compiler.RET);
+
+    // Deallocate target.
+    compiler.deallocateRegister(tr);
+
+    // Pop arguments.
+    compiler.emitPopMany(argSize, 'pop arguments');
+
+    // Pop caller-save registers in reverse order.
+    callerSave.reverse();
+    callerSave.forEach((r) => {
+      compiler.emitPop(r, 'pop caller-save register');
+    });
+
+    return dr;
   }
 
   public toString() {

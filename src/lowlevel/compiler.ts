@@ -156,7 +156,7 @@ class Compiler {
   protected readonly prefix: string;
   private labels: number = 0;
 
-  protected registers: RegisterAllocator = new RegisterAllocator();
+  public readonly registers: RegisterAllocator = new RegisterAllocator();
   private directives: Directive[] = [];
 
   /**
@@ -377,7 +377,7 @@ class Compiler {
     return this.emitCall([{ register: sr, size: 1, integral: true }], tr, comment);
   }
 
-  protected emitPush(r: Register, comment: string = ''): void {
+  public emitPush(r: Register, comment: string = ''): void {
     this.emit(this.push(r, comment));
   }
 
@@ -403,7 +403,7 @@ class Compiler {
     ]);
   }
 
-  protected emitPop(r: Register, comment: string = ''): void {
+  public emitPop(r: Register, comment: string = ''): void {
     this.emit(this.pop(r, comment));
   }
 
@@ -415,11 +415,11 @@ class Compiler {
     ];
   }
 
-  protected emitPopMany(n: number, comment: string = ''): void {
+  public emitPopMany(n: number, comment: string = ''): void {
     this.emitIncrement(Compiler.SP, n, comment);
   }
 
-  protected emitPushMany(n: number, comment: string = ''): void {
+  public emitPushMany(n: number, comment: string = ''): void {
     this.emit(this.pushMany(n));
   }
 
@@ -493,47 +493,47 @@ class Compiler {
   /**
    * Stores the value in register `sr` into the memory address indicated by `dr` `cr` times.
    *
+   * NOTE: This modifies dr and cr in place (dr will point past the stored data,
+   * cr will be 0). Callers that need the original values should save them first.
+   *
    * @param dr destination register.
    * @param sr source register.
    * @param cr count register.
    * @param comment optional comment.
    */
   public emitDynamicStore(dr: Register, sr: Register, cr: Register, comment: string = ''): void {
-    const loop = this.generateReference('dynamic_store');
+    const loop = this.generateReference('store_loop');
+    const end = this.generateReference('store_end');
     const loopR = this.allocateRegister(); // Jump address.
-    const di = this.allocateRegister(); // Destination index.
-    const ci = this.allocateRegister(); // Count index.
-    const tr = this.allocateRegister(); // Temporary.
+    const endR = this.allocateRegister(); // End address.
 
-    // Initialize.
+    // Initialize and check for zero count.
     this.emit([
       new ConstantDirective(loopR, new ReferenceConstant(loop)).comment(comment),
-      new ConstantDirective(ci, new ImmediateConstant(0)),
-    ]);
-    this.emitMove(di, dr);
-
-    // Loop through `cr` times, copying `sr` to the destination and incrementing
-    // by one each time. EQ returns 1 when done (ci == cr), 0 when continue.
-    // JZ jumps when zero (continue looping).
-    this.emit([
+      new ConstantDirective(endR, new ReferenceConstant(end)),
+      // Skip loop if count is zero.
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, endR)),
+      // Loop: store value, increment dr, decrement cr, check if done.
       new LabelDirective(loop),
-      new InstructionDirective(Instruction.createOperation(Operation.STORE, di, sr)),
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, di, di, Compiler.ONE)),
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, ci, ci, Compiler.ONE)),
-      new InstructionDirective(Instruction.createOperation(Operation.EQ, tr, ci, cr)),
-      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, tr, loopR)),
+      new InstructionDirective(Instruction.createOperation(Operation.STORE, dr, sr)),
+      new InstructionDirective(Instruction.createOperation(Operation.ADD, dr, dr, Compiler.ONE)),
+      new InstructionDirective(Instruction.createOperation(Operation.SUB, cr, cr, Compiler.ONE)),
+      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, loopR)),
+      new LabelDirective(end),
     ]);
 
     this.deallocateRegister(loopR);
-    this.deallocateRegister(di);
-    this.deallocateRegister(ci);
-    this.deallocateRegister(tr);
+    this.deallocateRegister(endR);
   }
 
   /**
    * Copies the value located at the memory address indicated by `sr` into the
    * memory address indicated by `dr`. Used when the number of bytes to copy is
    * statically known.
+   *
+   * NOTE: For copies of size > 1, this modifies dr and sr in place (they will
+   * point past the copied data after the call). Callers that need the original
+   * values should save them first.
    *
    * @param dr destination address register.
    * @param sr source address register.
@@ -584,66 +584,57 @@ class Compiler {
    * @param cr count register.
    * @param comment optional comment.
    */
+  /**
+   * Dynamic copy that modifies dr, sr, and cr in place.
+   * After this call, dr and sr will point past the copied data, and cr will be 0.
+   */
   public emitDynamicCopy(dr: Register, sr: Register, cr: Register, comment: string = ''): void {
-    const loop = this.generateReference('store');
+    const loop = this.generateReference('copy_loop');
+    const end = this.generateReference('copy_end');
     const loopR = this.allocateRegister(); // Jump address.
-    const di = this.allocateRegister(); // Destination index.
-    const si = this.allocateRegister(); // Source index.
-    const ci = this.allocateRegister(); // Count index.
+    const endR = this.allocateRegister(); // End address.
     const tr = this.allocateRegister(); // Temporary.
 
-    // Initialize.
+    // Initialize and check for zero count.
     this.emit([
       new ConstantDirective(loopR, new ReferenceConstant(loop)).comment(comment),
-      new ConstantDirective(ci, new ImmediateConstant(0)),
-    ]);
-    this.emitMove(di, dr);
-    this.emitMove(si, sr);
-
-    // Loop through `cr` times, copying bytes from the source to the destination and incrementing
-    // by one each time. EQ returns 1 when done (ci == cr), 0 when continue.
-    // JZ jumps when zero (continue looping).
-    this.emit([
+      new ConstantDirective(endR, new ReferenceConstant(end)),
+      // Skip loop if count is zero.
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, endR)),
+      // Loop: copy one word, decrement count, check if done.
       new LabelDirective(loop),
-      new InstructionDirective(Instruction.createOperation(Operation.LOAD, tr, si)),
-      new InstructionDirective(Instruction.createOperation(Operation.STORE, di, tr)),
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, di, di, Compiler.ONE)),
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, si, si, Compiler.ONE)),
-      new InstructionDirective(Instruction.createOperation(Operation.ADD, ci, ci, Compiler.ONE)),
-      new InstructionDirective(Instruction.createOperation(Operation.EQ, tr, ci, cr)),
-      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, tr, loopR)),
+      new InstructionDirective(Instruction.createOperation(Operation.LOAD, tr, sr)),
+      new InstructionDirective(Instruction.createOperation(Operation.STORE, dr, tr)),
+      new InstructionDirective(Instruction.createOperation(Operation.ADD, dr, dr, Compiler.ONE)),
+      new InstructionDirective(Instruction.createOperation(Operation.ADD, sr, sr, Compiler.ONE)),
+      new InstructionDirective(Instruction.createOperation(Operation.SUB, cr, cr, Compiler.ONE)),
+      new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, cr, loopR)),
+      new LabelDirective(end),
     ]);
 
     this.deallocateRegister(loopR);
-    this.deallocateRegister(di);
-    this.deallocateRegister(si);
-    this.deallocateRegister(ci);
+    this.deallocateRegister(endR);
     this.deallocateRegister(tr);
   }
 
+  /**
+   * Unrolled static copy that modifies dr/sr in place.
+   * After this call, dr and sr will point past the copied data (advanced by size).
+   */
   private emitUnrolledStaticCopy(dr: Register, sr: Register, size: number, comment: string = ''): void {
-    const di = this.allocateRegister();
-    const si = this.allocateRegister();
+    // Only need one temp register for the value being copied.
     const rc = this.allocateRegister();
-
-    this.emitMove(di, dr, comment);
-    this.emitMove(si, sr);
 
     for (let i = 0; i < size; i++) {
       this.emit([
-        new InstructionDirective(Instruction.createOperation(Operation.LOAD, rc, si)).comment(`copy byte ${i}`),
-        new InstructionDirective(Instruction.createOperation(Operation.STORE, di, rc)),
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, rc, sr)).comment(i === 0 ? comment : `copy word ${i}`),
+        new InstructionDirective(Instruction.createOperation(Operation.STORE, dr, rc)),
+        // Always advance dr and sr after each word (including the last).
+        new InstructionDirective(Instruction.createOperation(Operation.ADD, dr, dr, Compiler.ONE)),
+        new InstructionDirective(Instruction.createOperation(Operation.ADD, sr, sr, Compiler.ONE)),
       ]);
-      if (i < size - 1) {
-        this.emit([
-          new InstructionDirective(Instruction.createOperation(Operation.ADD, di, di, Compiler.ONE)),
-          new InstructionDirective(Instruction.createOperation(Operation.ADD, si, si, Compiler.ONE)),
-        ]);
-      }
     }
 
-    this.deallocateRegister(di);
-    this.deallocateRegister(si);
     this.deallocateRegister(rc);
   }
 
@@ -1004,6 +995,17 @@ class FunctionCompiler extends StorageCompiler {
   private readonly parameterStorage: number = 0;
   private parameters: { [identifier: string]: number } = {};
 
+  /**
+   * When set, this register holds the saved frame pointer. Used during call
+   * argument compilation to allow push-as-you-go without breaking local access.
+   */
+  private savedFramePointer: Register | undefined;
+
+  /**
+   * Reference count for nested saveFramePointer calls.
+   */
+  private savedFramePointerRefCount: number = 0;
+
   public constructor(identifier: string, parameters: Parameter[]) {
     super(identifier);
 
@@ -1036,6 +1038,50 @@ class FunctionCompiler extends StorageCompiler {
   }
 
   /**
+   * Saves the frame pointer to a register for use during call argument compilation.
+   * This allows push-as-you-go without breaking local variable access.
+   * Returns the register holding the saved frame pointer.
+   * Supports nesting via reference counting.
+   */
+  public saveFramePointer(): Register {
+    this.savedFramePointerRefCount++;
+    if (this.savedFramePointer !== undefined) {
+      // Already saved by outer call, reuse it.
+      return this.savedFramePointer;
+    }
+    this.savedFramePointer = this.allocateRegister();
+    this.emitPeek(this.savedFramePointer, 'save frame pointer for call');
+    return this.savedFramePointer;
+  }
+
+  /**
+   * Restores the frame pointer after call argument compilation.
+   * Only deallocates the register when the last nested call restores.
+   */
+  public restoreFramePointer(): void {
+    if (this.savedFramePointer === undefined || this.savedFramePointerRefCount === 0) {
+      throw new InternalError('frame pointer not saved');
+    }
+    this.savedFramePointerRefCount--;
+    if (this.savedFramePointerRefCount === 0) {
+      this.deallocateRegister(this.savedFramePointer);
+      this.savedFramePointer = undefined;
+    }
+  }
+
+  /**
+   * Emits code to load the frame pointer into the given register.
+   * Uses the saved frame pointer if available, otherwise peeks at SP.
+   */
+  private emitFramePointer(r: Register, comment: string): void {
+    if (this.savedFramePointer !== undefined) {
+      this.emitMove(r, this.savedFramePointer, comment);
+    } else {
+      this.emitPeek(r, comment);
+    }
+  }
+
+  /**
    * Emits a reference to the given identifier.
    *
    * @param identifier the identifier to reference
@@ -1055,7 +1101,7 @@ class FunctionCompiler extends StorageCompiler {
           const offset = location + 1;
 
           const sfr = this.allocateRegister();
-          this.emitPeek(sfr, 'stack frame address');
+          this.emitFramePointer(sfr, 'stack frame address');
           this.emit([
             new ConstantDirective(dr, new ImmediateConstant(offset)).comment(`argument address ${identifier}`),
             new InstructionDirective(Instruction.createOperation(Operation.ADD, dr, sfr, dr)),
@@ -1076,14 +1122,14 @@ class FunctionCompiler extends StorageCompiler {
         let location = this.locals[identifier];
         if (location !== undefined) {
           if (location === 1) {
-            this.emitPeek(dr, 'stack frame address');
+            this.emitFramePointer(dr, 'stack frame address');
             this.emit([
               new InstructionDirective(Instruction.createOperation(Operation.SUB, dr, dr, Compiler.ONE)).comment(`local address ${identifier}`),
             ]);
           }
           else {
             const sfr = this.allocateRegister();
-            this.emitPeek(sfr, 'stack frame address');
+            this.emitFramePointer(sfr, 'stack frame address');
             this.emit([
               new ConstantDirective(dr, new ImmediateConstant(location)).comment(`local address ${identifier}`),
               new InstructionDirective(Instruction.createOperation(Operation.SUB, dr, sfr, dr)),
