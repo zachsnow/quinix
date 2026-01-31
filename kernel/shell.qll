@@ -41,6 +41,39 @@ namespace shell {
   function _magenta(): void { std::console::print("\x1b[35m"); }
   function _cyan(): void { std::console::print("\x1b[36m"); }
 
+  // Build absolute path from cwd + relative path.
+  // Returns path length, writes to out buffer.
+  function _make_absolute(args: byte[], args_len: byte, out: byte[]): byte {
+    // If already absolute, just copy.
+    if (args_len > 0 && args[0] == 47) {  // starts with "/"
+      for (var i: byte = 0; i < args_len && i < cap out; i = i + 1) {
+        out[i] = args[i];
+      }
+      return args_len;
+    }
+
+    // Copy cwd first.
+    var out_len: byte = 0;
+    for (var j: byte = 0; j < cwd_len && out_len < cap out; j = j + 1) {
+      out[out_len] = cwd[j];
+      out_len = out_len + 1;
+    }
+
+    // Add separator if cwd doesn't end with '/'.
+    if (cwd_len > 0 && cwd[cwd_len - 1] != 47 && out_len < cap out) {
+      out[out_len] = 47;
+      out_len = out_len + 1;
+    }
+
+    // Append relative path.
+    for (var k: byte = 0; k < args_len && out_len < cap out; k = k + 1) {
+      out[out_len] = args[k];
+      out_len = out_len + 1;
+    }
+
+    return out_len;
+  }
+
   // Print a number in decimal.
   function _print_num(n: byte): void {
     var buf: byte[12];
@@ -249,12 +282,16 @@ namespace shell {
       }
     }
 
-    // Create a dynamic array from args for file_open.
+    // Build absolute path.
+    var abs_path: byte[64];
+    var abs_len = _make_absolute(args, args_len, abs_path);
+
+    // Create a dynamic array for file_open.
     var path: byte[] = new byte[64];
-    for (var p: byte = 0; p < args_len && p < 63; p = p + 1) {
-      path[p] = args[p];
+    for (var p: byte = 0; p < abs_len && p < 63; p = p + 1) {
+      path[p] = abs_path[p];
     }
-    len path = args_len;
+    len path = abs_len;
 
     var slot = kernel::fs::qfs::file_open(path, kernel::fs::qfs::MODE_READ);
     if (slot == -1) {
@@ -296,11 +333,15 @@ namespace shell {
       }
     }
 
+    // Build absolute path.
+    var path: byte[64];
+    var path_len = _make_absolute(args, args_len, path);
+    len path = path_len;
+
     // Check if file already exists using path resolution.
-    len args = args_len;
     var result: kernel::fs::qfs::path_result;
     var entry: kernel::fs::qfs::dirent;
-    if (kernel::fs::qfs::resolve_path(args, &result, &entry)) {
+    if (kernel::fs::qfs::resolve_path(path, &result, &entry)) {
       // File already exists - nothing to do.
       return;
     }
@@ -308,7 +349,7 @@ namespace shell {
     // Resolve parent directory and create file.
     var filename: byte[24] = [0; 24];
     var filename_len: byte = 0;
-    var parent_sector = kernel::fs::qfs::resolve_parent(args, &filename[0], &filename_len);
+    var parent_sector = kernel::fs::qfs::resolve_parent(path, &filename[0], &filename_len);
     if (parent_sector == 0 || filename_len == 0) {
       std::console::print("touch: invalid path\n");
       return;
@@ -335,11 +376,15 @@ namespace shell {
       }
     }
 
+    // Build absolute path.
+    var path: byte[64];
+    var path_len = _make_absolute(args, args_len, path);
+    len path = path_len;
+
     // Find the file using path resolution.
-    len args = args_len;
     var result: kernel::fs::qfs::path_result;
     var entry: kernel::fs::qfs::dirent;
-    if (!kernel::fs::qfs::resolve_path(args, &result, &entry)) {
+    if (!kernel::fs::qfs::resolve_path(path, &result, &entry)) {
       std::console::print("rm: not found: ");
       _print_n(args, args_len);
       std::console::print("\n");
@@ -366,8 +411,12 @@ namespace shell {
       }
     }
 
-    len args = args_len;
-    var sector = kernel::fs::qfs::mkdir(args);
+    // Build absolute path.
+    var path: byte[64];
+    var path_len = _make_absolute(args, args_len, path);
+    len path = path_len;
+
+    var sector = kernel::fs::qfs::mkdir(path);
     if (sector == 0) {
       std::console::print("mkdir: failed to create directory\n");
     }
@@ -378,8 +427,13 @@ namespace shell {
       std::console::print("run: missing program path\n");
       return;
     }
-    len args = args_len;
-    var pid = load_executable(args, 0);
+
+    // Build absolute path.
+    var path: byte[64];
+    var path_len = _make_absolute(args, args_len, path);
+    len path = path_len;
+
+    var pid = load_executable(path, 0);
     if (pid == 0) {
       std::console::print("run: failed to load program\n");
       return;
