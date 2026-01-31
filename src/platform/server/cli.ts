@@ -195,11 +195,9 @@ function isValidTarget(target: string): target is Target {
 
 // Resolve the root directory (where shared/, bare/, user/ live).
 function resolveRoot(): string {
-  // We are in `./bin/`, running the TypeScript file directly with bun.
-  let rootPath = path.resolve(__dirname, "..");
-  if (!fs.existsSync(path.join(rootPath, "package.json"))) {
-    rootPath = path.resolve(__dirname, "..", "..");
-  }
+  // This file is at src/platform/server/cli.ts, so root is 3 levels up.
+  // Use import.meta.dir (bun) to get the directory of this file.
+  const rootPath = path.resolve(import.meta.dir, "../../..");
   if (!fs.existsSync(path.join(rootPath, "package.json"))) {
     throw new InternalError("unable to locate project root");
   }

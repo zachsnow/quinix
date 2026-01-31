@@ -92,9 +92,9 @@ class Disassembler {
     let trailingHaltsStripped = 0;
     while (effectiveEnd > 0 && trailingHaltsStripped < 2) {
       const inst = this.instructions[effectiveEnd - 1];
-      const isHalt = (inst.immediate === undefined && inst.operation === Operation.HALT) ||
-                     (inst.immediate === 0);
-      if (isHalt) {
+      const isTrailingHalt = (inst.immediate === undefined && inst.operation === Operation.HALT) ||
+        (inst.immediate === 0);
+      if (isTrailingHalt) {
         effectiveEnd--;
         trailingHaltsStripped++;
       } else {
@@ -111,7 +111,7 @@ class Disassembler {
     for (let i = 0; i < effectiveEnd; i++) {
       const inst = this.instructions[i];
       const isHalt = (inst.immediate === undefined && inst.operation === Operation.HALT) ||
-                     (inst.immediate === 0);
+        (inst.immediate === 0);
 
       // Track consecutive halts
       if (isHalt) {
@@ -290,7 +290,7 @@ class Disassembler {
       if (!label) {
         // Generate unique label for unreferenced data
         while (this.dataLabels.has(PROGRAM_BASE + nextUnreferencedLabel) ||
-               [...this.dataLabels.values()].includes(`@U${nextUnreferencedLabel}`)) {
+          [...this.dataLabels.values()].includes(`@U${nextUnreferencedLabel}`)) {
           nextUnreferencedLabel++;
         }
         label = `@U${nextUnreferencedLabel}`;
