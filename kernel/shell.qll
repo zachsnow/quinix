@@ -334,15 +334,22 @@ namespace shell {
     }
 
     // Build absolute path.
-    var path: byte[64];
-    var path_len = _make_absolute(args, args_len, path);
-    len path = path_len;
+    var abs_path: byte[64];
+    var abs_len = _make_absolute(args, args_len, abs_path);
+
+    // Create dynamic array for resolve_path.
+    var path: byte[] = new byte[64];
+    for (var i: byte = 0; i < abs_len; i = i + 1) {
+      path[i] = abs_path[i];
+    }
+    len path = abs_len;
 
     // Check if file already exists using path resolution.
     var result: kernel::fs::qfs::path_result;
     var entry: kernel::fs::qfs::dirent;
     if (kernel::fs::qfs::resolve_path(path, &result, &entry)) {
       // File already exists - nothing to do.
+      delete path;
       return;
     }
 
@@ -352,6 +359,7 @@ namespace shell {
     var parent_sector = kernel::fs::qfs::resolve_parent(path, &filename[0], &filename_len);
     if (parent_sector == 0 || filename_len == 0) {
       std::console::print("touch: invalid path\n");
+      delete path;
       return;
     }
 
@@ -360,6 +368,7 @@ namespace shell {
     if (!kernel::fs::qfs::dir_create_in(parent_sector, filename[0:filename_len], 0, 0, kernel::fs::qfs::DIRENT_USED, &dr)) {
       std::console::print("touch: failed to create file\n");
     }
+    delete path;
   }
 
   function cmd_rm(args: byte[], args_len: byte): void {
@@ -377,9 +386,15 @@ namespace shell {
     }
 
     // Build absolute path.
-    var path: byte[64];
-    var path_len = _make_absolute(args, args_len, path);
-    len path = path_len;
+    var abs_path: byte[64];
+    var abs_len = _make_absolute(args, args_len, abs_path);
+
+    // Create dynamic array for resolve_path.
+    var path: byte[] = new byte[64];
+    for (var i: byte = 0; i < abs_len; i = i + 1) {
+      path[i] = abs_path[i];
+    }
+    len path = abs_len;
 
     // Find the file using path resolution.
     var result: kernel::fs::qfs::path_result;
@@ -388,6 +403,7 @@ namespace shell {
       std::console::print("rm: not found: ");
       _print_n(args, args_len);
       std::console::print("\n");
+      delete path;
       return;
     }
 
@@ -395,6 +411,7 @@ namespace shell {
     if (!kernel::fs::qfs::dir_delete_at(result.dir_result.sector, result.dir_result.slot)) {
       std::console::print("rm: failed to delete\n");
     }
+    delete path;
   }
 
   function cmd_mkdir(args: byte[], args_len: byte): void {
@@ -412,14 +429,21 @@ namespace shell {
     }
 
     // Build absolute path.
-    var path: byte[64];
-    var path_len = _make_absolute(args, args_len, path);
-    len path = path_len;
+    var abs_path: byte[64];
+    var abs_len = _make_absolute(args, args_len, abs_path);
+
+    // Create dynamic array for mkdir.
+    var path: byte[] = new byte[64];
+    for (var i: byte = 0; i < abs_len; i = i + 1) {
+      path[i] = abs_path[i];
+    }
+    len path = abs_len;
 
     var sector = kernel::fs::qfs::mkdir(path);
     if (sector == 0) {
       std::console::print("mkdir: failed to create directory\n");
     }
+    delete path;
   }
 
   function cmd_run(args: byte[], args_len: byte): void {
@@ -429,11 +453,18 @@ namespace shell {
     }
 
     // Build absolute path.
-    var path: byte[64];
-    var path_len = _make_absolute(args, args_len, path);
-    len path = path_len;
+    var abs_path: byte[64];
+    var abs_len = _make_absolute(args, args_len, abs_path);
+
+    // Create dynamic array for load_executable.
+    var path: byte[] = new byte[64];
+    for (var i: byte = 0; i < abs_len; i = i + 1) {
+      path[i] = abs_path[i];
+    }
+    len path = abs_len;
 
     var pid = load_executable(path, 0);
+    delete path;
     if (pid == 0) {
       std::console::print("run: failed to load program\n");
       return;
