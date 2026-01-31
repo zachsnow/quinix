@@ -49,6 +49,10 @@ EscapedChar
   / "\\'" { return "'"; }
   / "\\\"" { return "\""; }
   / "\\n" { return "\n"; }
+  / "\\t" { return "\t"; }
+  / "\\r" { return "\r"; }
+  / "\\0" { return "\0"; }
+  / "\\x" d1:[0-9a-fA-F] d2:[0-9a-fA-F] { return String.fromCharCode(parseInt(d1 + d2, 16)); }
 
 _ "commented whitespace"
   = Whitespace (Comment Whitespace)* { return; }

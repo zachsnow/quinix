@@ -31,6 +31,16 @@ namespace shell {
     }
   }
 
+  // ANSI color escape sequences.
+  function _reset(): void { std::console::print("\x1b[0m"); }
+  function _bold(): void { std::console::print("\x1b[1m"); }
+  function _red(): void { std::console::print("\x1b[31m"); }
+  function _green(): void { std::console::print("\x1b[32m"); }
+  function _yellow(): void { std::console::print("\x1b[33m"); }
+  function _blue(): void { std::console::print("\x1b[34m"); }
+  function _magenta(): void { std::console::print("\x1b[35m"); }
+  function _cyan(): void { std::console::print("\x1b[36m"); }
+
   // Print a number in decimal.
   function _print_num(n: byte): void {
     var buf: byte[12];
@@ -66,6 +76,67 @@ namespace shell {
     std::console::print("\n");
   }
 
+  function cmd_cd(args: byte[], args_len: byte): void {
+    // No args means go to root.
+    if (args_len == 0) {
+      cwd[0] = 47;  // "/"
+      cwd_len = 1;
+      return;
+    }
+
+    // Check if filesystem is initialized.
+    if (!kernel::fs::qfs::initialized) {
+      if (!kernel::fs::qfs::init()) {
+        std::console::print("cd: filesystem not available\n");
+        return;
+      }
+    }
+
+    // Resolve the path.
+    len args = args_len;
+    var result: kernel::fs::qfs::path_result;
+    var entry: kernel::fs::qfs::dirent;
+    if (!kernel::fs::qfs::resolve_path(args, &result, &entry)) {
+      std::console::print("cd: not found: ");
+      _print_n(args, args_len);
+      std::console::print("\n");
+      return;
+    }
+
+    // Must be a directory.
+    if ((entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) == 0) {
+      std::console::print("cd: not a directory: ");
+      _print_n(args, args_len);
+      std::console::print("\n");
+      return;
+    }
+
+    // Update cwd. Handle absolute vs relative paths.
+    if (args[0] == 47) {  // starts with "/"
+      // Absolute path - copy directly.
+      for (var i: byte = 0; i < args_len && i < cap cwd; i = i + 1) {
+        cwd[i] = args[i];
+      }
+      cwd_len = args_len;
+    } else {
+      // Relative path - append to cwd.
+      // Add "/" separator if cwd doesn't end with one.
+      var new_len = cwd_len;
+      if (cwd_len > 0 && cwd[cwd_len - 1] != 47) {
+        if (new_len < cap cwd) {
+          cwd[new_len] = 47;
+          new_len = new_len + 1;
+        }
+      }
+      // Append the path.
+      for (var j: byte = 0; j < args_len && new_len < cap cwd; j = j + 1) {
+        cwd[new_len] = args[j];
+        new_len = new_len + 1;
+      }
+      cwd_len = new_len;
+    }
+  }
+
   // List entries in a directory sector, following FAT chain.
   function _ls_dir(dir_sector: byte): void {
     var entry: kernel::fs::qfs::dirent;
@@ -82,9 +153,11 @@ namespace shell {
 
         if ((entry.flags & kernel::fs::qfs::DIRENT_USED) != 0 &&
             (entry.flags & kernel::fs::qfs::DIRENT_DELETED) == 0) {
-          // Print type indicator.
+          // Print type indicator and set color.
           if ((entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) != 0) {
+            _blue();
             std::console::print("d ");
+            _bold();
           } else {
             std::console::print("- ");
           }
@@ -97,6 +170,11 @@ namespace shell {
             var c: byte[1];
             c[0] = entry.name[n];
             std::console::print(c);
+          }
+
+          // Reset color if directory.
+          if ((entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) != 0) {
+            _reset();
           }
 
           // Print size.
@@ -124,31 +202,37 @@ namespace shell {
       }
     }
 
-    // Default to root if no path given.
+    // Use cwd if no path given.
+    var path: byte[];
+    var path_len: byte;
     if (args_len == 0) {
-      _ls_dir(kernel::fs::qfs::sb.root_start);
-      return;
+      path = cwd;
+      path_len = cwd_len;
+    } else {
+      path = args;
+      path_len = args_len;
     }
 
     // Resolve the path.
-    len args = args_len;
+    len path = path_len;
     var result: kernel::fs::qfs::path_result;
-    if (!kernel::fs::qfs::resolve_path(args, &result)) {
+    var entry: kernel::fs::qfs::dirent;
+    if (!kernel::fs::qfs::resolve_path(path, &result, &entry)) {
       std::console::print("ls: not found: ");
-      _print_n(args, args_len);
+      _print_n(path, path_len);
       std::console::print("\n");
       return;
     }
 
     // Must be a directory.
-    if ((result.entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) == 0) {
+    if ((entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) == 0) {
       std::console::print("ls: not a directory: ");
-      _print_n(args, args_len);
+      _print_n(path, path_len);
       std::console::print("\n");
       return;
     }
 
-    _ls_dir(result.entry.first_sector);
+    _ls_dir(entry.first_sector);
   }
 
   function cmd_cat(args: byte[], args_len: byte): void {
@@ -215,7 +299,8 @@ namespace shell {
     // Check if file already exists using path resolution.
     len args = args_len;
     var result: kernel::fs::qfs::path_result;
-    if (kernel::fs::qfs::resolve_path(args, &result)) {
+    var entry: kernel::fs::qfs::dirent;
+    if (kernel::fs::qfs::resolve_path(args, &result, &entry)) {
       // File already exists - nothing to do.
       return;
     }
@@ -253,7 +338,8 @@ namespace shell {
     // Find the file using path resolution.
     len args = args_len;
     var result: kernel::fs::qfs::path_result;
-    if (!kernel::fs::qfs::resolve_path(args, &result)) {
+    var entry: kernel::fs::qfs::dirent;
+    if (!kernel::fs::qfs::resolve_path(args, &result, &entry)) {
       std::console::print("rm: not found: ");
       _print_n(args, args_len);
       std::console::print("\n");
@@ -322,7 +408,15 @@ namespace shell {
     var line: byte[0x100];
 
     while (true) {
-      std::console::print("$ ");
+      // Print colored prompt: [cyan]cwd[reset] [green]$[reset]
+      _cyan();
+      _print_n(cwd, cwd_len);
+      _reset();
+      std::console::print(" ");
+      _green();
+      std::console::print("$");
+      _reset();
+      std::console::print(" ");
 
       var input_len = std::console::input(line);
       if (input_len == -1) {
@@ -365,6 +459,8 @@ namespace shell {
           cmd_help();
         } else if (str_eq_n("pwd", cmd, cmd_len)) {
           cmd_pwd();
+        } else if (str_eq_n("cd", cmd, cmd_len)) {
+          cmd_cd(args, args_len);
         } else if (str_eq_n("ls", cmd, cmd_len)) {
           cmd_ls(args, args_len);
         } else if (str_eq_n("cat", cmd, cmd_len)) {
