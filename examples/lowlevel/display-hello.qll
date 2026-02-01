@@ -6,10 +6,10 @@ function main(): byte {
   var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
 
   // Draw a few pixels directly
-  gfx::set_pixel(&fb, 10, 10, gfx::color::RED);
-  gfx::set_pixel(&fb, 11, 10, gfx::color::GREEN);
-  gfx::set_pixel(&fb, 12, 10, gfx::color::BLUE);
-  gfx::set_pixel(&fb, 10, 11, gfx::color::WHITE);
+  graphics::set_pixel(&fb, 10, 10, graphics::color::RED);
+  graphics::set_pixel(&fb, 11, 10, graphics::color::GREEN);
+  graphics::set_pixel(&fb, 12, 10, graphics::color::BLUE);
+  graphics::set_pixel(&fb, 10, 11, graphics::color::WHITE);
 
   // Show it
   display::flip(DISPLAY_BASE);

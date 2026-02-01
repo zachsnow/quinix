@@ -12,26 +12,26 @@ function main(): byte {
   var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
 
   // Clear to dark blue
-  gfx::clear(&fb, gfx::rgb(0x20, 0x20, 0x60));
+  graphics::clear(&fb, graphics::rgb(0x20, 0x20, 0x60));
 
   // Draw some shapes
   // White border
-  gfx::rect(&fb, 10, 10, 300, 180, gfx::color::WHITE);
+  graphics::rect(&fb, 10, 10, 300, 180, graphics::color::WHITE);
 
   // Colored rectangles
-  gfx::fill_rect(&fb, 20, 20, 60, 40, gfx::color::RED);
-  gfx::fill_rect(&fb, 90, 20, 60, 40, gfx::color::GREEN);
-  gfx::fill_rect(&fb, 160, 20, 60, 40, gfx::color::BLUE);
+  graphics::fill_rect(&fb, 20, 20, 60, 40, graphics::color::RED);
+  graphics::fill_rect(&fb, 90, 20, 60, 40, graphics::color::GREEN);
+  graphics::fill_rect(&fb, 160, 20, 60, 40, graphics::color::BLUE);
 
   // Lines
-  gfx::line(&fb, 20, 80, 280, 80, gfx::color::YELLOW);
-  gfx::line(&fb, 20, 80, 150, 140, gfx::color::CYAN);
-  gfx::line(&fb, 280, 80, 150, 140, gfx::color::MAGENTA);
+  graphics::line(&fb, 20, 80, 280, 80, graphics::color::YELLOW);
+  graphics::line(&fb, 20, 80, 150, 140, graphics::color::CYAN);
+  graphics::line(&fb, 280, 80, 150, 140, graphics::color::MAGENTA);
 
   // More rectangles
-  gfx::fill_rect(&fb, 230, 20, 60, 40, gfx::color::YELLOW);
-  gfx::rect(&fb, 20, 150, 100, 30, gfx::color::WHITE);
-  gfx::fill_rect(&fb, 140, 150, 100, 30, gfx::color::GRAY);
+  graphics::fill_rect(&fb, 230, 20, 60, 40, graphics::color::YELLOW);
+  graphics::rect(&fb, 20, 150, 100, 30, graphics::color::WHITE);
+  graphics::fill_rect(&fb, 140, 150, 100, 30, graphics::color::GRAY);
 
   // Flip to display
   display::flip(DISPLAY_BASE);

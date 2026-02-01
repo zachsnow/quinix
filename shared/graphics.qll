@@ -1,7 +1,7 @@
 // Quinix Graphics Library
 // Provides bitmap font, drawing primitives, and display helper functions.
 
-namespace gfx {
+namespace graphics {
   // RGBA color helpers
   function rgba(r: byte, g: byte, b: byte, a: byte): byte {
     return (a << 24) | (b << 16) | (g << 8) | r;

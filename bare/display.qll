@@ -30,8 +30,8 @@ namespace display {
   };
 
   // Initialize display peripheral from base address.
-  // Returns a gfx::framebuffer ready for drawing.
-  function init(base: byte, fb_memory: *byte): gfx::framebuffer {
+  // Returns a graphics::framebuffer ready for drawing.
+  function init(base: byte, fb_memory: *byte): graphics::framebuffer {
     var base_ptr = <unsafe *byte>base;
     var width = base_ptr[unsafe 1];
     var height = base_ptr[unsafe 2];
@@ -39,7 +39,7 @@ namespace display {
     // Set the framebuffer pointer in the peripheral
     base_ptr[unsafe 3] = <unsafe byte>fb_memory;
 
-    return gfx::framebuffer {
+    return graphics::framebuffer {
       pixels = fb_memory,
       width = width,
       height = height,

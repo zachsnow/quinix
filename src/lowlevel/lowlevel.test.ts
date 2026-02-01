@@ -2296,7 +2296,7 @@ describe('QLLC end-to-end', () => {
 
 describe('Display e2e', () => {
   const entrypointFile = path.resolve(__dirname, '..', '..', 'bare', 'entrypoint.qasm');
-  const gfxFile = path.resolve(__dirname, '..', '..', 'shared', 'gfx.qll');
+  const graphicsFile = path.resolve(__dirname, '..', '..', 'shared', 'graphics.qll');
   const displayFile = path.resolve(__dirname, '..', '..', 'bare', 'display.qll');
 
   test('display flip writes correct pixels', async () => {
@@ -2305,7 +2305,7 @@ describe('Display e2e', () => {
     try {
       // Load libraries
       const entrypoint = AssemblyProgram.parse(fs.readFileSync(entrypointFile, 'utf-8'), entrypointFile);
-      const gfxProgram = LowLevelProgram.parse(fs.readFileSync(gfxFile, 'utf-8'), gfxFile);
+      const graphicsProgram = LowLevelProgram.parse(fs.readFileSync(graphicsFile, 'utf-8'), graphicsFile);
       const displayProgram = LowLevelProgram.parse(fs.readFileSync(displayFile, 'utf-8'), displayFile);
 
       // Minimal test program: set 3 pixels and flip
@@ -2315,15 +2315,15 @@ describe('Display e2e', () => {
 
         function main(): byte {
           var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
-          gfx::set_pixel(&fb, 0, 0, gfx::color::RED);
-          gfx::set_pixel(&fb, 1, 0, gfx::color::GREEN);
-          gfx::set_pixel(&fb, 2, 0, gfx::color::BLUE);
+          graphics::set_pixel(&fb, 0, 0, graphics::color::RED);
+          graphics::set_pixel(&fb, 1, 0, graphics::color::GREEN);
+          graphics::set_pixel(&fb, 2, 0, graphics::color::BLUE);
           display::flip(DISPLAY_BASE);
           return 0;
         }
       `);
 
-      const program = LowLevelProgram.concat([gfxProgram, displayProgram, testProgram]);
+      const program = LowLevelProgram.concat([graphicsProgram, displayProgram, testProgram]);
       const errors = program.typecheck().errors;
       if (errors.length) {
         throw new Error(errors.join('\n'));

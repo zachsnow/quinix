@@ -14,29 +14,29 @@ function main(): byte {
 
   // Pre-compute background color to avoid nested function calls
   // (workaround for register allocation issue with complex expressions)
-  var bg = gfx::rgb(0x20, 0x20, 0x60);
+  var bg = graphics::rgb(0x20, 0x20, 0x60);
 
   // Clear to dark blue
-  gfx::clear(&fb, bg);
+  graphics::clear(&fb, bg);
 
   // Draw some shapes
   // White border
-  gfx::rect(&fb, 10, 10, 300, 180, gfx::color::WHITE);
+  graphics::rect(&fb, 10, 10, 300, 180, graphics::color::WHITE);
 
   // Colored rectangles
-  gfx::fill_rect(&fb, 20, 20, 60, 40, gfx::color::RED);
-  gfx::fill_rect(&fb, 90, 20, 60, 40, gfx::color::GREEN);
-  gfx::fill_rect(&fb, 160, 20, 60, 40, gfx::color::BLUE);
+  graphics::fill_rect(&fb, 20, 20, 60, 40, graphics::color::RED);
+  graphics::fill_rect(&fb, 90, 20, 60, 40, graphics::color::GREEN);
+  graphics::fill_rect(&fb, 160, 20, 60, 40, graphics::color::BLUE);
 
   // Lines
-  gfx::line(&fb, 20, 80, 280, 80, gfx::color::YELLOW);
-  gfx::line(&fb, 20, 80, 150, 140, gfx::color::CYAN);
-  gfx::line(&fb, 280, 80, 150, 140, gfx::color::MAGENTA);
+  graphics::line(&fb, 20, 80, 280, 80, graphics::color::YELLOW);
+  graphics::line(&fb, 20, 80, 150, 140, graphics::color::CYAN);
+  graphics::line(&fb, 280, 80, 150, 140, graphics::color::MAGENTA);
 
   // Text
-  gfx::font::draw_string(&fb, 20, 150, "Hello, Quinix!", gfx::color::WHITE, bg);
-  gfx::font::draw_string(&fb, 20, 160, "320x200 @ 32bpp", gfx::color::GRAY, bg);
-  gfx::font::draw_string(&fb, 20, 170, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", gfx::color::WHITE, bg);
+  graphics::font::draw_string(&fb, 20, 150, "Hello, Quinix!", graphics::color::WHITE, bg);
+  graphics::font::draw_string(&fb, 20, 160, "320x200 @ 32bpp", graphics::color::GRAY, bg);
+  graphics::font::draw_string(&fb, 20, 170, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", graphics::color::WHITE, bg);
 
   // Flip to display
   display::flip(DISPLAY_BASE);

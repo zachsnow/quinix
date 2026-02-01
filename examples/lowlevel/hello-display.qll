@@ -9,10 +9,10 @@ function main(): byte {
   var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
 
   // Clear to dark blue
-  gfx::clear(&fb, gfx::rgb(0x10, 0x10, 0x40));
+  graphics::clear(&fb, graphics::rgb(0x10, 0x10, 0x40));
 
   // Draw "Hello, World!" centered
-  gfx::font::draw_string(&fb, 100, 96, "Hello, World!", gfx::color::WHITE, gfx::rgb(0x10, 0x10, 0x40));
+  graphics::font::draw_string(&fb, 100, 96, "Hello, World!", graphics::color::WHITE, graphics::rgb(0x10, 0x10, 0x40));
 
   // Flip to display
   display::flip(DISPLAY_BASE);
