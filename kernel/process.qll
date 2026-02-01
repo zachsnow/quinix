@@ -31,7 +31,7 @@ namespace kernel {
       return;
     }
 
-    function create_process(binary: byte[], parent_id: byte): byte {
+    function create_process(binary: byte[], parent_id: byte, args: byte[], args_len: byte): byte {
       log("process: create_process start");
       // Check process limit
       if(len processes >= MAX_PROCESSES){
@@ -69,6 +69,40 @@ namespace kernel {
       var sbase = memory::stack_base(executable_base, executable_size, heap_size);
       log("process: setting task sp");
       var sp = sbase + stack_size;
+
+      // Copy args to the top of the stack and pass via callee-save registers.
+      // Args data is placed at the top of the stack (highest addresses).
+      // r32 = pointer to args data (virtual address), r33 = args length
+      // SP is set below the args data.
+      var stack_page = memory::table_page(table, 2);
+      var stack_phys = <unsafe * byte>(<byte>stack_page->physical_address);
+      if (args_len > 0) {
+        log("process: copying args to stack");
+
+        // Args data at top of stack: offset = stack_size - args_len
+        var args_data_offset = stack_size - args_len;
+
+        // Copy args data to physical memory
+        var args_dest = <unsafe * byte>(<unsafe byte>stack_phys + args_data_offset);
+        for (var j: byte = 0; j < args_len; j = j + 1) {
+          args_dest[unsafe j] = args[j];
+        }
+
+        // Set r32 = virtual address of args data
+        task->state.registers[32] = sbase + args_data_offset;
+        // Set r33 = args length
+        task->state.registers[33] = args_len;
+        // SP points below the args data
+        sp = sbase + args_data_offset;
+        log("process: args setup complete");
+      } else {
+        log("process: no args");
+        // No args: r32 = 0 (null pointer), r33 = 0 (zero length)
+        task->state.registers[32] = 0;
+        task->state.registers[33] = 0;
+        // SP stays at top of stack
+      }
+
       task->state.registers[63] = sp;
       // Verify the value was set correctly
       var verify = task->state.registers[63];

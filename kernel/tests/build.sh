@@ -38,5 +38,6 @@ build_program() {
 build_program "hello-a.qll"
 build_program "hello-b.qll"
 build_program "hello.qll"
+build_program "echo.qll"
 
 echo "All test programs built."

@@ -128,8 +128,7 @@ namespace shell {
     // Resolve the path.
     len args = args_len;
     var result: kernel::fs::qfs::path_result;
-    var entry: kernel::fs::qfs::dirent;
-    if (!kernel::fs::qfs::resolve_path(args, &result, &entry)) {
+    if (!kernel::fs::qfs::resolve_path(args, &result)) {
       std::console::print("cd: not found: ");
       _print_n(args, args_len);
       std::console::print("\n");
@@ -137,7 +136,7 @@ namespace shell {
     }
 
     // Must be a directory.
-    if ((entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) == 0) {
+    if ((result.entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) == 0) {
       std::console::print("cd: not a directory: ");
       _print_n(args, args_len);
       std::console::print("\n");
@@ -249,8 +248,7 @@ namespace shell {
     // Resolve the path.
     len path = path_len;
     var result: kernel::fs::qfs::path_result;
-    var entry: kernel::fs::qfs::dirent;
-    if (!kernel::fs::qfs::resolve_path(path, &result, &entry)) {
+    if (!kernel::fs::qfs::resolve_path(path, &result)) {
       std::console::print("ls: not found: ");
       _print_n(path, path_len);
       std::console::print("\n");
@@ -258,14 +256,14 @@ namespace shell {
     }
 
     // Must be a directory.
-    if ((entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) == 0) {
+    if ((result.entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) == 0) {
       std::console::print("ls: not a directory: ");
       _print_n(path, path_len);
       std::console::print("\n");
       return;
     }
 
-    _ls_dir(entry.first_sector);
+    _ls_dir(result.entry.first_sector);
   }
 
   function cmd_cat(args: byte[], args_len: byte): void {
@@ -346,8 +344,7 @@ namespace shell {
 
     // Check if file already exists using path resolution.
     var result: kernel::fs::qfs::path_result;
-    var entry: kernel::fs::qfs::dirent;
-    if (kernel::fs::qfs::resolve_path(path, &result, &entry)) {
+    if (kernel::fs::qfs::resolve_path(path, &result)) {
       // File already exists - nothing to do.
       delete path;
       return;
@@ -398,8 +395,7 @@ namespace shell {
 
     // Find the file using path resolution.
     var result: kernel::fs::qfs::path_result;
-    var entry: kernel::fs::qfs::dirent;
-    if (!kernel::fs::qfs::resolve_path(path, &result, &entry)) {
+    if (!kernel::fs::qfs::resolve_path(path, &result)) {
       std::console::print("rm: not found: ");
       _print_n(args, args_len);
       std::console::print("\n");
@@ -452,9 +448,24 @@ namespace shell {
       return;
     }
 
+    // Find the first space to split path from program args.
+    var path_end: byte = args_len;
+    for (var j: byte = 0; j < args_len; j = j + 1) {
+      if (args[j] == 32) {  // space character
+        path_end = j;
+        break;
+      }
+    }
+
+    // Extract just the path portion for _make_absolute.
+    var raw_path: byte[64];
+    for (var k: byte = 0; k < path_end && k < 64; k = k + 1) {
+      raw_path[k] = args[k];
+    }
+
     // Build absolute path.
     var abs_path: byte[64];
-    var abs_len = _make_absolute(args, args_len, abs_path);
+    var abs_len = _make_absolute(raw_path, path_end, abs_path);
 
     // Create dynamic array for load_executable.
     var path: byte[] = new byte[64];
@@ -463,7 +474,25 @@ namespace shell {
     }
     len path = abs_len;
 
-    var pid = load_executable(path, 0);
+    // Extract program args (everything after the first space).
+    var prog_args: byte[128];
+    var prog_args_len: byte = 0;
+    var prog_args_start = path_end + 1;
+    if (prog_args_start < args_len) {
+      for (var m: byte = prog_args_start; m < args_len && prog_args_len < 128; m = m + 1) {
+        prog_args[prog_args_len] = args[m];
+        prog_args_len = prog_args_len + 1;
+      }
+    }
+
+    // Debug: print args info
+    std::console::print("run: args_len=");
+    _print_num(prog_args_len);
+    std::console::print(" args='");
+    _print_n(prog_args, prog_args_len);
+    std::console::print("'\n");
+
+    var pid = load_executable(path, 0, prog_args, prog_args_len);
     delete path;
     if (pid == 0) {
       std::console::print("run: failed to load program\n");

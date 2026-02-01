@@ -1,5 +1,5 @@
 // Simplest test program - just exits
-function main(): byte {
+function main(args: string): byte {
   lib::exit(42);
   return 0;
 }
