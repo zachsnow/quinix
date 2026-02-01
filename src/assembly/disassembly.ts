@@ -319,22 +319,16 @@ class Disassembler {
   /**
    * Try to parse a string starting at the given index in the data section.
    * Returns [text, wordsConsumed] or undefined if not a valid string.
+   *
+   * String literals are stored as Pascal strings: [length][codepoints...]
    */
   private tryParseString(startIndex: number): [string, number] | undefined {
-    if (startIndex + 2 > this.instructions.length) {
+    if (startIndex + 1 > this.instructions.length) {
       return undefined;
     }
 
-    const capacityInst = this.instructions[startIndex];
-    const lengthInst = this.instructions[startIndex + 1];
-
-    const capacity = capacityInst.immediate ?? capacityInst.encode();
+    const lengthInst = this.instructions[startIndex];
     const length = lengthInst.immediate ?? lengthInst.encode();
-
-    // String literals have capacity == length
-    if (capacity !== length) {
-      return undefined;
-    }
 
     // Sanity check: reasonable string length
     if (length === 0 || length > 10000) {
@@ -342,14 +336,14 @@ class Disassembler {
     }
 
     // Check we have enough words
-    if (startIndex + 2 + length > this.instructions.length) {
+    if (startIndex + 1 + length > this.instructions.length) {
       return undefined;
     }
 
     // Check all codepoints are printable
     const codepoints: number[] = [];
     for (let i = 0; i < length; i++) {
-      const inst = this.instructions[startIndex + 2 + i];
+      const inst = this.instructions[startIndex + 1 + i];
       const cp = inst.immediate ?? inst.encode();
       if (!this.isPrintable(cp)) {
         return undefined;
@@ -358,7 +352,7 @@ class Disassembler {
     }
 
     const text = String.fromCodePoint(...codepoints);
-    return [text, 2 + length];
+    return [text, 1 + length];
   }
 
   /**

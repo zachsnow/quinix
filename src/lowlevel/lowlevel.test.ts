@@ -1252,6 +1252,15 @@ describe('QLLC end-to-end', () => {
     `);
   });
 
+  test('global string literal fixed-size array', () => {
+    return expectRunToBe(72, `
+      global g: byte[6] = "Hello!";
+      function main(): byte {
+        return g[0];
+      }
+    `);
+  });
+
   test('global struct literal', () => {
     return expectRunToBe(20, `
       type Point = struct {

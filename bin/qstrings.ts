@@ -104,24 +104,22 @@ function reportString(address: number, codepoints: number[], type: string) {
 }
 
 function findDataStrings(memory: Memory) {
-  // Scan for data strings stored as:
-  // [capacity: u32] [length: u32] [codepoints: u32 * length]
+  // Scan for data strings stored as Pascal strings:
+  // [length: u32] [codepoints: u32 * length]
   let i = 0;
-  while (i < memory.length - 2) {
-    const capacity = memory[i];
-    const length = memory[i + 1];
+  while (i < memory.length - 1) {
+    const length = memory[i];
 
     if (
-      capacity === length &&
       length >= minLength &&
       length < 10000 &&
-      i + 2 + length <= memory.length
+      i + 1 + length <= memory.length
     ) {
       let isString = true;
       const codepoints: number[] = [];
 
       for (let j = 0; j < length; j++) {
-        const codepoint = memory[i + 2 + j];
+        const codepoint = memory[i + 1 + j];
         if (!isPrintableAscii(codepoint)) {
           isString = false;
           break;
@@ -131,7 +129,7 @@ function findDataStrings(memory: Memory) {
 
       if (isString) {
         reportString(i, codepoints, "data");
-        i += 2 + length;
+        i += 1 + length;
         continue;
       }
     }

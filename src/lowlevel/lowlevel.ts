@@ -289,10 +289,10 @@ class GlobalDeclaration extends BaseValueDeclaration {
       const cType = this.type.resolve();
       // Only special-case for arrays; slices need the full compilation path.
       if (cType instanceof ArrayType) {
-        const len = this.expression.length;
+        // Fixed-size arrays don't have a length header (length is compile-time constant).
+        // Emit codepoints directly without using TextData (which adds a length prefix).
         return [
-          new DataDirective(reference, new ImmediatesData([len])).comment('length header'),
-          new DataDirective(new Reference(`${this.qualifiedIdentifier}_text$`), new TextData(this.expression.text)),
+          new DataDirective(reference, new ImmediatesData([...this.expression.codePoints])),
         ];
       }
       // For slices, fall through to normal compilation - reserve space for slice descriptor.
