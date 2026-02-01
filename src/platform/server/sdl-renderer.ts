@@ -40,6 +40,10 @@ function getSDLPath(): string {
 
 // SDL2 FFI bindings
 const sdl = dlopen(getSDLPath(), {
+  SDL_SetHint: {
+    args: [FFIType.cstring, FFIType.cstring],
+    returns: FFIType.i32,
+  },
   SDL_Init: {
     args: [FFIType.u32],
     returns: FFIType.i32,
@@ -96,6 +100,10 @@ const sdl = dlopen(getSDLPath(), {
     args: [FFIType.ptr],
     returns: FFIType.i32,
   },
+  SDL_RaiseWindow: {
+    args: [FFIType.ptr],
+    returns: FFIType.void,
+  },
 });
 
 // SDL_WINDOWPOS_CENTERED
@@ -109,6 +117,11 @@ export function createSDLRenderer(
   title: string = "Quinix Display",
   scale: number = 2
 ): { renderer: DisplayRenderer; cleanup: () => void } {
+  // Set app name hint before init (for macOS menu bar)
+  const appNameHint = Buffer.from("SDL_APP_NAME\0", "utf8");
+  const appNameValue = Buffer.from("Quinix\0", "utf8");
+  sdl.symbols.SDL_SetHint(ptr(appNameHint), ptr(appNameValue));
+
   // Initialize SDL
   if (sdl.symbols.SDL_Init(SDL_INIT_VIDEO) < 0) {
     throw new Error(`SDL_Init failed: ${sdl.symbols.SDL_GetError()}`);
@@ -122,6 +135,14 @@ export function createSDLRenderer(
 
   // Encode title as null-terminated buffer
   const titleBuffer = Buffer.from(title + "\0", "utf8");
+
+  // Background event pump to keep window responsive
+  const eventBuffer = Buffer.alloc(64);
+  const pollInterval = setInterval(() => {
+    while (sdl.symbols.SDL_PollEvent(ptr(eventBuffer))) {
+      // Drain event queue to keep window responsive
+    }
+  }, 50);
 
   const displayRenderer: DisplayRenderer = (pixels, width, height) => {
     // Create or recreate window/texture if dimensions changed
@@ -149,6 +170,9 @@ export function createSDLRenderer(
       if (!window) {
         throw new Error(`SDL_CreateWindow failed: ${sdl.symbols.SDL_GetError()}`);
       }
+
+      // Raise window to front (needed on macOS)
+      sdl.symbols.SDL_RaiseWindow(window);
 
       // Create renderer
       renderer = sdl.symbols.SDL_CreateRenderer(window, -1, 0);
@@ -197,6 +221,7 @@ export function createSDLRenderer(
   };
 
   const cleanup = () => {
+    clearInterval(pollInterval);
     if (texture) {
       sdl.symbols.SDL_DestroyTexture(texture);
       texture = null;
