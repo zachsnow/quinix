@@ -1,12 +1,16 @@
 import fs from 'fs';
 import path from 'path';
 
+import os from 'os';
+
 import { LowLevelProgram } from './lowlevel';
 import { Compiler } from './compiler';
 import { parse as _parse } from './parser';
 import { VM, VMResult } from '@/vm/vm';
+import { DisplayPeripheral } from '@/vm/peripherals';
 import { Immediate } from '@/lib/types';
 import { AssemblyProgram } from '@/assembly/assembly';
+import { createFileRenderer } from '@server/file-renderer';
 
 describe('QLLC parsing', () => {
   function parseError(programText: string) {
@@ -2287,5 +2291,76 @@ describe('QLLC end-to-end', () => {
       // (1.0 + 2.0) * 3.0 - 1.0 = 8.0 -> 8
       return expectFloatResultToBe('(1.0f + 2.0f) * 3.0f - 1.0f', 8);
     });
+  });
+});
+
+describe('Display e2e', () => {
+  const entrypointFile = path.resolve(__dirname, '..', '..', 'bare', 'entrypoint.qasm');
+  const gfxFile = path.resolve(__dirname, '..', '..', 'shared', 'gfx.qll');
+  const displayFile = path.resolve(__dirname, '..', '..', 'bare', 'display.qll');
+
+  test('display flip writes correct pixels', async () => {
+    const tempFile = path.join(os.tmpdir(), `display-test-${Date.now()}.ppm`);
+
+    try {
+      // Load libraries
+      const entrypoint = AssemblyProgram.parse(fs.readFileSync(entrypointFile, 'utf-8'), entrypointFile);
+      const gfxProgram = LowLevelProgram.parse(fs.readFileSync(gfxFile, 'utf-8'), gfxFile);
+      const displayProgram = LowLevelProgram.parse(fs.readFileSync(displayFile, 'utf-8'), displayFile);
+
+      // Minimal test program: set 3 pixels and flip
+      const testProgram = LowLevelProgram.parse(`
+        .constant global DISPLAY_BASE: byte = 0x300;  // Only peripheral
+        .constant global FB_ADDR: byte = 0x10000;
+
+        function main(): byte {
+          var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
+          gfx::set_pixel(&fb, 0, 0, gfx::color::RED);
+          gfx::set_pixel(&fb, 1, 0, gfx::color::GREEN);
+          gfx::set_pixel(&fb, 2, 0, gfx::color::BLUE);
+          display::flip(DISPLAY_BASE);
+          return 0;
+        }
+      `);
+
+      const program = LowLevelProgram.concat([gfxProgram, displayProgram, testProgram]);
+      const errors = program.typecheck().errors;
+      if (errors.length) {
+        throw new Error(errors.join('\n'));
+      }
+
+      const assembled = AssemblyProgram.concat([entrypoint, program.compile()]);
+      const [messages, binary] = assembled.assemble();
+      if (!binary) {
+        throw new Error(messages.toString());
+      }
+
+      // Run with display peripheral
+      const renderer = createFileRenderer(tempFile);
+      const display = new DisplayPeripheral(4, 4, renderer);
+      const vm = new VM({ peripherals: [display], cycles: 50000 });
+      await vm.run(binary.encode());
+
+      // Verify PPM output
+      const ppm = fs.readFileSync(tempFile);
+      const headerEnd = ppm.indexOf(0x0A, ppm.indexOf(0x0A, 3) + 1) + 1;
+      const pixels = ppm.slice(headerEnd);
+
+      // Check first 3 pixels (RGB format, 3 bytes each)
+      // RED: R=255, G=0, B=0
+      expect(pixels[0]).toBe(0xFF);
+      expect(pixels[1]).toBe(0x00);
+      expect(pixels[2]).toBe(0x00);
+      // GREEN: R=0, G=255, B=0
+      expect(pixels[3]).toBe(0x00);
+      expect(pixels[4]).toBe(0xFF);
+      expect(pixels[5]).toBe(0x00);
+      // BLUE: R=0, G=0, B=255
+      expect(pixels[6]).toBe(0x00);
+      expect(pixels[7]).toBe(0x00);
+      expect(pixels[8]).toBe(0xFF);
+    } finally {
+      fs.rmSync(tempFile, { force: true });
+    }
   });
 });
