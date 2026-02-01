@@ -13,3 +13,4 @@ out.qasm
 tsconfig.build.tsbuildinfo
 *.qfs
 .worktrees/
+image/dist/
