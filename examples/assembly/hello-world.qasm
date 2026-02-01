@@ -1,7 +1,7 @@
 ; Prints "Hello, world!"
 
 data @hello 'Hello world!\n'
-data @consoleControl 0x302
+data @consoleControl 0x303
 data @consoleBuffer 0x303
 
 constant r0 @hello

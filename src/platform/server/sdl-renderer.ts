@@ -8,7 +8,7 @@ import type { DisplayRenderer } from "@/vm/peripherals";
 // SDL2 constants
 const SDL_INIT_VIDEO = 0x00000020;
 const SDL_WINDOW_SHOWN = 0x00000004;
-const SDL_PIXELFORMAT_RGBA32 = 0x16462004;
+const SDL_PIXELFORMAT_ARGB8888 = 0x16362004;
 const SDL_TEXTUREACCESS_STREAMING = 1;
 
 // Find SDL2 library path based on platform
@@ -183,7 +183,7 @@ export function createSDLRenderer(
       // Create texture at native resolution
       texture = sdl.symbols.SDL_CreateTexture(
         renderer,
-        SDL_PIXELFORMAT_RGBA32,
+        SDL_PIXELFORMAT_ARGB8888,
         SDL_TEXTUREACCESS_STREAMING,
         width,
         height

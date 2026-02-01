@@ -2,7 +2,7 @@
 // Run with: bun run bin/qrun.ts examples/lowlevel/display-simple.qll -- --display 320x200
 
 // Display peripheral base address
-.constant global DISPLAY_BASE: byte = 0x602;
+.constant global DISPLAY_BASE: byte = 0x603;
 
 // Framebuffer in physical memory
 .constant global FB_ADDR: byte = 0x10000;

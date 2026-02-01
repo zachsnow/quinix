@@ -1,6 +1,6 @@
 
 function print(message: byte[]): void {
-  var debugOutputControl = <unsafe * byte> 0x302;
+  var debugOutputControl = <unsafe * byte> 0x303;
   var debugOutputBuffer = <unsafe * byte> 0x303;
 
   // Copy.

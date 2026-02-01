@@ -2,24 +2,24 @@
 // Provides bitmap font, drawing primitives, and display helper functions.
 
 namespace graphics {
-  // RGBA color helpers
+  // RGBA color helpers (format: 0xAARRGGBB for SDL compatibility)
   function rgba(r: byte, g: byte, b: byte, a: byte): byte {
-    return (a << 24) | (b << 16) | (g << 8) | r;
+    return (a << 24) | (r << 16) | (g << 8) | b;
   }
 
   function rgb(r: byte, g: byte, b: byte): byte {
     return rgba(r, g, b, 0xFF);
   }
 
-  // Common colors
+  // Common colors (format: 0xAARRGGBB)
   namespace color {
     .constant global BLACK: byte = 0xFF000000;
     .constant global WHITE: byte = 0xFFFFFFFF;
-    .constant global RED: byte = 0xFF0000FF;
+    .constant global RED: byte = 0xFFFF0000;
     .constant global GREEN: byte = 0xFF00FF00;
-    .constant global BLUE: byte = 0xFFFF0000;
-    .constant global YELLOW: byte = 0xFF00FFFF;
-    .constant global CYAN: byte = 0xFFFFFF00;
+    .constant global BLUE: byte = 0xFF0000FF;
+    .constant global YELLOW: byte = 0xFFFFFF00;
+    .constant global CYAN: byte = 0xFF00FFFF;
     .constant global MAGENTA: byte = 0xFFFF00FF;
     .constant global GRAY: byte = 0xFF808080;
   }
@@ -175,15 +175,23 @@ namespace graphics {
       return <unsafe *byte>(<unsafe byte>&FONT_DATA + index * 8);
     }
 
-    // Draw a single character
+    // Draw a single character (fast version - no bounds checking)
     function draw_char(fb: *framebuffer, x: byte, y: byte, c: byte, fg: byte, bg: byte): void {
       var glyph = get_glyph(c);
+      var width = fb->width;
+      var base = y * width + x;
       for (var row: byte = 0; row < 8; row = row + 1) {
         var bits = glyph[unsafe row];
-        for (var col: byte = 0; col < 8; col = col + 1) {
-          var color = (bits & (0x80 >> col)) ? fg : bg;
-          set_pixel(fb, x + col, y + row, color);
-        }
+        var offset = base + row * width;
+        // Unrolled inner loop for speed
+        fb->pixels[unsafe offset + 0] = (bits & 0x80) ? fg : bg;
+        fb->pixels[unsafe offset + 1] = (bits & 0x40) ? fg : bg;
+        fb->pixels[unsafe offset + 2] = (bits & 0x20) ? fg : bg;
+        fb->pixels[unsafe offset + 3] = (bits & 0x10) ? fg : bg;
+        fb->pixels[unsafe offset + 4] = (bits & 0x08) ? fg : bg;
+        fb->pixels[unsafe offset + 5] = (bits & 0x04) ? fg : bg;
+        fb->pixels[unsafe offset + 6] = (bits & 0x02) ? fg : bg;
+        fb->pixels[unsafe offset + 7] = (bits & 0x01) ? fg : bg;
       }
     }
 

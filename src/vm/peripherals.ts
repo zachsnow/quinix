@@ -352,6 +352,51 @@ class TimerPeripheral extends Peripheral {
 }
 
 /**
+ * A peripheral providing a millisecond clock.
+ * Read the single word to get milliseconds since VM start.
+ */
+class ClockPeripheral extends Peripheral {
+  public readonly name = "clock";
+  public readonly identifier = 0x00000006;
+
+  public readonly io = 0x0;
+  public readonly shared = 0x1;
+
+  private startTime = 0;
+  private interval?: ReturnType<typeof setInterval>;
+
+  public map(vm: VM, mapping: PeripheralMapping): void {
+    super.map(vm, mapping);
+
+    if (!this.mapping) {
+      this.unmapped();
+    }
+
+    this.startTime = Date.now();
+    this.mapping.view[0] = 0;
+
+    // Update clock every 1ms
+    this.interval = setInterval(() => {
+      if (this.mapping) {
+        this.mapping.view[0] = Date.now() - this.startTime;
+      }
+    }, 1);
+  }
+
+  public unmap() {
+    if (this.interval) {
+      clearInterval(this.interval);
+      this.interval = undefined;
+    }
+    super.unmap();
+  }
+
+  public notify(address: Address): void {
+    // No-op: clock is read-only
+  }
+}
+
+/**
  * Callback type for display rendering.
  * Called on FLIP with the framebuffer pixels.
  */
@@ -440,6 +485,6 @@ class DisplayPeripheral extends Peripheral {
   }
 }
 
-export { BufferedPeripheral, DisplayPeripheral, Peripheral, TimerPeripheral };
+export { BufferedPeripheral, ClockPeripheral, DisplayPeripheral, Peripheral, TimerPeripheral };
 export type { DisplayRenderer, PeripheralMapping };
 

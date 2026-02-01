@@ -20,7 +20,7 @@ import { createFileRenderer } from "@server/file-renderer";
 import { createSDLRenderer } from "@server/sdl-renderer";
 import { DisplayPeripheral } from "@/vm/peripherals";
 import { SECTOR_SIZE_WORDS, sectorsFromFileSize } from "@server/qfs";
-import { Peripheral, TimerPeripheral } from "@/vm/peripherals";
+import { ClockPeripheral, Peripheral, TimerPeripheral } from "@/vm/peripherals";
 import { Breakpoint, VM, Watchpoint } from "@/vm/vm";
 
 const log = logger("qvm");
@@ -210,6 +210,7 @@ if (argv.display) {
 // 5. Run program.
 const peripherals: Peripheral[] = [
   new TimerPeripheral(),
+  new ClockPeripheral(),
   new DebugBreakPeripheral(),
   new DebugOutputPeripheral(),
   new DebugInputPeripheral(),

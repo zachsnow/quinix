@@ -1,13 +1,14 @@
 // Bare-metal display peripheral interface.
 // DisplayPeripheral (0x5) is mapped after other debug peripherals.
 //
-// With default qvm peripheral set, display is at 0x602:
+// With default qvm peripheral set, display is at 0x603:
 //   0x300: Timer (1 word)
-//   0x301: DebugBreak (1 word)
-//   0x302: DebugOutput (0x100 words)
-//   0x402: DebugInput (0x100 words)
-//   0x502: DebugFile (0x100 words)
-//   0x602: Display (4 words)
+//   0x301: Clock (1 word)
+//   0x302: DebugBreak (1 word)
+//   0x303: DebugOutput (0x100 words)
+//   0x403: DebugInput (0x100 words)
+//   0x503: DebugFile (0x100 words)
+//   0x603: Display (4 words)
 //
 // Memory layout at base address:
 //   +0: Control (write 0x01 to flip)

@@ -15,13 +15,14 @@ export function createFileRenderer(outputPath: string): DisplayRenderer {
     const header = `P6\n${width} ${height}\n255\n`;
     const headerBytes = Buffer.from(header, "ascii");
 
-    // Convert RGBA pixels to RGB (strip alpha)
+    // Convert ARGB pixels to RGB (strip alpha)
+    // Pixel format: 0xAARRGGBB
     const rgbData = Buffer.alloc(width * height * 3);
     for (let i = 0; i < pixels.length; i++) {
       const pixel = pixels[i];
-      rgbData[i * 3 + 0] = pixel & 0xff;         // R
+      rgbData[i * 3 + 0] = (pixel >> 16) & 0xff; // R
       rgbData[i * 3 + 1] = (pixel >> 8) & 0xff;  // G
-      rgbData[i * 3 + 2] = (pixel >> 16) & 0xff; // B
+      rgbData[i * 3 + 2] = pixel & 0xff;         // B
     }
 
     // Write PPM file

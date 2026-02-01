@@ -19,10 +19,10 @@ describe('createFileRenderer', () => {
   test('creates valid PPM file', () => {
     const renderer = createFileRenderer(tempFile);
     const pixels = new Uint32Array([
-      0xFF0000FF,  // ABGR: Red
-      0xFF00FF00,  // ABGR: Green
-      0xFFFF0000,  // ABGR: Blue
-      0xFFFFFFFF,  // ABGR: White
+      0xFFFF0000,  // ARGB: Red
+      0xFF00FF00,  // ARGB: Green
+      0xFF0000FF,  // ARGB: Blue
+      0xFFFFFFFF,  // ARGB: White
     ]);
 
     renderer(pixels, 2, 2);

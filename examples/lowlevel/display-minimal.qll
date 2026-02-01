@@ -2,8 +2,8 @@
 // Run with: bun run bin/qrun.ts examples/lowlevel/display-minimal.qll -- --display 64x64
 
 function main(): byte {
-  // Display peripheral at 0x602
-  var base = <unsafe *byte>0x602;
+  // Display peripheral at 0x603
+  var base = <unsafe *byte>0x603;
   var width = base[unsafe 1];
   var height = base[unsafe 2];
 

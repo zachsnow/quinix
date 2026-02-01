@@ -205,7 +205,7 @@ class VM {
 
   public static readonly PROGRAM_ADDR = 0x1000;
 
-  private readonly DEFAULT_PERIPHERAL_FREQUENCY = 1000;
+  private readonly DEFAULT_PERIPHERAL_FREQUENCY = 10000;
   private peripheralFrequency: number;
   private peripherals: Peripheral[] = [];
   private mappedPeripherals: PeripheralMapping[] = [];
@@ -840,19 +840,21 @@ class VM {
     const maxCycles = this.maxCycles;
     let stepCycles = 0;
 
+    // Cache whether we have breakpoints/watchpoints to avoid checks when empty
+    const hasBreakpoints = Object.keys(this.breakpointAddresses).length > 0;
+    const hasWatchpoints = this.watchpoints.length > 0;
+
     while (true) {
       // Fetch the instruction.
       let virtualIp = registers[Register.IP];
 
 
-      // Check breakpoints. If we found one, run the debugger.
-      // Breakpoints are set against virtual memory for now.
+      // Check breakpoints only if any are set
       if (
+        hasBreakpoints &&
         this.breakpointAddresses[virtualIp]?.type === "execute" &&
         !this.debugger
       ) {
-        // If the debugger returns a "real" result, we're done,
-        // otherwise we can carry on executing.
         return "break";
       }
 
@@ -877,24 +879,29 @@ class VM {
         return "continue";
       }
 
-      // Fetch and decode the instruction.
+      // Fetch and decode instruction inline (avoid object allocation)
       const encoded = memory[physicalIp];
-      const decoded = Instruction.decode(encoded);
+      const operation = (encoded >>> 24) & 0xff;
 
-      // Invalid instruction.
-      if (decoded.immediate !== undefined) {
+      // Invalid instruction check
+      if (!Operation.isValid(operation)) {
         this.fault(
-          `${Address.toString(virtualIp)}: invalid instruction: ${decoded}`
+          `${Address.toString(virtualIp)}: invalid instruction: ${Immediate.toString(encoded)}`
         );
         return "continue";
       }
 
-      log.debug(`${state}: ${Immediate.toString(encoded)}: ${decoded}`);
+      // Inline decode - extract register fields directly
+      const dr = (encoded >>> 16) & 0xff;
+      const sr0 = (encoded >>> 8) & 0xff;
+      const sr1 = encoded & 0xff;
+
+      log.debug(`${state}: ${Immediate.toString(encoded)}: op=${operation} dr=${dr} sr0=${sr0} sr1=${sr1}`);
 
       // By default we advance by 1; constants, jumps, and interrupts change this.
       let ipOffset = 1;
 
-      switch (decoded.operation) {
+      switch (operation) {
         case Operation.HALT:
           return "halt";
 
@@ -902,7 +909,7 @@ class VM {
           return "wait";
 
         case Operation.INT: {
-          const interrupt = registers[decoded.sr0!];
+          const interrupt = registers[sr0];
           const prepared = this.prepareInterrupt(interrupt);
           if (prepared) {
             // Interrupt return always continues execution (the scheduler may have
@@ -914,10 +921,11 @@ class VM {
         }
 
         case Operation.LOAD: {
-          const virtualAddress = registers[decoded.sr0!];
+          const virtualAddress = registers[sr0];
 
-          // Check for breakpoints.
+          // Check for breakpoints only if any are set
           if (
+            hasBreakpoints &&
             this.breakpointAddresses[virtualAddress]?.type === "read" &&
             !this.debugger
           ) {
@@ -932,7 +940,7 @@ class VM {
             this.fault(
               `memory fault: ${Address.toString(
                 virtualAddress
-              )} invalid mapping reading -- ${decoded}`
+              )} invalid mapping reading`
             );
             return "continue";
           }
@@ -941,23 +949,26 @@ class VM {
             this.fault(
               `memory fault: ${Address.toString(
                 physicalAddress
-              )} out of bounds reading -- ${decoded}`
+              )} out of bounds reading`
             );
             return "continue";
           }
 
           const value = memory[physicalAddress];
-          registers[decoded.dr!] = value;
+          registers[dr] = value;
 
-          // Check watchpoints (physical address).
-          this.checkWatchpoint(physicalAddress, value, "read");
+          // Check watchpoints only if any are set
+          if (hasWatchpoints) {
+            this.checkWatchpoint(physicalAddress, value, "read");
+          }
           break;
         }
         case Operation.STORE: {
-          const virtualAddress = registers[decoded.dr!];
+          const virtualAddress = registers[dr];
 
-          // Check for breakpoints.
+          // Check for breakpoints only if any are set
           if (
+            hasBreakpoints &&
             this.breakpointAddresses[virtualAddress]?.type === "write" &&
             !this.debugger
           ) {
@@ -972,7 +983,7 @@ class VM {
             this.fault(
               `memory fault: ${Address.toString(
                 virtualAddress
-              )} invalid mapping writing at IP=${Address.toString(virtualIp)} -- ${decoded}`
+              )} invalid mapping writing at IP=${Address.toString(virtualIp)}`
             );
             return "continue";
           }
@@ -981,17 +992,19 @@ class VM {
             this.fault(
               `memory fault: ${Address.toString(
                 physicalAddress
-              )} out of bounds writing -- ${decoded}`
+              )} out of bounds writing`
             );
             return "continue";
           }
 
           const oldValue = memory[physicalAddress];
-          const value = registers[decoded.sr0!];
-          memory[physicalAddress] = value;
+          const storeValue = registers[sr0];
+          memory[physicalAddress] = storeValue;
 
-          // Check watchpoints (physical address).
-          this.checkWatchpoint(physicalAddress, oldValue);
+          // Check watchpoints only if any are set
+          if (hasWatchpoints) {
+            this.checkWatchpoint(physicalAddress, oldValue);
+          }
 
           // Check peripheral mapping for a method.
           const peripheralMapping = peripheralAddresses[physicalAddress];
@@ -1006,7 +1019,7 @@ class VM {
           break;
         }
         case Operation.MOV:
-          registers[decoded.dr!] = registers[decoded.sr0!];
+          registers[dr] = registers[sr0];
           break;
         case Operation.CONSTANT: {
           const virtualAddress = virtualIp + 1;
@@ -1030,12 +1043,12 @@ class VM {
             return "continue";
           }
 
-          const value = memory[physicalAddress];
-          registers[decoded.dr!] = value;
+          const constValue = memory[physicalAddress];
+          registers[dr] = constValue;
           log.debug(
             `${state.toString()}: ${Immediate.toString(
-              value
-            )}: ${Immediate.toString(value)}`
+              constValue
+            )}: ${Immediate.toString(constValue)}`
           );
 
           ipOffset = 2;
@@ -1043,82 +1056,82 @@ class VM {
         }
 
         case Operation.ADD:
-          registers[decoded.dr!] =
-            (registers[decoded.sr0!] + registers[decoded.sr1!]) >>> 0;
+          registers[dr] =
+            (registers[sr0] + registers[sr1]) >>> 0;
           break;
         case Operation.SUB:
-          registers[decoded.dr!] =
-            (registers[decoded.sr0!] - registers[decoded.sr1!]) >>> 0;
+          registers[dr] =
+            (registers[sr0] - registers[sr1]) >>> 0;
           break;
         case Operation.MUL:
-          registers[decoded.dr!] =
-            Math.imul(registers[decoded.sr0!], registers[decoded.sr1!]) >>> 0;
+          registers[dr] =
+            Math.imul(registers[sr0], registers[sr1]) >>> 0;
           break;
         case Operation.DIV:
-          registers[decoded.dr!] =
-            (registers[decoded.sr0!] / registers[decoded.sr1!]) >>> 0;
+          registers[dr] =
+            (registers[sr0] / registers[sr1]) >>> 0;
           break;
         case Operation.MOD:
-          registers[decoded.dr!] =
-            registers[decoded.sr0!] % registers[decoded.sr1!] >>> 0;
+          registers[dr] =
+            registers[sr0] % registers[sr1] >>> 0;
           break;
 
         case Operation.AND:
-          registers[decoded.dr!] =
-            (registers[decoded.sr0!] & registers[decoded.sr1!]) >>> 0;
+          registers[dr] =
+            (registers[sr0] & registers[sr1]) >>> 0;
           break;
         case Operation.OR:
-          registers[decoded.dr!] =
-            (registers[decoded.sr0!] | registers[decoded.sr1!]) >>> 0;
+          registers[dr] =
+            (registers[sr0] | registers[sr1]) >>> 0;
           break;
         case Operation.NOT:
-          registers[decoded.dr!] = ~registers[decoded.sr0!] >>> 0;
+          registers[dr] = ~registers[sr0] >>> 0;
           break;
         case Operation.SHL:
-          registers[decoded.dr!] =
-            (registers[decoded.sr0!] << (registers[decoded.sr1!] & 0x1f)) >>> 0;
+          registers[dr] =
+            (registers[sr0] << (registers[sr1] & 0x1f)) >>> 0;
           break;
         case Operation.SHR:
-          registers[decoded.dr!] =
-            registers[decoded.sr0!] >>> (registers[decoded.sr1!] & 0x1f);
+          registers[dr] =
+            registers[sr0] >>> (registers[sr1] & 0x1f);
           break;
 
         case Operation.EQ:
-          registers[decoded.dr!] =
-            registers[decoded.sr0!] === registers[decoded.sr1!] ? 1 : 0;
+          registers[dr] =
+            registers[sr0] === registers[sr1] ? 1 : 0;
           break;
         case Operation.NEQ:
-          registers[decoded.dr!] =
-            registers[decoded.sr0!] !== registers[decoded.sr1!] ? 1 : 0;
+          registers[dr] =
+            registers[sr0] !== registers[sr1] ? 1 : 0;
           break;
         case Operation.LT:
-          registers[decoded.dr!] =
-            (registers[decoded.sr0!] >>> 0) <
-              (registers[decoded.sr1!] >>> 0)
+          registers[dr] =
+            (registers[sr0] >>> 0) <
+              (registers[sr1] >>> 0)
               ? 1
               : 0;
           break;
         case Operation.GT:
-          registers[decoded.dr!] =
-            (registers[decoded.sr0!] >>> 0) >
-              (registers[decoded.sr1!] >>> 0)
+          registers[dr] =
+            (registers[sr0] >>> 0) >
+              (registers[sr1] >>> 0)
               ? 1
               : 0;
           break;
 
         case Operation.JMP:
-          registers[Register.IP] = registers[decoded.sr0!];
+          registers[Register.IP] = registers[sr0];
           ipOffset = 0;
           break;
         case Operation.JZ:
-          if (registers[decoded.sr0!] === 0) {
-            registers[Register.IP] = registers[decoded.sr1!];
+          if (registers[sr0] === 0) {
+            registers[Register.IP] = registers[sr1];
             ipOffset = 0;
           }
           break;
         case Operation.JNZ:
-          if (registers[decoded.sr0!] !== 0) {
-            registers[Register.IP] = registers[decoded.sr1!];
+          if (registers[sr0] !== 0) {
+            registers[Register.IP] = registers[sr1];
             ipOffset = 0;
           }
           break;
@@ -1128,69 +1141,69 @@ class VM {
 
         // Floating point arithmetic
         case Operation.FADD: {
-          const a = intToFloat(registers[decoded.sr0!]);
-          const b = intToFloat(registers[decoded.sr1!]);
-          registers[decoded.dr!] = floatToInt(a + b);
+          const a = intToFloat(registers[sr0]);
+          const b = intToFloat(registers[sr1]);
+          registers[dr] = floatToInt(a + b);
           break;
         }
         case Operation.FSUB: {
-          const a = intToFloat(registers[decoded.sr0!]);
-          const b = intToFloat(registers[decoded.sr1!]);
-          registers[decoded.dr!] = floatToInt(a - b);
+          const a = intToFloat(registers[sr0]);
+          const b = intToFloat(registers[sr1]);
+          registers[dr] = floatToInt(a - b);
           break;
         }
         case Operation.FMUL: {
-          const a = intToFloat(registers[decoded.sr0!]);
-          const b = intToFloat(registers[decoded.sr1!]);
-          registers[decoded.dr!] = floatToInt(a * b);
+          const a = intToFloat(registers[sr0]);
+          const b = intToFloat(registers[sr1]);
+          registers[dr] = floatToInt(a * b);
           break;
         }
         case Operation.FDIV: {
-          const a = intToFloat(registers[decoded.sr0!]);
-          const b = intToFloat(registers[decoded.sr1!]);
-          registers[decoded.dr!] = floatToInt(a / b);
+          const a = intToFloat(registers[sr0]);
+          const b = intToFloat(registers[sr1]);
+          registers[dr] = floatToInt(a / b);
           break;
         }
 
         // Floating point comparison
         case Operation.FEQ: {
-          const a = intToFloat(registers[decoded.sr0!]);
-          const b = intToFloat(registers[decoded.sr1!]);
-          registers[decoded.dr!] = a === b ? 1 : 0;
+          const a = intToFloat(registers[sr0]);
+          const b = intToFloat(registers[sr1]);
+          registers[dr] = a === b ? 1 : 0;
           break;
         }
         case Operation.FLT: {
-          const a = intToFloat(registers[decoded.sr0!]);
-          const b = intToFloat(registers[decoded.sr1!]);
-          registers[decoded.dr!] = a < b ? 1 : 0;
+          const a = intToFloat(registers[sr0]);
+          const b = intToFloat(registers[sr1]);
+          registers[dr] = a < b ? 1 : 0;
           break;
         }
         case Operation.FGT: {
-          const a = intToFloat(registers[decoded.sr0!]);
-          const b = intToFloat(registers[decoded.sr1!]);
-          registers[decoded.dr!] = a > b ? 1 : 0;
+          const a = intToFloat(registers[sr0]);
+          const b = intToFloat(registers[sr1]);
+          registers[dr] = a > b ? 1 : 0;
           break;
         }
 
         // Floating point conversion
         case Operation.ITOF: {
-          const i = registers[decoded.sr0!] | 0; // signed
-          registers[decoded.dr!] = floatToInt(i);
+          const i = registers[sr0] | 0; // signed
+          registers[dr] = floatToInt(i);
           break;
         }
         case Operation.UTOF: {
-          const u = registers[decoded.sr0!] >>> 0; // unsigned
-          registers[decoded.dr!] = floatToInt(u);
+          const u = registers[sr0] >>> 0; // unsigned
+          registers[dr] = floatToInt(u);
           break;
         }
         case Operation.FTOI: {
-          const f = intToFloat(registers[decoded.sr0!]);
-          registers[decoded.dr!] = Math.trunc(f) >>> 0;
+          const f = intToFloat(registers[sr0]);
+          registers[dr] = Math.trunc(f) >>> 0;
           break;
         }
 
         default:
-          this.fault(`unimplemented instruction: ${decoded.operation}`);
+          this.fault(`unimplemented instruction: ${operation}`);
           return "continue";
       }
 

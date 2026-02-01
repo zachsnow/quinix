@@ -1,6 +1,6 @@
 ; Echoes one line of input.
 
-data @outputControl 0x302
+data @outputControl 0x303
 data @outputBuffer 0x303
 data @inputControl 0x403
 data @inputBuffer 0x404

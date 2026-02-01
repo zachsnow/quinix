@@ -4,7 +4,7 @@ data @hello 'Tick...\n'
 data @interruptTable 0x1              ; Address of containing the address of the interrupt handler entries table.
 data @interrupt 0x2                   ; Hardware timer is interrupt 0x2.
 data @timerControl 0x300              ; Hardware timer MMIO location.
-data @consoleControl 0x302            ; Console output MMIO location.
+data @consoleControl 0x303            ; Console output MMIO location.
 data @consoleBuffer 0x303             ; Console output DMA location.
 
 ; Set up interrupt handler.

@@ -1,5 +1,5 @@
 // Simple display hello world
-.constant global DISPLAY_BASE: byte = 0x602;
+.constant global DISPLAY_BASE: byte = 0x603;
 .constant global FB_ADDR: byte = 0x10000;
 
 function main(): byte {

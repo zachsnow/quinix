@@ -2,7 +2,7 @@
 // Run with: bun run bin/qrun.ts examples/lowlevel/display-demo.qll -- --display 320x200
 
 // Display peripheral base address (after Timer, DebugBreak, DebugOutput, DebugInput, DebugFile)
-.constant global DISPLAY_BASE: byte = 0x602;
+.constant global DISPLAY_BASE: byte = 0x603;
 
 // Framebuffer in physical memory (after peripheral region)
 // 320x200 = 64000 pixels = 64000 words = 0xFA00 words
