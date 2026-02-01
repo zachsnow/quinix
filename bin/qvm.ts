@@ -16,6 +16,7 @@ import {
   DebugOutputPeripheral,
   FileBlockStorage,
 } from "@server/peripherals";
+import { createFileRenderer } from "@server/file-renderer";
 import { createSDLRenderer } from "@server/sdl-renderer";
 import { DisplayPeripheral } from "@/vm/peripherals";
 import { SECTOR_SIZE_WORDS, sectorsFromFileSize } from "@server/qfs";
@@ -34,6 +35,7 @@ interface Options {
   disk?: string;
   display?: string;
   "display-scale"?: string;
+  "display-file"?: string;
   break: string;
   "break-write": string;
   watchpoint: string;
@@ -68,6 +70,10 @@ const argv = parseArguments<Options>(
       },
       "display-scale": {
         describe: "display window scale factor (default: 2)",
+        type: "string",
+      },
+      "display-file": {
+        describe: "write display to PPM file instead of SDL window",
         type: "string",
       },
       break: {
@@ -179,17 +185,25 @@ if (argv.display) {
   }
   const width = parseInt(match[1], 10);
   const height = parseInt(match[2], 10);
-  const scale = argv["display-scale"] ? parseInt(argv["display-scale"], 10) : 2;
 
-  try {
-    const { renderer, cleanup } = createSDLRenderer("Quinix Display", scale);
-    displayCleanup = cleanup;
+  if (argv["display-file"]) {
+    // File-based renderer (no SDL required)
+    const renderer = createFileRenderer(argv["display-file"]);
     displayPeripheral = new DisplayPeripheral(width, height, renderer);
-    log.debug(`display: ${width}x${height} @ ${scale}x scale`);
-  } catch (e) {
-    console.error(`error: failed to initialize display: ${e}`);
-    console.error("hint: make sure SDL2 is installed (brew install sdl2)");
-    process.exit(1);
+    log.debug(`display: ${width}x${height} -> ${argv["display-file"]}`);
+  } else {
+    // SDL-based renderer
+    const scale = argv["display-scale"] ? parseInt(argv["display-scale"], 10) : 2;
+    try {
+      const { renderer, cleanup } = createSDLRenderer("Quinix Display", scale);
+      displayCleanup = cleanup;
+      displayPeripheral = new DisplayPeripheral(width, height, renderer);
+      log.debug(`display: ${width}x${height} @ ${scale}x scale`);
+    } catch (e) {
+      console.error(`error: failed to initialize display: ${e}`);
+      console.error("hint: make sure SDL2 is installed (brew install sdl2)");
+      process.exit(1);
+    }
   }
 }
 
