@@ -202,18 +202,13 @@ namespace kernel {
       // Directory Operations
       /////////////////////////////////////////////////////////////////////
 
-      // Result of directory search operations.
-      type dir_result = struct {
-        sector: byte;      // Sector containing the entry
-        slot: byte;        // Slot index within sector (0-3)
-        found: bool;       // Whether the entry was found
-      };
+      // Read a directory entry from disk into the provided struct.
+      // Returns true on success.
+      function _read_dirent(index: byte, entry: *dirent): bool {
+        var dir_sector = sb.root_start + index / DIRENT_PER_SECTOR;
+        var entry_offset = (index % DIRENT_PER_SECTOR) * DIRENT_SIZE;
 
-      // Read a directory entry at (sector, slot) into the provided struct.
-      function _read_dirent_at(sector: byte, slot: byte, entry: *dirent): bool {
-        var entry_offset = slot * DIRENT_SIZE;
-
-        if (!block::read_sector(sector, &sector_buffer[0])) {
+        if (!block::read_sector(dir_sector, &sector_buffer[0])) {
           return false;
         }
 
@@ -230,12 +225,13 @@ namespace kernel {
         return true;
       }
 
-      // Write a directory entry at (sector, slot).
-      function _write_dirent_at(sector: byte, slot: byte, entry: *dirent): bool {
-        var entry_offset = slot * DIRENT_SIZE;
+      // Write a directory entry to disk.
+      function _write_dirent(index: byte, entry: *dirent): bool {
+        var dir_sector = sb.root_start + index / DIRENT_PER_SECTOR;
+        var entry_offset = (index % DIRENT_PER_SECTOR) * DIRENT_SIZE;
 
         // Read the sector first.
-        if (!block::read_sector(sector, &sector_buffer[0])) {
+        if (!block::read_sector(dir_sector, &sector_buffer[0])) {
           return false;
         }
 
@@ -255,20 +251,7 @@ namespace kernel {
           sector_buffer[entry_offset + 28 + i] = 0;
         }
 
-        return block::write_sector(sector, &sector_buffer[0]);
-      }
-
-      // Legacy wrappers for root directory (used by file_close).
-      function _read_dirent(index: byte, entry: *dirent): bool {
-        var sector = sb.root_start + index / DIRENT_PER_SECTOR;
-        var slot = index % DIRENT_PER_SECTOR;
-        return _read_dirent_at(sector, slot, entry);
-      }
-
-      function _write_dirent(index: byte, entry: *dirent): bool {
-        var sector = sb.root_start + index / DIRENT_PER_SECTOR;
-        var slot = index % DIRENT_PER_SECTOR;
-        return _write_dirent_at(sector, slot, entry);
+        return block::write_sector(dir_sector, &sector_buffer[0]);
       }
 
       // Compare a string to a fixed-size name array (24 chars).
@@ -290,111 +273,52 @@ namespace kernel {
         return len str <= 24;
       }
 
-      // Find a directory entry by name in a directory.
-      // Follows FAT chain for multi-sector directories.
-      // Returns result with sector/slot if found, or found=false.
-      function dir_find_in(dir_sector: byte, name: string, entry: *dirent): dir_result {
-        var result: dir_result = dir_result { sector = 0, slot = 0, found = false };
-        var sector = dir_sector;
-
-        while (sector != FAT_END && sector != FAT_FREE && sector != 0) {
-          for (var slot: byte = 0; slot < DIRENT_PER_SECTOR; slot = slot + 1) {
-            if (!_read_dirent_at(sector, slot, entry)) {
-              continue;
-            }
-            if ((entry->flags & DIRENT_USED) != 0 && (entry->flags & DIRENT_DELETED) == 0) {
-              if (_name_match(entry->name, name)) {
-                result.sector = sector;
-                result.slot = slot;
-                result.found = true;
-                return result;
-              }
-            }
-          }
-          sector = fat_read(sector);
-        }
-
-        return result;
-      }
-
-      // Find a free slot in a directory.
-      // Follows FAT chain, allocates new sector if needed.
-      // Returns result with sector/slot, or found=false if allocation failed.
-      function dir_find_free_in(dir_sector: byte): dir_result {
-        var result: dir_result = dir_result { sector = 0, slot = 0, found = false };
-        var sector = dir_sector;
-        var prev_sector: byte = 0;
-        var entry: dirent;
-
-        while (sector != FAT_END && sector != FAT_FREE && sector != 0) {
-          for (var slot: byte = 0; slot < DIRENT_PER_SECTOR; slot = slot + 1) {
-            if (!_read_dirent_at(sector, slot, &entry)) {
-              continue;
-            }
-            if (entry.flags == DIRENT_FREE || (entry.flags & DIRENT_DELETED) != 0) {
-              result.sector = sector;
-              result.slot = slot;
-              result.found = true;
-              return result;
-            }
-          }
-          prev_sector = sector;
-          sector = fat_read(sector);
-        }
-
-        // No free slot found - allocate a new sector.
-        var new_sector = fat_alloc();
-        if (new_sector == 0) {
-          return result;
-        }
-
-        // Link the new sector to the chain.
-        if (prev_sector != 0) {
-          fat_write(prev_sector, new_sector);
-        }
-
-        // Clear the new sector.
-        for (var i: byte = 0; i < SECTOR_SIZE; i = i + 1) {
-          sector_buffer[i] = 0;
-        }
-        block::write_sector(new_sector, &sector_buffer[0]);
-
-        result.sector = new_sector;
-        result.slot = 0;
-        result.found = true;
-        return result;
-      }
-
-      // Legacy wrapper: find in root directory.
+      // Find a directory entry by name.
+      // Returns the index if found, or -1 if not found.
+      // If found, populates *entry with the entry data.
       function dir_find(name: string, entry: *dirent): byte {
-        var result = dir_find_in(sb.root_start, name, entry);
-        if (result.found) {
-          // Return a flat index for backwards compatibility.
-          // This only works correctly for single-sector root.
-          return result.slot;
+        // In v2, root directory is 1 sector (4 entries).
+        // TODO: Support growing root via FAT chains.
+        var max_entries: byte = DIRENT_PER_SECTOR;
+        for (var i: byte = 0; i < max_entries; i = i + 1) {
+          if (!_read_dirent(i, entry)) {
+            continue;
+          }
+          if ((entry->flags & DIRENT_USED) != 0 && (entry->flags & DIRENT_DELETED) == 0) {
+            if (_name_match(entry->name, name)) {
+              return i;
+            }
+          }
         }
         return -1;
       }
 
-      // Legacy wrapper: find free in root directory.
+      // Find a free directory entry. Returns index or -1 if full.
       function dir_find_free(): byte {
-        var result = dir_find_free_in(sb.root_start);
-        if (result.found) {
-          return result.slot;
+        var entry: dirent;
+        var max_entries: byte = DIRENT_PER_SECTOR;
+        for (var i: byte = 0; i < max_entries; i = i + 1) {
+          if (!_read_dirent(i, &entry)) {
+            continue;
+          }
+          if (entry.flags == DIRENT_FREE || (entry.flags & DIRENT_DELETED) != 0) {
+            return i;
+          }
         }
         return -1;
       }
 
-      // Create an entry in a directory.
-      // Returns true on success.
-      function dir_create_in(dir_sector: byte, name: string, first_sector: byte, size: byte, flags: byte, result: *dir_result): bool {
-        *result = dir_find_free_in(dir_sector);
-        if (!result->found) {
-          return false;
+      // Create a new directory entry.
+      // Create a new directory entry.
+      // Returns the index, or -1 on failure.
+      function dir_create(name: string, first_sector: byte, size: byte): byte {
+        var index = dir_find_free();
+        if (index == -1) {
+          return -1;
         }
 
         var entry: dirent = dirent {};
-        entry.flags = flags;
+        entry.flags = DIRENT_USED;
         entry.first_sector = first_sector;
         entry.size = size;
 
@@ -407,22 +331,17 @@ namespace kernel {
           }
         }
 
-        return _write_dirent_at(result->sector, result->slot, &entry);
-      }
-
-      // Legacy wrapper: create in root directory.
-      function dir_create(name: string, first_sector: byte, size: byte): byte {
-        var result: dir_result;
-        if (!dir_create_in(sb.root_start, name, first_sector, size, DIRENT_USED, &result)) {
+        if (!_write_dirent(index, &entry)) {
           return -1;
         }
-        return result.slot;
+
+        return index;
       }
 
-      // Delete an entry at (sector, slot) and free its sectors.
-      function dir_delete_at(sector: byte, slot: byte): bool {
+      // Delete a directory entry and free its sectors.
+      function dir_delete(index: byte): bool {
         var entry: dirent;
-        if (!_read_dirent_at(sector, slot, &entry)) {
+        if (!_read_dirent(index, &entry)) {
           return false;
         }
 
@@ -437,201 +356,7 @@ namespace kernel {
 
         // Mark as deleted.
         entry.flags = DIRENT_DELETED;
-        return _write_dirent_at(sector, slot, &entry);
-      }
-
-      // Legacy wrapper: delete from root by index.
-      function dir_delete(index: byte): bool {
-        return dir_delete_at(sb.root_start, index);
-      }
-
-      /////////////////////////////////////////////////////////////////////
-      // Path Resolution
-      /////////////////////////////////////////////////////////////////////
-
-      // Result of path resolution.
-      type path_result = struct {
-        parent_sector: byte;  // Sector of parent directory
-        entry: dirent;        // The resolved entry
-        dir_result: dir_result;  // Location of entry
-        found: bool;          // Whether the path was found
-      };
-
-      // Resolve a path to its directory entry.
-      // Handles paths like "/foo/bar/file.txt" or "file.txt".
-      function resolve_path(path: string, result: *path_result): bool {
-        result->found = false;
-        result->parent_sector = sb.root_start;
-
-        if (len path == 0) {
-          return false;
-        }
-
-        // Start at root.
-        var current_sector = sb.root_start;
-
-        // Skip leading slash.
-        var start: byte = 0;
-        if (path[0] == '/') {
-          start = 1;
-        }
-
-        // If path is just "/" or empty after slash, return root.
-        if (start >= len path) {
-          result->entry.flags = DIRENT_USED | DIRENT_DIRECTORY;
-          result->entry.first_sector = sb.root_start;
-          result->entry.size = 0;
-          result->dir_result.sector = 0;
-          result->dir_result.slot = 0;
-          result->dir_result.found = true;
-          result->found = true;
-          return true;
-        }
-
-        // Parse path components.
-        var component: byte[24] = [0; 24];
-        var comp_len: byte = 0;
-        var i = start;
-
-        while (i <= len path) {
-          var ch: byte = 0;
-          if (i < len path) {
-            ch = path[i];
-          }
-
-          if (ch == '/' || i == len path) {
-            if (comp_len > 0) {
-              // Look up this component.
-              var dr = dir_find_in(current_sector, component[0:comp_len], &result->entry);
-              if (!dr.found) {
-                return false;
-              }
-
-              result->parent_sector = current_sector;
-              result->dir_result = dr;
-
-              // If there are more components, this must be a directory.
-              if (i < len path) {
-                if ((result->entry.flags & DIRENT_DIRECTORY) == 0) {
-                  return false;
-                }
-                current_sector = result->entry.first_sector;
-              }
-
-              // Clear component for next iteration.
-              for (var j: byte = 0; j < comp_len; j = j + 1) {
-                component[j] = 0;
-              }
-              comp_len = 0;
-            }
-          } else {
-            if (comp_len < 24) {
-              component[comp_len] = ch;
-              comp_len = comp_len + 1;
-            }
-          }
-          i = i + 1;
-        }
-
-        result->found = true;
-        return true;
-      }
-
-      // Resolve the parent directory of a path.
-      // Returns the parent directory sector, and sets *filename to the final component.
-      function resolve_parent(path: string, filename: *byte, filename_len: *byte): byte {
-        *filename_len = 0;
-
-        if (len path == 0) {
-          return 0;
-        }
-
-        // Find the last slash to separate parent from filename.
-        var last_slash: byte = -1;
-        for (var i: byte = 0; i < len path; i = i + 1) {
-          if (path[i] == '/') {
-            last_slash = i;
-          }
-        }
-
-        // Extract filename.
-        var fname_start: byte = 0;
-        if (last_slash != -1) {
-          fname_start = last_slash + 1;
-        }
-        var fname_len: byte = len path - fname_start;
-        if (fname_len > MAX_NAME_LEN) {
-          fname_len = MAX_NAME_LEN;
-        }
-        for (var i: byte = 0; i < fname_len; i = i + 1) {
-          filename[unsafe i] = path[fname_start + i];
-        }
-        *filename_len = fname_len;
-
-        // If no slash or slash at start, parent is root.
-        if (last_slash == -1 || last_slash == 0) {
-          return sb.root_start;
-        }
-
-        // Resolve the parent path.
-        var parent_path: byte[64] = [0; 64];
-        for (var i: byte = 0; i < last_slash && i < 63; i = i + 1) {
-          parent_path[i] = path[i];
-        }
-
-        var result: path_result;
-        if (!resolve_path(parent_path[0:last_slash], &result)) {
-          return 0;
-        }
-
-        if ((result.entry.flags & DIRENT_DIRECTORY) == 0) {
-          return 0;
-        }
-
-        return result.entry.first_sector;
-      }
-
-      // Create a new directory.
-      // Returns the first sector of the new directory, or 0 on failure.
-      function mkdir(path: string): byte {
-        var filename: byte[24] = [0; 24];
-        var filename_len: byte = 0;
-
-        var parent_sector = resolve_parent(path, &filename[0], &filename_len);
-        if (parent_sector == 0 || filename_len == 0) {
-          return 0;
-        }
-
-        // Check if already exists.
-        var entry: dirent;
-        var existing = dir_find_in(parent_sector, filename[0:filename_len], &entry);
-        if (existing.found) {
-          return 0;
-        }
-
-        // Allocate a sector for the new directory.
-        var dir_sector = fat_alloc();
-        if (dir_sector == 0) {
-          return 0;
-        }
-
-        // Clear the new directory sector.
-        for (var i: byte = 0; i < SECTOR_SIZE; i = i + 1) {
-          sector_buffer[i] = 0;
-        }
-        if (!block::write_sector(dir_sector, &sector_buffer[0])) {
-          fat_free(dir_sector);
-          return 0;
-        }
-
-        // Create the directory entry in parent.
-        var result: dir_result;
-        if (!dir_create_in(parent_sector, filename[0:filename_len], dir_sector, 0, DIRENT_USED | DIRENT_DIRECTORY, &result)) {
-          fat_free(dir_sector);
-          return 0;
-        }
-
-        return dir_sector;
+        return _write_dirent(index, &entry);
       }
 
       /////////////////////////////////////////////////////////////////////
@@ -646,25 +371,25 @@ namespace kernel {
       // Maximum open files.
       .constant global MAX_OPEN_FILES: byte = 8;
 
-      // Open file state. Each open file has its own buffer to allow
-      // concurrent access to multiple files.
+      // Open file state.
       type file_state = struct {
         in_use: bool;
-        dir_sector: byte;     // Directory sector containing entry
-        dir_slot: byte;       // Slot within directory sector
+        dir_index: byte;      // Directory entry index
         first_sector: byte;   // First sector of file
         current_sector: byte; // Current sector being accessed
         file_size: byte;      // Total file size in bytes
         position: byte;       // Current position in file (bytes)
         mode: byte;           // Open mode
         modified: bool;       // Whether file has been modified
-        buffer: byte[128];    // Per-file sector buffer
-        buffer_sector: byte;  // Sector currently in buffer
-        buffer_dirty: bool;   // Buffer has unflushed writes
       };
 
       // Table of open files.
       global open_files: file_state[8] = [file_state {}; 8];
+
+      // Data buffer for file I/O (separate from sector_buffer).
+      global file_buffer: byte[128] = [0; 128];
+      global file_buffer_sector: byte = 0;
+      global file_buffer_dirty: bool = false;
 
       // Shift helper: get bit shift for byte position (0-3).
       // Returns 0, 8, 16, or 24.
@@ -684,29 +409,29 @@ namespace kernel {
         return 0xFFFFFFFF - _byte_mask(pos);
       }
 
-      // Flush a file's buffer if dirty.
-      function _flush_buffer(state: *file_state): bool {
-        if (state->buffer_dirty && state->buffer_sector != 0) {
-          if (!block::write_sector(state->buffer_sector, &state->buffer[0])) {
+      // Flush the file buffer if dirty.
+      function _flush_file_buffer(): bool {
+        if (file_buffer_dirty && file_buffer_sector != 0) {
+          if (!block::write_sector(file_buffer_sector, &file_buffer[0])) {
             return false;
           }
-          state->buffer_dirty = false;
+          file_buffer_dirty = false;
         }
         return true;
       }
 
-      // Load a sector into a file's buffer.
-      function _load_buffer(state: *file_state, sector: byte): bool {
-        if (state->buffer_sector == sector) {
+      // Load a sector into the file buffer.
+      function _load_file_buffer(sector: byte): bool {
+        if (file_buffer_sector == sector) {
           return true;
         }
-        if (!_flush_buffer(state)) {
+        if (!_flush_file_buffer()) {
           return false;
         }
-        if (!block::read_sector(sector, &state->buffer[0])) {
+        if (!block::read_sector(sector, &file_buffer[0])) {
           return false;
         }
-        state->buffer_sector = sector;
+        file_buffer_sector = sector;
         return true;
       }
 
@@ -718,6 +443,29 @@ namespace kernel {
           }
         }
         return -1;
+      }
+
+      // Extract filename from path (strip directory part).
+      // Returns the length of the filename.
+      function _get_filename(path: string, name: *byte): byte {
+        var start: byte = 0;
+
+        // Find the last "/" to get just the filename.
+        for (var i: byte = 0; i < len path; i = i + 1) {
+          if (path[i] == '/') {
+            start = i + 1;
+          }
+        }
+
+        // Copy filename (up to MAX_NAME_LEN chars).
+        var name_len: byte = len path - start;
+        if (name_len > MAX_NAME_LEN) {
+          name_len = MAX_NAME_LEN;
+        }
+        for (var i: byte = 0; i < name_len; i = i + 1) {
+          name[unsafe i] = path[start + i];
+        }
+        return name_len;
       }
 
       // Open a file. Returns file slot index, or -1 on failure.
@@ -733,28 +481,25 @@ namespace kernel {
           return -1;
         }
 
-        // Resolve parent directory and extract filename.
-        var filename: byte[24] = [0; 24];
-        var filename_len: byte = 0;
-        var parent_sector = resolve_parent(path, &filename[0], &filename_len);
-        if (parent_sector == 0 || filename_len == 0) {
-          return -1;
-        }
+        // Extract filename from path.
+        var name: byte[24] = [0; 24];
+        var name_len = _get_filename(path, &name[0]);
 
-        // Find file in parent directory.
+        // Find file.
         var entry: dirent;
-        var dr = dir_find_in(parent_sector, filename[0:filename_len], &entry);
+        var dir_index = dir_find(name[0:name_len], &entry);
 
         if (mode == MODE_READ) {
           // File must exist.
-          if (!dr.found) {
+          if (dir_index == -1) {
             return -1;
           }
         } else {
           // For write/append, create if not exists.
-          if (!dr.found) {
+          if (dir_index == -1) {
             // Create empty file.
-            if (!dir_create_in(parent_sector, filename[0:filename_len], 0, 0, DIRENT_USED, &dr)) {
+            dir_index = dir_create(name[0:name_len], 0, 0);
+            if (dir_index == -1) {
               return -1;
             }
             entry.flags = DIRENT_USED;
@@ -765,15 +510,12 @@ namespace kernel {
 
         // Initialize file state.
         open_files[slot].in_use = true;
-        open_files[slot].dir_sector = dr.sector;
-        open_files[slot].dir_slot = dr.slot;
+        open_files[slot].dir_index = dir_index;
         open_files[slot].first_sector = entry.first_sector;
         open_files[slot].current_sector = entry.first_sector;
         open_files[slot].file_size = entry.size;
         open_files[slot].mode = mode;
         open_files[slot].modified = false;
-        open_files[slot].buffer_sector = 0;
-        open_files[slot].buffer_dirty = false;
 
         if (mode == MODE_APPEND) {
           open_files[slot].position = entry.size;
@@ -808,17 +550,15 @@ namespace kernel {
         }
 
         // Flush buffer if needed.
-        _flush_buffer(&open_files[slot]);
+        _flush_file_buffer();
 
         // Update directory entry if modified.
         if (open_files[slot].modified) {
           var entry: dirent;
-          var dir_sector = open_files[slot].dir_sector;
-          var dir_slot = open_files[slot].dir_slot;
-          if (_read_dirent_at(dir_sector, dir_slot, &entry)) {
+          if (_read_dirent(open_files[slot].dir_index, &entry)) {
             entry.first_sector = open_files[slot].first_sector;
             entry.size = open_files[slot].file_size;
-            _write_dirent_at(dir_sector, dir_slot, &entry);
+            _write_dirent(open_files[slot].dir_index, &entry);
           }
         }
 
@@ -851,12 +591,12 @@ namespace kernel {
             break;
           }
 
-          if (!_load_buffer(state, state->current_sector)) {
+          if (!_load_file_buffer(state->current_sector)) {
             break;
           }
 
           // Read a byte.
-          var word = state->buffer[word_offset];
+          var word = file_buffer[word_offset];
           var b = (word >> _byte_shift(byte_in_word)) & 0xFF;
           buffer[unsafe bytes_read] = b;
 
@@ -899,12 +639,12 @@ namespace kernel {
             break;
           }
 
-          if (!_load_buffer(state, state->current_sector)) {
+          if (!_load_file_buffer(state->current_sector)) {
             break;
           }
 
           // Read a word directly.
-          buffer[unsafe words_read] = state->buffer[word_in_sector];
+          buffer[unsafe words_read] = file_buffer[word_in_sector];
 
           words_read = words_read + 1;
           state->position = state->position + 4;  // Advance by 4 bytes (1 word)
@@ -964,7 +704,7 @@ namespace kernel {
           }
 
           // Load current sector.
-          if (!_load_buffer(state, state->current_sector)) {
+          if (!_load_file_buffer(state->current_sector)) {
             break;
           }
 
@@ -974,12 +714,12 @@ namespace kernel {
           var byte_in_word = pos_in_sector % 4;
 
           // Write a byte.
-          var word = state->buffer[word_offset];
+          var word = file_buffer[word_offset];
           var mask = _byte_mask_inv(byte_in_word);
           var b = buffer[unsafe bytes_written] & 0xFF;
           word = (word & mask) | (b << _byte_shift(byte_in_word));
-          state->buffer[word_offset] = word;
-          state->buffer_dirty = true;
+          file_buffer[word_offset] = word;
+          file_buffer_dirty = true;
 
           bytes_written = bytes_written + 1;
           state->position = state->position + 1;
@@ -996,24 +736,153 @@ namespace kernel {
     }
 
     /////////////////////////////////////////////////////////////////////
-    // Console handle constants (used by syscalls for stdin/stdout)
+    // Handle-based file system interface
     /////////////////////////////////////////////////////////////////////
     type handle = byte;
     namespace handle {
       .constant global OUTPUT: handle = 0x1;
       .constant global INPUT: handle = 0x2;
+      global id: handle = 0x3;
     }
 
-    // Write a single byte to console output (used by syscalls).
+    type file = struct {
+      path: string;
+      handle: handle;
+    };
+
+    type files = std::vector<file>;
+
+    function _find_file(file: file, handle: handle): bool {
+      return file.handle == handle;
+    }
+
+    // Read from a handle into data buffer.
+    // Returns: number of bytes read, or -1 on error.
+    function read(handle: handle, data: byte[]): byte {
+      var process = process::current_process();
+
+      if(handle == handle::INPUT){
+        return std::buffered::read(
+          &peripherals::debug_input->control,
+          &peripherals::debug_input->size,
+          &peripherals::debug_input->buffer[unsafe 0],
+          data
+        );
+      }
+
+      var index = std::vector::find_by(process->files, _find_file, handle);
+      if(index == -1){
+        return -1;
+      }
+      var file = process->files[index];
+      if(!std::buffered::write(
+        &peripherals::debug_file->control,
+        &peripherals::debug_file->size,
+        &peripherals::debug_file->buffer[unsafe 0],
+        file.path
+      )){
+        return -1;
+      }
+      return std::buffered::read(
+        &peripherals::debug_file->control,
+        &peripherals::debug_file->size,
+        &peripherals::debug_file->buffer[unsafe 0],
+        data
+      );
+    }
+
+    // Write a single byte to a handle (used by syscalls)
     function write_byte(handle: handle, ch: byte): bool {
-      if (handle == handle::OUTPUT) {
+      if(handle == handle::OUTPUT){
+        // Write directly to debug output buffer
         peripherals::debug_output->buffer[unsafe 0] = ch;
         peripherals::debug_output->size = 1;
         peripherals::debug_output->control = std::buffered::WRITE;
-        while (peripherals::debug_output->control == std::buffered::PENDING) {}
+        while(peripherals::debug_output->control == std::buffered::PENDING){}
         return peripherals::debug_output->control == std::buffered::READY;
       }
+      // For other handles, not implemented
       return false;
     }
+
+    function write(handle: handle, data: byte[]): bool {
+      var process = process::current_process();
+
+      if(handle == handle::OUTPUT){
+        return std::buffered::write(
+          &peripherals::debug_output->control,
+          &peripherals::debug_output->size,
+          &peripherals::debug_output->buffer[unsafe 0],
+          data
+        );
+      }
+
+      var index = std::vector::find_by(process->files, _find_file, handle);
+      if(index == -1){
+        return false;
+      }
+      var file = process->files[index];
+      if(!std::buffered::write(
+        &peripherals::debug_file->control,
+        &peripherals::debug_file->size,
+        &peripherals::debug_file->buffer[unsafe 0],
+        file.path
+      )){
+        return false;
+      }
+      return std::buffered::write(
+        &peripherals::debug_file->control,
+        &peripherals::debug_file->size,
+        &peripherals::debug_file->buffer[unsafe 0],
+        data
+      );
+    }
+
+    function open(path: string): handle {
+      // Just creates a `file` with the given path. Since we want
+      // this to be cleaned up when the process is cleaned up, we
+      // store it with the process.
+      var process = process::current_process();
+
+      // Assign the file a handle.
+      var h = handle::id;
+      handle::id = handle::id + 1;
+
+      // Be sure to copy the path because it"s a string that lives
+      // in the memory of the calling process.
+      std::vector::add(&process->files, file {
+        path = std::str::from_string(path),
+        handle = h,
+      });
+
+      return h;
+    }
+
+    function close(handle: handle): void {
+      var process = process::current_process();
+      var i = std::vector::find_by(process->files, _find_file, handle);
+      if(i == -1){
+        return;
+      }
+
+      _destroy_file(process->files[i]);
+
+      std::vector::remove(process->files, i);
+    }
+
+    function _destroy_file(file: file): void {
+      delete file.path;
+    }
+
+    function create_files(): files {
+      return <files>std::vector::create<file>(2);
+    }
+
+    function destroy_files(files: files): void {
+      std::vector::foreach(files, _destroy_file);
+      std::vector::destroy(files);
+    }
+
+    function init(): void {}
   }
 }

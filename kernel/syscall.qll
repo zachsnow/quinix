@@ -8,7 +8,6 @@ namespace kernel {
     .constant global CREATE: byte = 0x5;
     .constant global DESTROY: byte = 0x6;
     .constant global SPAWN: byte = 0x7;
-    .constant global YIELD: byte = 0x8;
 
     type syscall = struct {
       syscall: byte;
@@ -52,18 +51,17 @@ namespace kernel {
       _create,
       _destroy,
       _spawn,
-      _yield,
     ];
 
     function _translate_pointer<T>(p: * byte): * T {
       var current_process = process::current_process();
-      return <unsafe * T>memory::translate(process::get_table(current_process), p);
+      return <unsafe * T>memory::translate(current_process->table, p);
     }
 
     // Translate a user virtual address to physical
     function _translate(p: * byte): * byte {
       var current = process::current_process();
-      return memory::translate(process::get_table(current), p);
+      return memory::translate(current->table, p);
     }
 
     // Get the data pointer from a user-space slice (translated to physical)
@@ -243,70 +241,19 @@ namespace kernel {
       return 0;
     }
 
-    // Create a new empty file.
-    // arg0: pointer to null-terminated path string
-    // Returns 0 on success, -1 on failure.
     function _create(sc: syscall): byte {
-      var path_addr = <unsafe *byte>sc.arg0;
-
-      // Copy path to kernel buffer.
-      var path_buffer: byte[64];
-      if (!_copy_string(path_addr, path_buffer, 64)) {
-        return -1;
-      }
-
-      // Check if file already exists.
-      var entry: fs::qfs::dirent;
-      var existing = fs::qfs::dir_find(path_buffer, &entry);
-      if (existing != -1) {
-        // File already exists - success (like touch).
-        return 0;
-      }
-
-      // Create empty file (no sectors allocated, size 0).
-      var index = fs::qfs::dir_create(path_buffer, 0, 0);
-      if (index == -1) {
-        return -1;
-      }
-
+      // TODO: implement
       return 0;
     }
 
-    // Delete a file.
-    // arg0: pointer to null-terminated path string
-    // Returns 0 on success, -1 on failure.
     function _destroy(sc: syscall): byte {
-      var path_addr = <unsafe *byte>sc.arg0;
-
-      // Copy path to kernel buffer.
-      var path_buffer: byte[64];
-      if (!_copy_string(path_addr, path_buffer, 64)) {
-        return -1;
-      }
-
-      // Find the file.
-      var entry: fs::qfs::dirent;
-      var index = fs::qfs::dir_find(path_buffer, &entry);
-      if (index == -1) {
-        return -1;
-      }
-
-      // Delete the file.
-      if (!fs::qfs::dir_delete(index)) {
-        return -1;
-      }
-
+      // TODO: implement
       return 0;
     }
 
     function _spawn(sc: syscall): byte {
       // TODO: implement spawn syscall
       // For now, just return 0 (not implemented)
-      return 0;
-    }
-
-    function _yield(sc: syscall): byte {
-      scheduler::_schedule_task(interrupts::state);
       return 0;
     }
 

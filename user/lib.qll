@@ -15,7 +15,6 @@ namespace lib {
     .constant global CREATE_SYSCALL: byte = 0x5;
     .constant global DESTROY_SYSCALL: byte = 0x6;
     .constant global SPAWN_SYSCALL: byte = 0x7;
-    .constant global YIELD_SYSCALL: byte = 0x8;
 
     function syscall(syscall: byte): byte;
     function syscall1(syscall: byte, arg0: byte): byte;
@@ -71,9 +70,5 @@ namespace lib {
 
   function create(binary: string): error {
     return <error>support::syscall1(support::CREATE_SYSCALL, <unsafe byte>binary);
-  }
-
-  function yield(): void {
-    support::syscall(support::YIELD_SYSCALL);
   }
 }

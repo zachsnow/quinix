@@ -11,12 +11,9 @@ namespace kernel {
       id: byte;
       parent_id: byte;  // 0 means no parent
       task: * scheduler::task;
+      table: * memory::table;
+      files: fs::files;
     };
-
-    // Get the memory table for a process (stored in its task for context switching).
-    function get_table(p: * process): * memory::table {
-      return p->task->table;
-    }
 
     global processes: std::vector<* process> = null;
 
@@ -59,22 +56,13 @@ namespace kernel {
       // the QLLC stack pointer, which initialize to the top of the stack.
       log("process: creating task");
       var task = scheduler::create_task();
-      // Initialize all registers to 0
-      for (var i: byte = 0; i < 64; i = i + 1) {
-        task->state.registers[i] = 0;
-      }
       log("process: setting task ip");
       task->state.ip = executable_base;
-      // Stack pointer uses virtual address (from memory layout helpers)
-      var sbase = memory::stack_base(executable_base, executable_size, heap_size);
+      // Stack pointer uses virtual address (must match create_table"s layout)
+      var heap_base = executable_base + executable_size + 0x1000;
+      var stack_base = heap_base + heap_size + 0x1000;
       log("process: setting task sp");
-      var sp = sbase + stack_size;
-      task->state.registers[63] = sp;
-      // Verify the value was set correctly
-      var verify = task->state.registers[63];
-      if (verify != sp) {
-        log("process: ERROR: sp mismatch!");
-      }
+      task->state.registers[63] = stack_base + stack_size;
       // Set the task"s page table for context switching
       task->table = table;
 
@@ -84,6 +72,8 @@ namespace kernel {
         id = task->id,
         parent_id = parent_id,
         task = task,
+        table = table,
+        files = fs::create_files(),
       };
 
       std::vector::add(&processes, process);
@@ -136,8 +126,9 @@ namespace kernel {
       }
       std::vector::remove(processes, i);
 
-      memory::destroy_table(get_table(process));
+      memory::destroy_table(process->table);
       scheduler::destroy_task(process->task);
+      fs::destroy_files(process->files);
       delete process;
     }
 

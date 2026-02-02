@@ -48,6 +48,16 @@ namespace kernel {
     }
 
     //
+    // Debug file access.
+    //
+    .constant global debug_file_identifier: byte = 0x11;
+    global debug_file: * buffered_peripheral = null;
+
+    function _init_debug_file(entry: * peripheral_table_entry): void {
+      debug_file = <unsafe * buffered_peripheral>entry->address;
+    }
+
+    //
     // MMU.
     //
     global mmu_identifier: byte = 0x80000002;
@@ -89,6 +99,11 @@ namespace kernel {
       init_table_entry {
         identifier = debug_input_identifier,
         init = _init_debug_input,
+        required = true,
+      },
+      init_table_entry {
+        identifier = debug_file_identifier,
+        init = _init_debug_file,
         required = true,
       },
       init_table_entry {
