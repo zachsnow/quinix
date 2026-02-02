@@ -11,14 +11,14 @@ QVM="bun run bin/qvm.ts"
 
 echo "Building user programs..."
 
-# Create output directory for compiled binaries
+# Create output directory for compiled binaries.
 mkdir -p image/dist/bin
 
-# Copy text files to dist
-cp image/*.txt image/dist/ 2>/dev/null || true
+# Copy files to dist.
+cp image/data/* image/dist/ 2>/dev/null || true
 
-# Compile and assemble each program
-for src in image/bin/*.qll; do
+# Compile and assemble each program.
+for src in image/data/bin/*.qll; do
   name=$(basename "$src" .qll)
   echo "  $name"
 
