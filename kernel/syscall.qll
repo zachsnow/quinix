@@ -8,6 +8,7 @@ namespace kernel {
     .constant global CREATE: byte = 0x5;
     .constant global DESTROY: byte = 0x6;
     .constant global SPAWN: byte = 0x7;
+    .constant global YIELD: byte = 0x8;
 
     type syscall = struct {
       syscall: byte;
@@ -51,6 +52,7 @@ namespace kernel {
       _create,
       _destroy,
       _spawn,
+      _yield,
     ];
 
     function _translate_pointer<T>(p: * byte): * T {
@@ -300,6 +302,11 @@ namespace kernel {
     function _spawn(sc: syscall): byte {
       // TODO: implement spawn syscall
       // For now, just return 0 (not implemented)
+      return 0;
+    }
+
+    function _yield(sc: syscall): byte {
+      scheduler::_schedule_task(interrupts::state);
       return 0;
     }
 
