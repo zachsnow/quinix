@@ -15,7 +15,9 @@ namespace std::buffered {
 
     *control = WRITE;
 
-    while (*control == PENDING) {}
+    while (*control == PENDING) {
+      std::wait();
+    }
 
     return *control == READY;
   }
@@ -30,7 +32,9 @@ namespace std::buffered {
   function read(control: *byte, size: *byte, buffer: *byte, data: byte[]): byte {
     *control = READ;
 
-    while (*control == PENDING) {}
+    while (*control == PENDING) {
+      std::wait();
+    }
 
     if (*control != READY) {
       return -1;
