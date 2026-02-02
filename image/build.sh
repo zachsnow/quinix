@@ -9,27 +9,26 @@ QASM="bun run bin/qasm.ts"
 QFS="bun run bin/qfs.ts"
 QVM="bun run bin/qvm.ts"
 
+# Clean and copy data to dist.
+rm -rf image/dist
+cp -r image/data image/dist
+
 echo "Building user programs..."
 
-# Create output directory for compiled binaries.
-mkdir -p image/dist/bin
-
-# Copy files to dist.
-cp image/data/* image/dist/ 2>/dev/null || true
-
-# Compile and assemble each program.
-for src in image/data/bin/*.qll; do
+# Find and compile all .qll files in dist.
+find image/dist -name '*.qll' | while read src; do
+  dir=$(dirname "$src")
   name=$(basename "$src" .qll)
-  echo "  $name"
+  echo "  $src"
 
   # Compile QLL to QASM
-  $QLLC --target=user "$src" -o "image/dist/bin/$name.qasm"
+  $QLLC --target=user "$src" -o "$dir/$name.qasm"
 
   # Assemble QASM to binary
-  $QASM --target=user "image/dist/bin/$name.qasm" -o "image/dist/bin/$name.qbin"
+  $QASM --target=user "$dir/$name.qasm" -o "$dir/$name.qbin"
 
-  # Remove intermediate .qasm file
-  rm "image/dist/bin/$name.qasm"
+  # Remove source and intermediate files
+  rm "$src" "$dir/$name.qasm"
 done
 
 echo "Creating disk image..."
