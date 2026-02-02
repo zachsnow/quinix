@@ -61,4 +61,13 @@ for tool in qasm qllc qrun qvm; do
     chmod +x "build/${tool}"
 done
 
+# When --all, build kernel and disk image, too.
+if [[ "${1:-}" == "--all" ]]; then
+    echo "Building kernel..."
+    (cd kernel && ./build.sh)
+
+    echo "Building disk image..."
+    (cd image && ./build.sh)
+fi
+
 echo "Done."

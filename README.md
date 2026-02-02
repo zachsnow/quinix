@@ -3,6 +3,16 @@
 [Quinix](https://quinix.vein.io) is an enjoyable excursion into virtual machines, assemblers,
 compilers, and operating systems.
 
+## Getting started
+
+To try out the operating system, you can run the example disk image:
+
+```bash
+bun install
+./build.sh --all
+bun run qvm kernel/kernel.qbin --disk image/disk.qfs
+```
+
 ### QPU
 
 First thing's first: [let's design a CPU!](./docs/qpu.md)
@@ -42,6 +52,10 @@ QLL is still pretty frustratingly low level, so we'll extend QLL as we go.
 
 Finally, we have the tools we need... [Let's build an operating system!](./docs/qos.md)
 
+The Quinix OS is a (very) simply pre-emptive multi-tasking, monolithic operating system.
+It provides a number of syscalls to user binaries, allowing them to access "hardware" peripherals
+like block devices, console output, and even a simple color display.
+
 ## Local development
 
 Install prerequisites and build the parsers and libraries:
@@ -51,7 +65,14 @@ bun install
 ./build.sh
 ```
 
-To compile, assemble, and run a QLL program:
+To watch for changes and rebuild automatically:
+
+```bash
+./watch.sh
+```
+
+To compile, assemble, and run a QLL program on "bare metal" -- that is, without the support
+of the operating system:
 
 ```bash
 bun run bin/qllc.ts -o file.qasm file.qll

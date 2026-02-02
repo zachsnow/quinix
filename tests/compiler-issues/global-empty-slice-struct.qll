@@ -21,5 +21,5 @@ function main(): byte {
   if(cap empty_slice != 0){
     return 2;
   }
-  return 0;  // Success - it"s empty!
+  return 0;  // Success - it's empty!
 }

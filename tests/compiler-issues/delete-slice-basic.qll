@@ -8,7 +8,7 @@ function test_basic_delete(): byte {
   // Create a slice
   var arr: byte[] = new byte[10];
 
-  // Verify it"s allocated (check length)
+  // Verify it's allocated (check length)
   if (len arr != 10) {
     return 1;  // Wrong length
   }

@@ -22,7 +22,6 @@ namespace kernel {
     };
 
     // Point to 0x2 so that registers[0] maps to address 0x2 where VM stores r0.
-    // The struct copy doesn"t include array length prefix, just the data.
     global state: * state = <unsafe * state>0x2;
 
   }
@@ -30,18 +29,8 @@ namespace kernel {
   function log(message: byte[]): void {
     // If peripherals have been properly configured, just use that.
     if(peripherals::debug_output){
-      std::buffered::write(
-        &peripherals::debug_output->control,
-        &peripherals::debug_output->size,
-        &peripherals::debug_output->buffer[unsafe 0],
-        message
-      );
-      std::buffered::write(
-        &peripherals::debug_output->control,
-        &peripherals::debug_output->size,
-        &peripherals::debug_output->buffer[unsafe 0],
-        "\n"
-      );
+      std::console::print(message);
+      std::console::print("\n");
       return;
     }
 
@@ -63,7 +52,7 @@ namespace kernel {
       }
     }
 
-    // Otherwise, we're effed.
+    // Otherwise, we're fucked.
     support::halt(error::NO_LOG);
   }
 
@@ -73,6 +62,8 @@ namespace kernel {
   }
 
   function init(): void {
+    log("kernel: initializing...");
+
     peripherals::init();
     memory::init();
     process::init();

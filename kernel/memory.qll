@@ -49,7 +49,7 @@ namespace kernel::memory {
   // All active tables (currently unused - processes track their own tables).
   // global tables: std::vector<* table>;
 
-  // Chunks represet physical memory.
+  // Chunks represent physical memory.
   type chunk = byte;
   global chunk_size: byte = 0x4000;
   global max_chunks: byte = 0x400;
@@ -150,11 +150,6 @@ namespace kernel::memory {
   // [virtual_address][physical_address][size][flags].
   global mmu_base_address: * byte = null;
   global current_table: * table = null;
-
-  function enable(): void {
-    // MMU is enabled when a non-null table is set.
-    log("memory: enabled mmu");
-  }
 
   function disable(): void {
     // Setting table to null disables translation.

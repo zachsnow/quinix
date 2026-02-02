@@ -848,7 +848,7 @@ namespace kernel {
       var h = handle::id;
       handle::id = handle::id + 1;
 
-      // Be sure to copy the path because it"s a string that lives
+      // Be sure to copy the path because it's a string that lives
       // in the memory of the calling process.
       std::vector::add(&process->files, file {
         path = std::str::from_string(path),

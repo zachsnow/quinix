@@ -19,17 +19,19 @@ namespace kernel {
 
     .interrupt function _error_interrupt(): void {
       log("process: error interrupt!");
+
       // For now, just kill the current process.
       var process = current_process();
       destroy_process(process);
 
-      // When we return from here, we"ll be returning to
+      // When we return from here, we'll be returning to
       // a *different* task.
       return;
     }
 
     function create_process(binary: byte[], parent_id: byte): byte {
       log("process: create_process start");
+
       // Check process limit
       if(len processes >= MAX_PROCESSES){
         log("process: max processes reached");
@@ -58,12 +60,12 @@ namespace kernel {
       var task = scheduler::create_task();
       log("process: setting task ip");
       task->state.ip = executable_base;
-      // Stack pointer uses virtual address (must match create_table"s layout)
+      // Stack pointer uses virtual address (must match create_table's layout)
       var heap_base = executable_base + executable_size + 0x1000;
       var stack_base = heap_base + heap_size + 0x1000;
       log("process: setting task sp");
       task->state.registers[63] = stack_base + stack_size;
-      // Set the task"s page table for context switching
+      // Set the task's page table for context switching
       task->table = table;
 
       // Create a process.

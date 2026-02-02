@@ -7,14 +7,18 @@ namespace std {
   // Must be set by context (kernel, lib, bare) before first allocation.
   global heap: * byte = null;
 
+  // A possibly-allocated memory block.
   type block = struct {
     allocated: bool;
     size: byte;
     next: * block;
   };
 
+  // The head of the block list.
   global blocks: * block = null;
 
+  // Sets the size and next pointer of the initial block, so
+  // that `blocks` always points to a valid block.
   function _init_alloc(): void {
     blocks = <unsafe * block>heap;
     *blocks = block {
@@ -24,6 +28,7 @@ namespace std {
     };
   }
 
+  // Finds and merges adjacent free blocks.
   function _merge_blocks(): void {
     var initial_block: * block = null;
     for (var b = blocks; !!b; b = b->next) {
@@ -42,6 +47,7 @@ namespace std {
     }
   }
 
+  // Allocates the given number of bytes.
   function alloc(size: byte): * byte {
     if (!blocks) {
       _init_alloc();
@@ -81,6 +87,7 @@ namespace std {
     return ptr;
   }
 
+  // Deallocates the given pointer.
   function dealloc(pointer: * byte): void {
     if (!pointer) {
       return;

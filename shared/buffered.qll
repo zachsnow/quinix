@@ -7,6 +7,9 @@ namespace std::buffered {
   .constant global PENDING: byte = 0x3;
   .constant global ERROR: byte = 0x4;
 
+  // Write to a buffered peripheral.
+  // Returns: true when the peripheral has returned to the `READY` state
+  // after writing, false otherwise.
   function write(control: *byte, size: *byte, buffer: *byte, data: string): bool {
     *size = len data;
     for (var i = 0; i < len data; i = i + 1) {
@@ -19,6 +22,7 @@ namespace std::buffered {
     return *control == READY;
   }
 
+  // Read the size of available data from a buffered peripheral.
   function read_size(control: *byte, size: *byte): byte {
     return *size;
   }

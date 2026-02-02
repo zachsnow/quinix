@@ -26,7 +26,7 @@ function test_pointer_access_delete(): byte {
   // Delete the slice through pointer access
   delete c->data;
 
-  // Verify it"s zeroed
+  // Verify it's zeroed
   if (len c->data != 0) {
     return 3;  // Length should be 0
   }
