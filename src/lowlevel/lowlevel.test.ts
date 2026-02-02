@@ -2298,6 +2298,7 @@ describe('Display e2e', () => {
   const entrypointFile = path.resolve(__dirname, '..', '..', 'bare', 'entrypoint.qasm');
   const graphicsFile = path.resolve(__dirname, '..', '..', 'shared', 'graphics.qll');
   const displayFile = path.resolve(__dirname, '..', '..', 'bare', 'display.qll');
+  const waitFile = path.resolve(__dirname, '..', '..', 'bare', 'wait.qll');
 
   test('display flip writes correct pixels', async () => {
     const tempFile = path.join(os.tmpdir(), `display-test-${Date.now()}.ppm`);
@@ -2307,6 +2308,7 @@ describe('Display e2e', () => {
       const entrypoint = AssemblyProgram.parse(fs.readFileSync(entrypointFile, 'utf-8'), entrypointFile);
       const graphicsProgram = LowLevelProgram.parse(fs.readFileSync(graphicsFile, 'utf-8'), graphicsFile);
       const displayProgram = LowLevelProgram.parse(fs.readFileSync(displayFile, 'utf-8'), displayFile);
+      const waitProgram = LowLevelProgram.parse(fs.readFileSync(waitFile, 'utf-8'), waitFile);
 
       // Minimal test program: set 3 pixels and flip
       const testProgram = LowLevelProgram.parse(`
@@ -2323,7 +2325,7 @@ describe('Display e2e', () => {
         }
       `);
 
-      const program = LowLevelProgram.concat([graphicsProgram, displayProgram, testProgram]);
+      const program = LowLevelProgram.concat([graphicsProgram, displayProgram, waitProgram, testProgram]);
       const errors = program.typecheck().errors;
       if (errors.length) {
         throw new Error(errors.join('\n'));

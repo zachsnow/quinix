@@ -51,7 +51,6 @@ namespace display {
   function flip(base: byte): void {
     var control = <unsafe *byte>base;
     *control = FLIP;
-    // Wait for flip to complete
-    while (*control == PENDING) { }
+    std::wait_while(control, PENDING);
   }
 }

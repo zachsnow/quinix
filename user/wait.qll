@@ -1,6 +1,8 @@
-// Userspace wait - yield to scheduler.
+// Userspace wait - yield to scheduler while spinning.
 namespace std {
-  function wait(): void {
-    lib::yield();
+  function wait_while(ptr: *byte, value: byte): void {
+    while (*ptr == value) {
+      lib::yield();
+    }
   }
 }

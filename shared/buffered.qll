@@ -14,10 +14,7 @@ namespace std::buffered {
     }
 
     *control = WRITE;
-
-    while (*control == PENDING) {
-      std::wait();
-    }
+    std::wait_while(control, PENDING);
 
     return *control == READY;
   }
@@ -31,10 +28,7 @@ namespace std::buffered {
   // Note: The caller must set `len data` based on the return value.
   function read(control: *byte, size: *byte, buffer: *byte, data: byte[]): byte {
     *control = READ;
-
-    while (*control == PENDING) {
-      std::wait();
-    }
+    std::wait_while(control, PENDING);
 
     if (*control != READY) {
       return -1;

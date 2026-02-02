@@ -1,5 +1,7 @@
-// Kernel wait - no-op for now.
+// Kernel wait - just spin for now.
 // TODO: Could schedule another process, but syscall context is tricky.
 namespace std {
-  function wait(): void {}
+  function wait_while(ptr: *byte, value: byte): void {
+    while (*ptr == value) {}
+  }
 }
