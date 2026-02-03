@@ -1,4 +1,4 @@
-import { isVerbose, logger } from "@/lib/logger";
+import { logger } from "@/lib/logger";
 import { Address, Immediate, Memory } from "@/lib/types";
 import { release, ResolvablePromise } from "@/lib/util";
 import { Compiler } from "@/lowlevel/compiler";
@@ -896,7 +896,7 @@ class VM {
       const sr0 = (encoded >>> 8) & 0xff;
       const sr1 = encoded & 0xff;
 
-      if (isVerbose()) {
+      if (log.isVerbose) {
         log.debug(`${state}: ${Immediate.toString(encoded)}: op=${operation} dr=${dr} sr0=${sr0} sr1=${sr1}`);
       }
 
@@ -1011,7 +1011,7 @@ class VM {
           // Check peripheral mapping for a method.
           const peripheralMapping = peripheralAddresses[physicalAddress];
           if (peripheralMapping) {
-            if (isVerbose()) {
+            if (log.isVerbose) {
               log.debug(`notifying peripheral ${peripheralMapping.peripheral.name}...`);
             }
             peripheralMapping.peripheral.notify(
@@ -1047,7 +1047,7 @@ class VM {
 
           const constValue = memory[physicalAddress];
           registers[dr] = constValue;
-          if (isVerbose()) {
+          if (log.isVerbose) {
             log.debug(
               `${state.toString()}: ${Immediate.toString(
                 constValue

@@ -4,10 +4,6 @@ export function setVerbose(v: boolean): void {
   verbose = v;
 }
 
-export function isVerbose(): boolean {
-  return verbose;
-}
-
 type LazyArg = (() => unknown) | unknown;
 
 function resolveArg(arg: LazyArg): unknown {
@@ -19,6 +15,10 @@ export class Logger {
 
   public constructor(namespace: string = "") {
     this.namespace = namespace;
+  }
+
+  public get isVerbose(): boolean {
+    return verbose;
   }
 
   private prefix(): string {
