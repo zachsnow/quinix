@@ -1,4 +1,4 @@
-import { logger } from "@/lib/logger";
+import { isVerbose, logger } from "@/lib/logger";
 import { Address, Immediate, Memory } from "@/lib/types";
 import { release, ResolvablePromise } from "@/lib/util";
 import { Compiler } from "@/lowlevel/compiler";
@@ -896,7 +896,9 @@ class VM {
       const sr0 = (encoded >>> 8) & 0xff;
       const sr1 = encoded & 0xff;
 
-      log.debug(`${state}: ${Immediate.toString(encoded)}: op=${operation} dr=${dr} sr0=${sr0} sr1=${sr1}`);
+      if (isVerbose()) {
+        log.debug(`${state}: ${Immediate.toString(encoded)}: op=${operation} dr=${dr} sr0=${sr0} sr1=${sr1}`);
+      }
 
       // By default we advance by 1; constants, jumps, and interrupts change this.
       let ipOffset = 1;
@@ -1009,9 +1011,9 @@ class VM {
           // Check peripheral mapping for a method.
           const peripheralMapping = peripheralAddresses[physicalAddress];
           if (peripheralMapping) {
-            log.debug(
-              `notifying peripheral ${peripheralMapping.peripheral.name}...`
-            );
+            if (isVerbose()) {
+              log.debug(`notifying peripheral ${peripheralMapping.peripheral.name}...`);
+            }
             peripheralMapping.peripheral.notify(
               physicalAddress - peripheralMapping.base
             );
@@ -1045,11 +1047,13 @@ class VM {
 
           const constValue = memory[physicalAddress];
           registers[dr] = constValue;
-          log.debug(
-            `${state.toString()}: ${Immediate.toString(
-              constValue
-            )}: ${Immediate.toString(constValue)}`
-          );
+          if (isVerbose()) {
+            log.debug(
+              `${state.toString()}: ${Immediate.toString(
+                constValue
+              )}: ${Immediate.toString(constValue)}`
+            );
+          }
 
           ipOffset = 2;
           break;
