@@ -9,6 +9,7 @@ This code must not depend on any specific runtime environment.
 - `std.qll` - Standard library: string operations, memory utilities, data structures
 - `alloc.qll` - Generic allocator implementation
 - `buffered.qll` - Buffered I/O helpers for peripheral access
+- `graphics.qll` - Support for graphical output via display peripheral
 
 ## Allocator Binding
 

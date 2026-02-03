@@ -2,7 +2,8 @@
 
 Support code for baremetal programs running directly on the VM without an operating system.
 
-Baremetal programs have direct access to hardware peripherals and memory. Use this library when writing standalone programs that don't need OS services.
+Baremetal programs have direct access to hardware peripherals and memory. Use this library
+when writing standalone programs that don't need OS services.
 
 ## Files
 
@@ -12,4 +13,5 @@ Baremetal programs have direct access to hardware peripherals and memory. Use th
 
 ## Allocator
 
-The `alloc.qll` binds `shared/alloc.qll` by setting `std::heap = 0x8000` and exporting `system::alloc`/`system::dealloc` for `new`/`delete` support.
+The `alloc.qll` binds `shared/alloc.qll` by setting `std::heap = 0x8000` and exporting
+`system::alloc`/`system::dealloc` for `new`/`delete` support.

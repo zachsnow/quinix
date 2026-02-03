@@ -2,8 +2,6 @@
 // The Quinix standard library OS interface. The idea is that
 // `std.qll` will implement most of the library and then this
 // will connect it to the OS via syscalls.
-//
-// Since there"s no operating system yet, this is just a sketch.
 ///////////////////////////////////////////////////////////////////////
 namespace lib {
   namespace support {

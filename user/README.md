@@ -2,7 +2,8 @@
 
 Support code for usermode programs running under the Quinix kernel.
 
-Usermode programs interact with the kernel via syscalls. This directory provides the syscall interface, allocator binding, and entrypoint for user programs.
+Usermode programs interact with the kernel via syscalls. This directory provides the
+syscall interface, allocator binding, and entrypoint for user programs.
 
 ## Files
 
