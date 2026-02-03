@@ -836,6 +836,8 @@ class VM {
     const memory = this.memory;
     const mmu = this.mmu;
     const peripheralAddresses = this.peripheralAddresses;
+    const memorySize = this.memorySize;
+    const verbose = log.isVerbose;
 
     const maxCycles = this.maxCycles;
     let stepCycles = 0;
@@ -870,7 +872,7 @@ class VM {
       }
 
       // The physical address must fit within the constraints of "physical" memory.
-      if (physicalIp < 0 || physicalIp >= this.memorySize) {
+      if (physicalIp < 0 || physicalIp >= memorySize) {
         this.fault(
           `memory fault: ${Address.toString(
             physicalIp
@@ -896,7 +898,7 @@ class VM {
       const sr0 = (encoded >>> 8) & 0xff;
       const sr1 = encoded & 0xff;
 
-      if (log.isVerbose) {
+      if (verbose) {
         log.debug(`${state}: ${Immediate.toString(encoded)}: op=${operation} dr=${dr} sr0=${sr0} sr1=${sr1}`);
       }
 
@@ -947,7 +949,7 @@ class VM {
             return "continue";
           }
 
-          if (physicalAddress >= this.memorySize) {
+          if (physicalAddress >= memorySize) {
             this.fault(
               `memory fault: ${Address.toString(
                 physicalAddress
@@ -990,7 +992,7 @@ class VM {
             return "continue";
           }
 
-          if (physicalAddress >= this.memorySize) {
+          if (physicalAddress >= memorySize) {
             this.fault(
               `memory fault: ${Address.toString(
                 physicalAddress
@@ -1011,7 +1013,7 @@ class VM {
           // Check peripheral mapping for a method.
           const peripheralMapping = peripheralAddresses[physicalAddress];
           if (peripheralMapping) {
-            if (log.isVerbose) {
+            if (verbose) {
               log.debug(`notifying peripheral ${peripheralMapping.peripheral.name}...`);
             }
             peripheralMapping.peripheral.notify(
@@ -1038,7 +1040,7 @@ class VM {
             return "continue";
           }
 
-          if (physicalAddress >= this.memorySize) {
+          if (physicalAddress >= memorySize) {
             this.fault(
               `memory fault: ${Address.toString(physicalAddress)} out of bounds`
             );
@@ -1047,7 +1049,7 @@ class VM {
 
           const constValue = memory[physicalAddress];
           registers[dr] = constValue;
-          if (log.isVerbose) {
+          if (verbose) {
             log.debug(
               `${state.toString()}: ${Immediate.toString(
                 constValue
