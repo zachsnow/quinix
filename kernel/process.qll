@@ -2,7 +2,7 @@ namespace kernel {
   namespace process {
     // Configuration
     .constant global DEFAULT_EXECUTABLE_BASE: byte = 0x1000;
-    .constant global DEFAULT_EXECUTABLE_SIZE: byte = 0x2000;  // 8KB
+    .constant global DEFAULT_EXECUTABLE_SIZE: byte = 0x8000;  // 32KB
     .constant global DEFAULT_HEAP_SIZE: byte = 0x10000;       // 64KB to match user alloc.qll
     .constant global DEFAULT_STACK_SIZE: byte = 0x10000;      // 64KB
     .constant global MAX_PROCESSES: byte = 32;
@@ -20,7 +20,8 @@ namespace kernel {
 
     global processes: std::vector<* process> = null;
 
-    .interrupt function _error_interrupt(): void {
+    // Error handler - called by trampoline which handles stack switching and INT return.
+    .export function _error_interrupt(): void {
       log("process: error interrupt!");
       // For now, just kill the current process.
       var process = current_process();
@@ -195,7 +196,8 @@ namespace kernel {
       processes = std::vector::create<* process>(MAX_PROCESSES);
 
       // Register error handler.
-      support::interrupt(interrupts::ERROR, _error_interrupt);
+      // Use trampoline which switches to kernel stack before calling handler.
+      support::interrupt(interrupts::ERROR, support::error_trampoline);
 
       log("process: initialized");
     }

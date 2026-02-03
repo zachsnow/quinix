@@ -19,8 +19,9 @@ namespace kernel {
     // Syscall handler function type
     type handler = (syscall) => byte;
 
-    // interrupt 0x80 handler.
-    .interrupt function _syscall_interrupt(): void {
+    // Syscall handler - called by trampoline which handles stack switching and INT return.
+    .export function _syscall_interrupt(): void {
+      log("syscall: interrupt received");
       // Arguments are passed in r0...r3.
       var sc = syscall {
         syscall = interrupts::state->registers[0],
@@ -40,6 +41,7 @@ namespace kernel {
       var result = fn(sc);
       // Put result in r0 for return to user
       interrupts::state->registers[0] = result;
+      log("syscall: done");
     }
 
     global syscalls: handler[] = [
@@ -61,17 +63,27 @@ namespace kernel {
     // Translate a user virtual address to physical
     function _translate(p: * byte): * byte {
       var current = process::current_process();
-      return memory::translate(process::get_table(current), p);
+      var table = process::get_table(current);
+      if (!table) {
+        log("syscall: _translate: table is NULL!");
+        return null;
+      }
+      return memory::translate(table, p);
     }
 
     // Get the data pointer from a user-space slice (translated to physical)
     function _get_slice_data(slice_addr: * byte): * byte {
       var physical_slice = _translate(slice_addr);
       if(!physical_slice){
+        log("syscall: _get_slice_data: slice_addr translation failed");
         return null;
       }
       var data_virt = physical_slice[unsafe 0];  // Virtual address of data
-      return _translate(<unsafe * byte>data_virt);
+      var result = _translate(<unsafe * byte>data_virt);
+      if(!result){
+        log("syscall: _get_slice_data: data_virt translation failed");
+      }
+      return result;
     }
 
     // Get the length from a user-space slice
@@ -305,8 +317,9 @@ namespace kernel {
 
     function init(): void {
       log("syscall: initializing...");
-      // Register `syscall` to handle interrupt 0x80.
-      support::interrupt(interrupts::SYSCALL, _syscall_interrupt);
+      // Register syscall trampoline to handle interrupt 0x80.
+      // The trampoline switches to kernel stack before calling _syscall_interrupt.
+      support::interrupt(interrupts::SYSCALL, support::syscall_trampoline);
       log("syscall: initialized");
     }
   }
