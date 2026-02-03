@@ -140,6 +140,8 @@ type VMOptions = {
   peripherals?: Peripheral[];
   debug?: boolean;
   mmu?: MMU;
+  enableMmu?: boolean;  // Enable MMU with identity mapping
+  mmuPages?: number;    // Number of pages to split memory into (default: 1)
   breakpoints?: Breakpoint[];
   watchpoints?: Watchpoint[];
   cycles?: number;
@@ -202,6 +204,7 @@ class VM {
 
   // Peripheral mappings.
   private readonly PERIPHERAL_MEMORY_BASE_ADDR: Address = 0x0300;
+  private peripheralMemoryEndAddr: Address = 0x0300;
 
   public static readonly PROGRAM_ADDR = 0x1000;
 
@@ -262,7 +265,12 @@ class VM {
     // Watchpoints (physical address ranges).
     this.watchpoints = options.watchpoints || [];
     this.maxCycles = options.cycles;
+    this.enableMmuOnStart = options.enableMmu ?? false;
+    this.mmuPageCount = options.mmuPages ?? 1;
   }
+
+  private enableMmuOnStart: boolean;
+  private mmuPageCount: number;
 
   private critical(message: string): never {
     throw new Error(`vm: critical fault: ${message}`);
@@ -330,6 +338,7 @@ class VM {
       baseAddress += peripheralSize;
     });
 
+    this.peripheralMemoryEndAddr = baseAddress;
     this.memory[this.PERIPHERAL_TABLE_COUNT_ADDR] = this.peripherals.length;
 
     this.showPeripherals();
@@ -545,6 +554,45 @@ class VM {
   }
 
   /**
+   * Enable MMU with an identity mapping (virtual = physical) for the entire
+   * memory space. Useful for benchmarking MMU overhead.
+   */
+  public enableMmuIdentity(): void {
+    const pageCount = this.mmuPageCount;
+    const pageSize = Math.floor(this.memorySize / pageCount);
+
+    // Use a reserved area for the page table (0x0080 - 0x01FF)
+    const pageTableSize = 1 + pageCount * 4;
+    if (pageTableSize > 0x180) {
+      throw new Error(`Too many MMU pages: ${pageCount} (max ~95)`);
+    }
+    const pageTableBase = 0x0080;
+
+    // Set up page entries mapping memory as identity
+    this.memory[pageTableBase] = pageCount;
+    const flags = AccessFlags.Present | AccessFlags.Read | AccessFlags.Write | AccessFlags.Execute;
+
+    for (let i = 0; i < pageCount; i++) {
+      const base = pageTableBase + 1 + i * 4;
+      const addr = i * pageSize;
+      this.memory[base + 0] = addr;  // virtual address
+      this.memory[base + 1] = addr;  // physical address (identity)
+      this.memory[base + 2] = i === pageCount - 1 ? this.memorySize - addr : pageSize;
+      this.memory[base + 3] = flags;
+    }
+
+    // Find the MMU peripheral and configure it
+    const mmuMapping = this.mappedPeripherals.find(m => m.peripheral === this.mmu);
+    if (mmuMapping) {
+      // Write the page table base address to the MMU's IO register
+      mmuMapping.view[0] = pageTableBase;
+      this.mmu.notify(0);
+    }
+
+    this.mmu.enable();
+  }
+
+  /**
    * Runs the given program and returns a promise that resolves
    * to the execution result (that is, `r0` when `halt` is executed).
    *
@@ -562,6 +610,11 @@ class VM {
 
     // Load program.
     this.loadProgram(program);
+
+    // Enable MMU if requested.
+    if (this.enableMmuOnStart) {
+      this.enableMmuIdentity();
+    }
 
     // Step the machine until we halt.
     try {
@@ -836,6 +889,10 @@ class VM {
     const memory = this.memory;
     const mmu = this.mmu;
     const peripheralAddresses = this.peripheralAddresses;
+    const peripheralBase = this.PERIPHERAL_MEMORY_BASE_ADDR;
+    const peripheralEnd = this.peripheralMemoryEndAddr;
+    const memorySize = this.memorySize;
+    const verbose = log.isVerbose;
 
     const maxCycles = this.maxCycles;
     let stepCycles = 0;
@@ -870,7 +927,7 @@ class VM {
       }
 
       // The physical address must fit within the constraints of "physical" memory.
-      if (physicalIp < 0 || physicalIp >= this.memorySize) {
+      if (physicalIp >= memorySize) {
         this.fault(
           `memory fault: ${Address.toString(
             physicalIp
@@ -896,7 +953,9 @@ class VM {
       const sr0 = (encoded >>> 8) & 0xff;
       const sr1 = encoded & 0xff;
 
-      log.debug(`${state}: ${Immediate.toString(encoded)}: op=${operation} dr=${dr} sr0=${sr0} sr1=${sr1}`);
+      if (verbose) {
+        log.debug(`${state}: ${Immediate.toString(encoded)}: op=${operation} dr=${dr} sr0=${sr0} sr1=${sr1}`);
+      }
 
       // By default we advance by 1; constants, jumps, and interrupts change this.
       let ipOffset = 1;
@@ -945,7 +1004,7 @@ class VM {
             return "continue";
           }
 
-          if (physicalAddress >= this.memorySize) {
+          if (physicalAddress >= memorySize) {
             this.fault(
               `memory fault: ${Address.toString(
                 physicalAddress
@@ -988,7 +1047,7 @@ class VM {
             return "continue";
           }
 
-          if (physicalAddress >= this.memorySize) {
+          if (physicalAddress >= memorySize) {
             this.fault(
               `memory fault: ${Address.toString(
                 physicalAddress
@@ -1006,15 +1065,17 @@ class VM {
             this.checkWatchpoint(physicalAddress, oldValue);
           }
 
-          // Check peripheral mapping for a method.
-          const peripheralMapping = peripheralAddresses[physicalAddress];
-          if (peripheralMapping) {
-            log.debug(
-              `notifying peripheral ${peripheralMapping.peripheral.name}...`
-            );
-            peripheralMapping.peripheral.notify(
-              physicalAddress - peripheralMapping.base
-            );
+          // Check peripheral mapping - only if address is in peripheral range.
+          if (physicalAddress >= peripheralBase && physicalAddress < peripheralEnd) {
+            const peripheralMapping = peripheralAddresses[physicalAddress];
+            if (peripheralMapping) {
+              if (verbose) {
+                log.debug(`notifying peripheral ${peripheralMapping.peripheral.name}...`);
+              }
+              peripheralMapping.peripheral.notify(
+                physicalAddress - peripheralMapping.base
+              );
+            }
           }
           break;
         }
@@ -1036,7 +1097,7 @@ class VM {
             return "continue";
           }
 
-          if (physicalAddress >= this.memorySize) {
+          if (physicalAddress >= memorySize) {
             this.fault(
               `memory fault: ${Address.toString(physicalAddress)} out of bounds`
             );
@@ -1045,11 +1106,13 @@ class VM {
 
           const constValue = memory[physicalAddress];
           registers[dr] = constValue;
-          log.debug(
-            `${state.toString()}: ${Immediate.toString(
-              constValue
-            )}: ${Immediate.toString(constValue)}`
-          );
+          if (verbose) {
+            log.debug(
+              `${state.toString()}: ${Immediate.toString(
+                constValue
+              )}: ${Immediate.toString(constValue)}`
+            );
+          }
 
           ipOffset = 2;
           break;

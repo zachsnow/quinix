@@ -296,7 +296,7 @@ class ResolvablePromise<T> {
 
 function release(): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve);
+    queueMicrotask(resolve);
   });
 }
 
