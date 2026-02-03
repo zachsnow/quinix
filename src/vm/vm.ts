@@ -202,6 +202,7 @@ class VM {
 
   // Peripheral mappings.
   private readonly PERIPHERAL_MEMORY_BASE_ADDR: Address = 0x0300;
+  private peripheralMemoryEndAddr: Address = 0x0300;
 
   public static readonly PROGRAM_ADDR = 0x1000;
 
@@ -330,6 +331,7 @@ class VM {
       baseAddress += peripheralSize;
     });
 
+    this.peripheralMemoryEndAddr = baseAddress;
     this.memory[this.PERIPHERAL_TABLE_COUNT_ADDR] = this.peripherals.length;
 
     this.showPeripherals();
@@ -836,6 +838,8 @@ class VM {
     const memory = this.memory;
     const mmu = this.mmu;
     const peripheralAddresses = this.peripheralAddresses;
+    const peripheralBase = this.PERIPHERAL_MEMORY_BASE_ADDR;
+    const peripheralEnd = this.peripheralMemoryEndAddr;
     const memorySize = this.memorySize;
     const verbose = log.isVerbose;
 
@@ -1010,15 +1014,17 @@ class VM {
             this.checkWatchpoint(physicalAddress, oldValue);
           }
 
-          // Check peripheral mapping for a method.
-          const peripheralMapping = peripheralAddresses[physicalAddress];
-          if (peripheralMapping) {
-            if (verbose) {
-              log.debug(`notifying peripheral ${peripheralMapping.peripheral.name}...`);
+          // Check peripheral mapping - only if address is in peripheral range.
+          if (physicalAddress >= peripheralBase && physicalAddress < peripheralEnd) {
+            const peripheralMapping = peripheralAddresses[physicalAddress];
+            if (peripheralMapping) {
+              if (verbose) {
+                log.debug(`notifying peripheral ${peripheralMapping.peripheral.name}...`);
+              }
+              peripheralMapping.peripheral.notify(
+                physicalAddress - peripheralMapping.base
+              );
             }
-            peripheralMapping.peripheral.notify(
-              physicalAddress - peripheralMapping.base
-            );
           }
           break;
         }
