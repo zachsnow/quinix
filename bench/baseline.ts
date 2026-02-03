@@ -17,7 +17,7 @@ function process(value: number): number {
 
 // Minimal async yield
 function release(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+  return new Promise((resolve) => queueMicrotask(resolve));
 }
 
 async function runOnce(arr: Uint32Array): Promise<{ timeMs: number; sum: number }> {

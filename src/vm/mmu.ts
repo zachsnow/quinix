@@ -257,6 +257,7 @@ class ListPageTablePeripheral extends Peripheral implements MMU {
   private readonly memory: Memory;
   private baseAddress: Address = 0x0;
   private pages: Page[] = [];
+  private lastPage: Page | null = null;  // Cache last used page
 
   public constructor(memory: Memory) {
     super();
@@ -266,14 +267,17 @@ class ListPageTablePeripheral extends Peripheral implements MMU {
   public enable() {
     this.enabled = true;
     this.pages = this.rebuild();
+    this.lastPage = null;
   }
 
   public disable() {
     this.enabled = false;
+    this.lastPage = null;
   }
 
   public reset() {
     this.pages = this.rebuild();
+    this.lastPage = null;
   }
 
   private rebuild() {
@@ -305,19 +309,36 @@ class ListPageTablePeripheral extends Peripheral implements MMU {
       return virtualAddress;
     }
 
-    const page = this.pages.find((page) => {
-      return virtualAddress >= page.virtualAddress && virtualAddress < page.virtualAddress + page.size;
-    });
+    // Check cached page first (fast path)
+    let page = this.lastPage;
+    if (page !== null &&
+        virtualAddress >= page.virtualAddress &&
+        virtualAddress < page.virtualAddress + page.size) {
+      // Cache hit - check flags
+      if (!(page.flags & flag)) {
+        log.debug(() => `translate ${Immediate.toString(virtualAddress)}: wrong flags (has ${page!.flags}, need ${flag})`);
+        return;
+      }
+      return page.physicalAddress + (virtualAddress - page.virtualAddress);
+    }
+
+    // Cache miss - do full lookup
+    page = this.pages.find((p) => {
+      return virtualAddress >= p.virtualAddress && virtualAddress < p.virtualAddress + p.size;
+    }) ?? null;
 
     // Not mapped.
-    if (page === undefined) {
-      log.debug(`translate ${Immediate.toString(virtualAddress)}: not mapped`);
+    if (page === null) {
+      log.debug(() => `translate ${Immediate.toString(virtualAddress)}: not mapped`);
       return;
     }
 
+    // Cache the page for next time
+    this.lastPage = page;
+
     // Not mapped with correct flags.
     if (!(page.flags & flag)) {
-      log.debug(`translate ${Immediate.toString(virtualAddress)}: wrong flags (has ${page.flags}, need ${flag})`);
+      log.debug(() => `translate ${Immediate.toString(virtualAddress)}: wrong flags (has ${page!.flags}, need ${flag})`);
       return;
     }
 
