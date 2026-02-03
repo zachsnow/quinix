@@ -141,6 +141,7 @@ type VMOptions = {
   debug?: boolean;
   mmu?: MMU;
   enableMmu?: boolean;  // Enable MMU with identity mapping
+  mmuPages?: number;    // Number of pages to split memory into (default: 1)
   breakpoints?: Breakpoint[];
   watchpoints?: Watchpoint[];
   cycles?: number;
@@ -265,9 +266,11 @@ class VM {
     this.watchpoints = options.watchpoints || [];
     this.maxCycles = options.cycles;
     this.enableMmuOnStart = options.enableMmu ?? false;
+    this.mmuPageCount = options.mmuPages ?? 1;
   }
 
   private enableMmuOnStart: boolean;
+  private mmuPageCount: number;
 
   private critical(message: string): never {
     throw new Error(`vm: critical fault: ${message}`);
@@ -555,17 +558,28 @@ class VM {
    * memory space. Useful for benchmarking MMU overhead.
    */
   public enableMmuIdentity(): void {
-    // Use a reserved area for the page table (just before PROGRAM_ADDR)
-    const pageTableBase = 0x0F00;
+    const pageCount = this.mmuPageCount;
+    const pageSize = Math.floor(this.memorySize / pageCount);
 
-    // Set up a single page entry mapping all memory as identity
-    // Format: [count, vaddr, paddr, size, flags]
-    this.memory[pageTableBase] = 1;  // 1 page entry
-    this.memory[pageTableBase + 1] = 0x0;  // virtual address start
-    this.memory[pageTableBase + 2] = 0x0;  // physical address start (identity)
-    this.memory[pageTableBase + 3] = this.memorySize;  // size = all memory
-    this.memory[pageTableBase + 4] =
-      AccessFlags.Present | AccessFlags.Read | AccessFlags.Write | AccessFlags.Execute;
+    // Use a reserved area for the page table (0x0080 - 0x01FF)
+    const pageTableSize = 1 + pageCount * 4;
+    if (pageTableSize > 0x180) {
+      throw new Error(`Too many MMU pages: ${pageCount} (max ~95)`);
+    }
+    const pageTableBase = 0x0080;
+
+    // Set up page entries mapping memory as identity
+    this.memory[pageTableBase] = pageCount;
+    const flags = AccessFlags.Present | AccessFlags.Read | AccessFlags.Write | AccessFlags.Execute;
+
+    for (let i = 0; i < pageCount; i++) {
+      const base = pageTableBase + 1 + i * 4;
+      const addr = i * pageSize;
+      this.memory[base + 0] = addr;  // virtual address
+      this.memory[base + 1] = addr;  // physical address (identity)
+      this.memory[base + 2] = i === pageCount - 1 ? this.memorySize - addr : pageSize;
+      this.memory[base + 3] = flags;
+    }
 
     // Find the MMU peripheral and configure it
     const mmuMapping = this.mappedPeripherals.find(m => m.peripheral === this.mmu);
@@ -913,7 +927,7 @@ class VM {
       }
 
       // The physical address must fit within the constraints of "physical" memory.
-      if (physicalIp < 0 || physicalIp >= memorySize) {
+      if (physicalIp >= memorySize) {
         this.fault(
           `memory fault: ${Address.toString(
             physicalIp

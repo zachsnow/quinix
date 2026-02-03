@@ -26,6 +26,7 @@ interface Options {
   iterations: number;
   warmup: number;
   mmu: boolean;
+  pages: number;
 }
 
 const argv = parseArguments<Options>(
@@ -52,6 +53,12 @@ const argv = parseArguments<Options>(
         type: "boolean",
         default: false,
       },
+      pages: {
+        alias: "p",
+        describe: "number of MMU pages (requires --mmu)",
+        type: "string",
+        default: "1",
+      },
     },
     positional: {
       name: "file",
@@ -69,7 +76,12 @@ interface BenchResult {
   exitCode: number;
 }
 
-async function runOnce(binary: Memory, enableMmu: boolean): Promise<BenchResult> {
+interface RunOptions {
+  enableMmu: boolean;
+  mmuPages: number;
+}
+
+async function runOnce(binary: Memory, options: RunOptions): Promise<BenchResult> {
   const peripherals: Peripheral[] = [
     new TimerPeripheral(),
     new ClockPeripheral(),
@@ -80,7 +92,8 @@ async function runOnce(binary: Memory, enableMmu: boolean): Promise<BenchResult>
   const vm = new VM({
     debug: false,
     peripherals,
-    enableMmu,
+    enableMmu: options.enableMmu,
+    mmuPages: options.mmuPages,
   });
 
   const start = performance.now();
@@ -140,9 +153,11 @@ async function main(): Promise<number> {
   const iterations = parseInt(argv.iterations as unknown as string, 10);
   const warmup = parseInt(argv.warmup as unknown as string, 10);
   const enableMmu = argv.mmu;
+  const mmuPages = parseInt(argv.pages as unknown as string, 10);
 
   // Compile
-  console.log(`Compiling ${file}...${enableMmu ? " (MMU enabled)" : ""}`);
+  const mmuInfo = enableMmu ? ` (MMU enabled, ${mmuPages} pages)` : "";
+  console.log(`Compiling ${file}...${mmuInfo}`);
   let binary: Memory;
   try {
     binary = await compileAndAssemble(file);
@@ -152,11 +167,13 @@ async function main(): Promise<number> {
   }
   console.log(`Binary size: ${binary.length * 4} bytes\n`);
 
+  const runOptions: RunOptions = { enableMmu, mmuPages };
+
   // Warmup
   if (warmup > 0) {
     console.log(`Warmup (${warmup} iteration${warmup > 1 ? "s" : ""})...`);
     for (let i = 0; i < warmup; i++) {
-      await runOnce(binary, enableMmu);
+      await runOnce(binary, runOptions);
     }
   }
 
@@ -165,7 +182,7 @@ async function main(): Promise<number> {
   const results: BenchResult[] = [];
 
   for (let i = 0; i < iterations; i++) {
-    const result = await runOnce(binary, enableMmu);
+    const result = await runOnce(binary, runOptions);
     results.push(result);
     console.log(
       `  [${i + 1}] ${result.cycles.toLocaleString()} cycles in ${result.timeMs.toFixed(2)}ms ` +

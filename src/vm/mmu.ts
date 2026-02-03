@@ -58,6 +58,11 @@ namespace AccessFlags {
  */
 interface MMU {
   /**
+   * Whether the MMU is currently enabled.
+   */
+  readonly isEnabled: boolean;
+
+  /**
    * Enable the MMU; subsequent calls to `translate` should translate the given
    * virtual address.
    */
@@ -94,8 +99,9 @@ interface MMU {
  * a `physicalAddress`.
  */
 class IdentityMMU implements MMU {
-  public enable() { }
-  public disable() { }
+  public isEnabled = false;
+  public enable() { this.isEnabled = true; }
+  public disable() { this.isEnabled = false; }
 
   public translate(virtualAddress: Address, flags: AccessFlags) {
     log.debug(`IdentityMMU: translating ${Immediate.toString(virtualAddress)} ${AccessFlags.toString(flags)}`);
@@ -140,6 +146,7 @@ class TwoLevelPageTablePeripheral extends Peripheral implements MMU {
 
   // MMU implementation.
   private enabled: boolean = false;
+  public get isEnabled(): boolean { return this.enabled; }
   private readonly memory: Memory;
   private baseAddress: Address = 0x0;
   private mru: AddressCache = {};
@@ -246,6 +253,7 @@ class ListPageTablePeripheral extends Peripheral implements MMU {
 
   // MMU implementation.
   private enabled: boolean = false;
+  public get isEnabled(): boolean { return this.enabled; }
   private readonly memory: Memory;
   private baseAddress: Address = 0x0;
   private pages: Page[] = [];
