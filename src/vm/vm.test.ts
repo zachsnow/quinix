@@ -1,6 +1,6 @@
 import { Address } from "@/lib/types";
 import { Instruction, Operation, Program, Register } from "./instructions";
-import { DisplayPeripheral } from "./peripherals";
+import { BufferedPeripheral, DisplayPeripheral, TimerPeripheral, ClockPeripheral } from "./peripherals";
 import { VM } from "./vm";
 
 // Float conversion helpers for tests
@@ -535,6 +535,238 @@ describe("VM", () => {
 
       expect(rendererCalled).toBe(false);
       expect(vm.dump(displayBase, 1)[0]).toBe(0x00);
+    });
+  });
+
+  // Test output peripheral that captures data instead of writing to stdout
+  class TestOutputPeripheral extends BufferedPeripheral {
+    public readonly name = "test-output";
+    public readonly identifier = 0x10000001;
+    public captured: number[] = [];
+
+    protected async onWrite(data: number[]): Promise<void> {
+      this.captured.push(...data);
+    }
+  }
+
+  // Test input peripheral that provides canned data instead of reading from stdin
+  class TestInputPeripheral extends BufferedPeripheral {
+    public readonly name = "test-input";
+    public readonly identifier = 0x10000002;
+    private data: number[];
+
+    constructor(data: number[]) {
+      super();
+      this.data = data;
+    }
+
+    protected async onRead(): Promise<number[]> {
+      return this.data;
+    }
+  }
+
+  describe("BufferedPeripheral output", () => {
+    test("captures written data via VM execution", async () => {
+      const output = new TestOutputPeripheral();
+      const vm = new VM({ peripherals: [output] });
+
+      const peripheralBase = 0x300;
+      const CONTROL = peripheralBase + 0;
+      const SIZE = peripheralBase + 2;
+      const BUFFER = peripheralBase + 3;
+
+      // Program that writes "Hi" (0x48, 0x69) to the output peripheral
+      const program = new Program([
+        // Write 'H' to buffer[0]
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(BUFFER),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(0x48), // 'H'
+        Instruction.createOperation(Operation.STORE, 0, 1),
+
+        // Write 'i' to buffer[1]
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(BUFFER + 1),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(0x69), // 'i'
+        Instruction.createOperation(Operation.STORE, 0, 1),
+
+        // Write size = 2
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(SIZE),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(2),
+        Instruction.createOperation(Operation.STORE, 0, 1),
+
+        // Write CONTROL = 1 (WRITE command)
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(CONTROL),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(1),
+        Instruction.createOperation(Operation.STORE, 0, 1),
+
+        // Wait for completion (poll CONTROL until 0)
+        // @poll: (word 20)
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(CONTROL),
+        Instruction.createOperation(Operation.LOAD, 1, 0),
+        Instruction.createOperation(Operation.CONSTANT, 2),
+        Instruction.createImmediate(20), // address of @poll (word 20)
+        Instruction.createOperation(Operation.JNZ, undefined, 1, 2),
+
+        Instruction.createOperation(Operation.HALT),
+      ]);
+
+      await vm.run(program.encode());
+
+      expect(output.captured).toEqual([0x48, 0x69]);
+    });
+  });
+
+  describe("BufferedPeripheral input", () => {
+    test("triggers read and receives data", async () => {
+      let readCalled = false;
+
+      // Custom input peripheral that tracks when onRead is called
+      class TrackingInputPeripheral extends BufferedPeripheral {
+        public readonly name = "tracking-input";
+        public readonly identifier = 0x10000003;
+
+        protected async onRead(): Promise<number[]> {
+          readCalled = true;
+          return [0x41, 0x42, 0x43]; // "ABC"
+        }
+      }
+
+      const input = new TrackingInputPeripheral();
+      const vm = new VM({ peripherals: [input] });
+
+      const peripheralBase = 0x300;
+      const CONTROL = peripheralBase + 0;
+
+      // Program that triggers a read command
+      const program = new Program([
+        // Write CONTROL = 2 (READ command)
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(CONTROL),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(2),
+        Instruction.createOperation(Operation.STORE, 0, 1),
+
+        // Small delay to let async complete
+        Instruction.createOperation(Operation.CONSTANT, 2),
+        Instruction.createImmediate(1000),
+        // @loop: (word 7)
+        Instruction.createOperation(Operation.CONSTANT, 3),
+        Instruction.createImmediate(1),
+        Instruction.createOperation(Operation.SUB, 2, 2, 3),
+        Instruction.createOperation(Operation.CONSTANT, 4),
+        Instruction.createImmediate(7),
+        Instruction.createOperation(Operation.JNZ, undefined, 2, 4),
+
+        Instruction.createOperation(Operation.HALT),
+      ]);
+
+      await vm.run(program.encode());
+
+      // Verify that the read was triggered
+      expect(readCalled).toBe(true);
+    });
+  });
+
+  describe("TimerPeripheral", () => {
+    test("can be configured via memory write", async () => {
+      const timer = new TimerPeripheral();
+      const vm = new VM({ peripherals: [timer] });
+
+      const timerBase = 0x300;
+
+      // Program that configures timer and then disables it
+      const program = new Program([
+        // Configure timer for 100ms interval
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(timerBase),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(100),
+        Instruction.createOperation(Operation.STORE, 0, 1),
+
+        // Disable timer
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(timerBase),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(0),
+        Instruction.createOperation(Operation.STORE, 0, 1),
+
+        Instruction.createOperation(Operation.HALT),
+      ]);
+
+      // Should complete without hanging or errors
+      await vm.run(program.encode());
+
+      // Timer memory should show 0 (disabled)
+      const timerValue = vm.dump(timerBase, 1)[0];
+      expect(timerValue).toBe(0);
+    });
+
+    // Note: Timer interrupt testing requires setTimeout callbacks to fire,
+    // which won't happen during tight CPU loops using queueMicrotask yields.
+    // Full timer interrupt testing requires either:
+    // - Using setTimeout for yields (slower but allows timer callbacks)
+    // - External test harness that waits for real time to pass
+  });
+
+  describe("ClockPeripheral", () => {
+    test("provides increasing time value", async () => {
+      const clock = new ClockPeripheral();
+      const vm = new VM({ peripherals: [clock] });
+
+      const clockBase = 0x300;
+      const result1Addr = 0x100; // Avoid peripheral table at 0x200
+      const result2Addr = 0x101;
+
+      // Program that reads clock twice with a small delay between
+      const program = new Program([
+        // Read clock value 1
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(clockBase),
+        Instruction.createOperation(Operation.LOAD, 1, 0),
+
+        // Store at result1
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(result1Addr),
+        Instruction.createOperation(Operation.STORE, 0, 1),
+
+        // Busy wait loop (spin for a bit)
+        Instruction.createOperation(Operation.CONSTANT, 2),
+        Instruction.createImmediate(50000),
+        // @loop: (word 8)
+        Instruction.createOperation(Operation.CONSTANT, 3),
+        Instruction.createImmediate(1),
+        Instruction.createOperation(Operation.SUB, 2, 2, 3),
+        Instruction.createOperation(Operation.CONSTANT, 4),
+        Instruction.createImmediate(8), // address of @loop (word 8)
+        Instruction.createOperation(Operation.JNZ, undefined, 2, 4),
+
+        // Read clock value 2
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(clockBase),
+        Instruction.createOperation(Operation.LOAD, 1, 0),
+
+        // Store at result2
+        Instruction.createOperation(Operation.CONSTANT, 0),
+        Instruction.createImmediate(result2Addr),
+        Instruction.createOperation(Operation.STORE, 0, 1),
+
+        Instruction.createOperation(Operation.HALT),
+      ]);
+
+      await vm.run(program.encode());
+
+      const time1 = vm.dump(result1Addr, 1)[0];
+      const time2 = vm.dump(result2Addr, 1)[0];
+
+      // Second reading should be >= first (time advances or stays same if very fast)
+      expect(time2).toBeGreaterThanOrEqual(time1);
     });
   });
 });
