@@ -140,6 +140,7 @@ type VMOptions = {
   peripherals?: Peripheral[];
   debug?: boolean;
   mmu?: MMU;
+  enableMmu?: boolean;  // Enable MMU with identity mapping
   breakpoints?: Breakpoint[];
   watchpoints?: Watchpoint[];
   cycles?: number;
@@ -263,7 +264,10 @@ class VM {
     // Watchpoints (physical address ranges).
     this.watchpoints = options.watchpoints || [];
     this.maxCycles = options.cycles;
+    this.enableMmuOnStart = options.enableMmu ?? false;
   }
+
+  private enableMmuOnStart: boolean;
 
   private critical(message: string): never {
     throw new Error(`vm: critical fault: ${message}`);
@@ -547,6 +551,34 @@ class VM {
   }
 
   /**
+   * Enable MMU with an identity mapping (virtual = physical) for the entire
+   * memory space. Useful for benchmarking MMU overhead.
+   */
+  public enableMmuIdentity(): void {
+    // Use a reserved area for the page table (just before PROGRAM_ADDR)
+    const pageTableBase = 0x0F00;
+
+    // Set up a single page entry mapping all memory as identity
+    // Format: [count, vaddr, paddr, size, flags]
+    this.memory[pageTableBase] = 1;  // 1 page entry
+    this.memory[pageTableBase + 1] = 0x0;  // virtual address start
+    this.memory[pageTableBase + 2] = 0x0;  // physical address start (identity)
+    this.memory[pageTableBase + 3] = this.memorySize;  // size = all memory
+    this.memory[pageTableBase + 4] =
+      AccessFlags.Present | AccessFlags.Read | AccessFlags.Write | AccessFlags.Execute;
+
+    // Find the MMU peripheral and configure it
+    const mmuMapping = this.mappedPeripherals.find(m => m.peripheral === this.mmu);
+    if (mmuMapping) {
+      // Write the page table base address to the MMU's IO register
+      mmuMapping.view[0] = pageTableBase;
+      this.mmu.notify(0);
+    }
+
+    this.mmu.enable();
+  }
+
+  /**
    * Runs the given program and returns a promise that resolves
    * to the execution result (that is, `r0` when `halt` is executed).
    *
@@ -564,6 +596,11 @@ class VM {
 
     // Load program.
     this.loadProgram(program);
+
+    // Enable MMU if requested.
+    if (this.enableMmuOnStart) {
+      this.enableMmuIdentity();
+    }
 
     // Step the machine until we halt.
     try {

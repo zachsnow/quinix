@@ -25,6 +25,7 @@ interface Options {
   file: string;
   iterations: number;
   warmup: number;
+  mmu: boolean;
 }
 
 const argv = parseArguments<Options>(
@@ -45,6 +46,12 @@ const argv = parseArguments<Options>(
         type: "string",
         default: "1",
       },
+      mmu: {
+        alias: "m",
+        describe: "enable MMU with identity mapping",
+        type: "boolean",
+        default: false,
+      },
     },
     positional: {
       name: "file",
@@ -62,7 +69,7 @@ interface BenchResult {
   exitCode: number;
 }
 
-async function runOnce(binary: Memory): Promise<BenchResult> {
+async function runOnce(binary: Memory, enableMmu: boolean): Promise<BenchResult> {
   const peripherals: Peripheral[] = [
     new TimerPeripheral(),
     new ClockPeripheral(),
@@ -73,6 +80,7 @@ async function runOnce(binary: Memory): Promise<BenchResult> {
   const vm = new VM({
     debug: false,
     peripherals,
+    enableMmu,
   });
 
   const start = performance.now();
@@ -131,9 +139,10 @@ async function main(): Promise<number> {
   const file = argv.file;
   const iterations = parseInt(argv.iterations as unknown as string, 10);
   const warmup = parseInt(argv.warmup as unknown as string, 10);
+  const enableMmu = argv.mmu;
 
   // Compile
-  console.log(`Compiling ${file}...`);
+  console.log(`Compiling ${file}...${enableMmu ? " (MMU enabled)" : ""}`);
   let binary: Memory;
   try {
     binary = await compileAndAssemble(file);
@@ -147,7 +156,7 @@ async function main(): Promise<number> {
   if (warmup > 0) {
     console.log(`Warmup (${warmup} iteration${warmup > 1 ? "s" : ""})...`);
     for (let i = 0; i < warmup; i++) {
-      await runOnce(binary);
+      await runOnce(binary, enableMmu);
     }
   }
 
@@ -156,7 +165,7 @@ async function main(): Promise<number> {
   const results: BenchResult[] = [];
 
   for (let i = 0; i < iterations; i++) {
-    const result = await runOnce(binary);
+    const result = await runOnce(binary, enableMmu);
     results.push(result);
     console.log(
       `  [${i + 1}] ${result.cycles.toLocaleString()} cycles in ${result.timeMs.toFixed(2)}ms ` +
