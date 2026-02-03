@@ -52,10 +52,13 @@ namespace kernel {
       }
 
       // Restore the next task"s state.
+      log("scheduler: switching to task");
       _restore_current_task();
     }
 
-    .interrupt function _timer_interrupt(): void {
+    // Timer handler - called by trampoline which handles stack switching and INT return.
+    .export function _timer_interrupt(): void {
+      log("scheduler: timer interrupt");
       _schedule_task(interrupts::state);
     }
 
@@ -81,6 +84,7 @@ namespace kernel {
     }
 
     function destroy_task(task: * task): void {
+      log("scheduler: destroy_task start");
       if(!task){
         panic("scheduler: destroy: no task");
       }
@@ -89,12 +93,15 @@ namespace kernel {
       }
 
       var destroyed_current_task = task == current_task;
+      log("scheduler: removing task from list");
 
       std::ilist::remove(&tasks, task);
       delete task;
+      log("scheduler: task removed");
 
       // If we destroyed the current task, switch to the head of the task list.
       if(destroyed_current_task){
+        log("scheduler: destroyed current task");
         if(!tasks){
           panic("scheduler: no tasks after destroy");
         }
@@ -105,9 +112,11 @@ namespace kernel {
           log("All user tasks completed");
           support::halt(0);
         }
+        log("scheduler: restoring other task state");
         *interrupts::state = current_task->state;
         memory::use_table(current_task->table);
       }
+      log("scheduler: destroy_task done");
     }
 
     function init(): void {
@@ -123,7 +132,8 @@ namespace kernel {
       current_task = task;
 
       // Configure hardware timer interrupt handler.
-      support::interrupt(interrupts::TIMER, _timer_interrupt);
+      // Use trampoline which switches to kernel stack before calling handler.
+      support::interrupt(interrupts::TIMER, support::timer_trampoline);
       *peripherals::timer = 10;  // Timer interval for preemption (ms)
     }
   }

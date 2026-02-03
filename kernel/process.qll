@@ -2,7 +2,7 @@ namespace kernel {
   namespace process {
     // Configuration
     .constant global DEFAULT_EXECUTABLE_BASE: byte = 0x1000;
-    .constant global DEFAULT_EXECUTABLE_SIZE: byte = 0x2000;  // 8KB
+    .constant global DEFAULT_EXECUTABLE_SIZE: byte = 0x8000;  // 32KB
     .constant global DEFAULT_HEAP_SIZE: byte = 0x10000;       // 64KB to match user alloc.qll
     .constant global DEFAULT_STACK_SIZE: byte = 0x10000;      // 64KB
     .constant global MAX_PROCESSES: byte = 32;
@@ -17,7 +17,8 @@ namespace kernel {
 
     global processes: std::vector<* process> = null;
 
-    .interrupt function _error_interrupt(): void {
+    // Error handler - called by trampoline which handles stack switching and INT return.
+    .export function _error_interrupt(): void {
       log("process: error interrupt!");
 
       // For now, just kill the current process.
@@ -29,7 +30,7 @@ namespace kernel {
       return;
     }
 
-    function create_process(binary: byte[], parent_id: byte): byte {
+    function create_process(binary: byte[], parent_id: byte, args: byte[], args_len: byte): byte {
       log("process: create_process start");
 
       // Check process limit
@@ -64,7 +65,42 @@ namespace kernel {
       var heap_base = executable_base + executable_size + 0x1000;
       var stack_base = heap_base + heap_size + 0x1000;
       log("process: setting task sp");
-      task->state.registers[63] = stack_base + stack_size;
+      var sp = stack_base + stack_size;
+
+      // Copy args to the top of the stack and pass via callee-save registers.
+      // Args data is placed at the top of the stack (highest addresses).
+      // r32 = pointer to args data (virtual address), r33 = args length
+      // SP is set below the args data.
+      var stack_page = memory::table_page(table, 2);
+      var stack_phys = <unsafe * byte>(<byte>stack_page->physical_address);
+      if (args_len > 0) {
+        log("process: copying args to stack");
+
+        // Args data at top of stack: offset = stack_size - args_len
+        var args_data_offset = stack_size - args_len;
+
+        // Copy args data to physical memory
+        var args_dest = <unsafe * byte>(<unsafe byte>stack_phys + args_data_offset);
+        for (var j: byte = 0; j < args_len; j = j + 1) {
+          args_dest[unsafe j] = args[j];
+        }
+
+        // Set r32 = virtual address of args data
+        task->state.registers[32] = stack_base + args_data_offset;
+        // Set r33 = args length
+        task->state.registers[33] = args_len;
+        // SP points below the args data
+        sp = stack_base + args_data_offset;
+        log("process: args setup complete");
+      } else {
+        log("process: no args");
+        // No args: r32 = 0 (null pointer), r33 = 0 (zero length)
+        task->state.registers[32] = 0;
+        task->state.registers[33] = 0;
+        // SP stays at top of stack
+      }
+
+      task->state.registers[63] = sp;
       // Set the task's page table for context switching
       task->table = table;
 
@@ -154,7 +190,8 @@ namespace kernel {
       processes = std::vector::create<* process>(MAX_PROCESSES);
 
       // Register error handler.
-      support::interrupt(interrupts::ERROR, _error_interrupt);
+      // Use trampoline which switches to kernel stack before calling handler.
+      support::interrupt(interrupts::ERROR, support::error_trampoline);
 
       log("process: initialized");
     }

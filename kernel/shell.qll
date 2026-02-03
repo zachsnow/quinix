@@ -78,7 +78,123 @@ namespace shell {
     std::console::print("\n");
   }
 
-  function cmd_ls(): void {
+  function cmd_cd(args: byte[], args_len: byte): void {
+    // No args means go to root.
+    if (args_len == 0) {
+      cwd[0] = 47;  // "/"
+      cwd_len = 1;
+      return;
+    }
+
+    // Check if filesystem is initialized.
+    if (!kernel::fs::qfs::initialized) {
+      if (!kernel::fs::qfs::init()) {
+        std::console::print("cd: filesystem not available\n");
+        return;
+      }
+    }
+
+    // Resolve the path.
+    len args = args_len;
+    var result: kernel::fs::qfs::path_result;
+    if (!kernel::fs::qfs::resolve_path(args, &result)) {
+      std::console::print("cd: not found: ");
+      _print_n(args, args_len);
+      std::console::print("\n");
+      return;
+    }
+
+    // Must be a directory.
+    if ((result.entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) == 0) {
+      std::console::print("cd: not a directory: ");
+      _print_n(args, args_len);
+      std::console::print("\n");
+      return;
+    }
+
+    // Update cwd. Handle absolute vs relative paths.
+    if (args[0] == 47) {  // starts with "/"
+      // Absolute path - copy directly.
+      for (var i: byte = 0; i < args_len && i < cap cwd; i = i + 1) {
+        cwd[i] = args[i];
+      }
+      cwd_len = args_len;
+    } else {
+      // Relative path - append to cwd.
+      // Add "/" separator if cwd doesn't end with one.
+      var new_len = cwd_len;
+      if (cwd_len > 0 && cwd[cwd_len - 1] != 47) {
+        if (new_len < cap cwd) {
+          cwd[new_len] = 47;
+          new_len = new_len + 1;
+        }
+      }
+      // Append the path.
+      for (var j: byte = 0; j < args_len && new_len < cap cwd; j = j + 1) {
+        cwd[new_len] = args[j];
+        new_len = new_len + 1;
+      }
+      cwd_len = new_len;
+    }
+  }
+
+  // List entries in a directory sector, following FAT chain.
+  function _ls_dir(dir_sector: byte): void {
+    var entry: kernel::fs::qfs::dirent;
+    var found: byte = 0;
+    var sector = dir_sector;
+
+    while (sector != kernel::fs::qfs::FAT_END &&
+           sector != kernel::fs::qfs::FAT_FREE &&
+           sector != 0) {
+      for (var slot: byte = 0; slot < kernel::fs::qfs::DIRENT_PER_SECTOR; slot = slot + 1) {
+        if (!kernel::fs::qfs::_read_dirent_at(sector, slot, &entry)) {
+          continue;
+        }
+
+        if ((entry.flags & kernel::fs::qfs::DIRENT_USED) != 0 &&
+            (entry.flags & kernel::fs::qfs::DIRENT_DELETED) == 0) {
+          // Print type indicator and set color.
+          if ((entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) != 0) {
+            _blue();
+            std::console::print("d ");
+            _bold();
+          } else {
+            std::console::print("- ");
+          }
+
+          // Print filename (up to 24 chars).
+          for (var n: byte = 0; n < 24; n = n + 1) {
+            if (entry.name[n] == 0) {
+              break;
+            }
+            var c: byte[1];
+            c[0] = entry.name[n];
+            std::console::print(c);
+          }
+
+          // Reset color if directory.
+          if ((entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) != 0) {
+            _reset();
+          }
+
+          // Print size.
+          std::console::print("  ");
+          _print_num(entry.size);
+          std::console::print(" bytes\n");
+
+          found = found + 1;
+        }
+      }
+      sector = kernel::fs::qfs::fat_read(sector);
+    }
+
+    if (found == 0) {
+      std::console::print("(empty)\n");
+    }
+  }
+
+  function cmd_ls(args: byte[], args_len: byte): void {
     // Check if filesystem is initialized.
     if (!kernel::fs::qfs::initialized) {
       if (!kernel::fs::qfs::init()) {
@@ -87,39 +203,36 @@ namespace shell {
       }
     }
 
-    var entry: kernel::fs::qfs::dirent;
-    var found: byte = 0;
-
-    // v2: root directory has 4 entries (1 sector * 4 entries/sector).
-    for (var idx: byte = 0; idx < kernel::fs::qfs::DIRENT_PER_SECTOR; idx = idx + 1) {
-      if (!kernel::fs::qfs::_read_dirent(idx, &entry)) {
-        break;
-      }
-
-      if ((entry.flags & kernel::fs::qfs::DIRENT_USED) != 0 &&
-          (entry.flags & kernel::fs::qfs::DIRENT_DELETED) == 0) {
-        // Print filename (up to 24 chars).
-        for (var n: byte = 0; n < 24; n = n + 1) {
-          if (entry.name[n] == 0) {
-            break;
-          }
-          var c: byte[1];
-          c[0] = entry.name[n];
-          std::console::print(c);
-        }
-
-        // Print size.
-        std::console::print("  ");
-        _print_num(entry.size);
-        std::console::print(" bytes\n");
-
-        found = found + 1;
-      }
+    // Use cwd if no path given.
+    var path: byte[];
+    var path_len: byte;
+    if (args_len == 0) {
+      path = cwd;
+      path_len = cwd_len;
+    } else {
+      path = args;
+      path_len = args_len;
     }
 
-    if (found == 0) {
-      std::console::print("(empty)\n");
+    // Resolve the path.
+    len path = path_len;
+    var result: kernel::fs::qfs::path_result;
+    if (!kernel::fs::qfs::resolve_path(path, &result)) {
+      std::console::print("ls: not found: ");
+      _print_n(path, path_len);
+      std::console::print("\n");
+      return;
     }
+
+    // Must be a directory.
+    if ((result.entry.flags & kernel::fs::qfs::DIRENT_DIRECTORY) == 0) {
+      std::console::print("ls: not a directory: ");
+      _print_n(path, path_len);
+      std::console::print("\n");
+      return;
+    }
+
+    _ls_dir(result.entry.first_sector);
   }
 
   function cmd_cat(args: byte[], args_len: byte): void {
@@ -169,13 +282,183 @@ namespace shell {
     std::console::print("\n");
   }
 
+  function cmd_touch(args: byte[], args_len: byte): void {
+    if (args_len == 0) {
+      std::console::print("touch: missing filename\n");
+      return;
+    }
+
+    // Check if filesystem is initialized.
+    if (!kernel::fs::qfs::initialized) {
+      if (!kernel::fs::qfs::init()) {
+        std::console::print("touch: filesystem not available\n");
+        return;
+      }
+    }
+
+    // Build absolute path.
+    var abs_path: byte[64];
+    var abs_len = _make_absolute(args, args_len, abs_path);
+
+    // Create dynamic array for resolve_path.
+    var path: byte[] = new byte[64];
+    for (var i: byte = 0; i < abs_len; i = i + 1) {
+      path[i] = abs_path[i];
+    }
+    len path = abs_len;
+
+    // Check if file already exists using path resolution.
+    var result: kernel::fs::qfs::path_result;
+    if (kernel::fs::qfs::resolve_path(path, &result)) {
+      // File already exists - nothing to do.
+      delete path;
+      return;
+    }
+
+    // Resolve parent directory and create file.
+    var filename: byte[24] = [0; 24];
+    var filename_len: byte = 0;
+    var parent_sector = kernel::fs::qfs::resolve_parent(path, &filename[0], &filename_len);
+    if (parent_sector == 0 || filename_len == 0) {
+      std::console::print("touch: invalid path\n");
+      delete path;
+      return;
+    }
+
+    // Create empty file.
+    var dr: kernel::fs::qfs::dir_result;
+    if (!kernel::fs::qfs::dir_create_in(parent_sector, filename[0:filename_len], 0, 0, kernel::fs::qfs::DIRENT_USED, &dr)) {
+      std::console::print("touch: failed to create file\n");
+    }
+    delete path;
+  }
+
+  function cmd_rm(args: byte[], args_len: byte): void {
+    if (args_len == 0) {
+      std::console::print("rm: missing filename\n");
+      return;
+    }
+
+    // Check if filesystem is initialized.
+    if (!kernel::fs::qfs::initialized) {
+      if (!kernel::fs::qfs::init()) {
+        std::console::print("rm: filesystem not available\n");
+        return;
+      }
+    }
+
+    // Build absolute path.
+    var abs_path: byte[64];
+    var abs_len = _make_absolute(args, args_len, abs_path);
+
+    // Create dynamic array for resolve_path.
+    var path: byte[] = new byte[64];
+    for (var i: byte = 0; i < abs_len; i = i + 1) {
+      path[i] = abs_path[i];
+    }
+    len path = abs_len;
+
+    // Find the file using path resolution.
+    var result: kernel::fs::qfs::path_result;
+    if (!kernel::fs::qfs::resolve_path(path, &result)) {
+      std::console::print("rm: not found: ");
+      _print_n(args, args_len);
+      std::console::print("\n");
+      delete path;
+      return;
+    }
+
+    // Delete the file at (sector, slot).
+    if (!kernel::fs::qfs::dir_delete_at(result.dir_result.sector, result.dir_result.slot)) {
+      std::console::print("rm: failed to delete\n");
+    }
+    delete path;
+  }
+
+  function cmd_mkdir(args: byte[], args_len: byte): void {
+    if (args_len == 0) {
+      std::console::print("mkdir: missing directory name\n");
+      return;
+    }
+
+    // Check if filesystem is initialized.
+    if (!kernel::fs::qfs::initialized) {
+      if (!kernel::fs::qfs::init()) {
+        std::console::print("mkdir: filesystem not available\n");
+        return;
+      }
+    }
+
+    // Build absolute path.
+    var abs_path: byte[64];
+    var abs_len = _make_absolute(args, args_len, abs_path);
+
+    // Create dynamic array for mkdir.
+    var path: byte[] = new byte[64];
+    for (var i: byte = 0; i < abs_len; i = i + 1) {
+      path[i] = abs_path[i];
+    }
+    len path = abs_len;
+
+    var sector = kernel::fs::qfs::mkdir(path);
+    if (sector == 0) {
+      std::console::print("mkdir: failed to create directory\n");
+    }
+    delete path;
+  }
+
   function cmd_run(args: byte[], args_len: byte): void {
     if (args_len == 0) {
       std::console::print("run: missing program path\n");
       return;
     }
-    len args = args_len;
-    var pid = load_executable(args, 0);
+
+    // Find the first space to split path from program args.
+    var path_end: byte = args_len;
+    for (var j: byte = 0; j < args_len; j = j + 1) {
+      if (args[j] == 32) {  // space character
+        path_end = j;
+        break;
+      }
+    }
+
+    // Extract just the path portion for _make_absolute.
+    var raw_path: byte[64];
+    for (var k: byte = 0; k < path_end && k < 64; k = k + 1) {
+      raw_path[k] = args[k];
+    }
+
+    // Build absolute path.
+    var abs_path: byte[64];
+    var abs_len = _make_absolute(raw_path, path_end, abs_path);
+
+    // Create dynamic array for load_executable.
+    var path: byte[] = new byte[64];
+    for (var i: byte = 0; i < abs_len; i = i + 1) {
+      path[i] = abs_path[i];
+    }
+    len path = abs_len;
+
+    // Extract program args (everything after the first space).
+    var prog_args: byte[128];
+    var prog_args_len: byte = 0;
+    var prog_args_start = path_end + 1;
+    if (prog_args_start < args_len) {
+      for (var m: byte = prog_args_start; m < args_len && prog_args_len < 128; m = m + 1) {
+        prog_args[prog_args_len] = args[m];
+        prog_args_len = prog_args_len + 1;
+      }
+    }
+
+    // Debug: print args info
+    std::console::print("run: args_len=");
+    _print_num(prog_args_len);
+    std::console::print(" args='");
+    _print_n(prog_args, prog_args_len);
+    std::console::print("'\n");
+
+    var pid = load_executable(path, 0, prog_args, prog_args_len);
+    delete path;
     if (pid == 0) {
       std::console::print("run: failed to load program\n");
       return;

@@ -93,7 +93,7 @@ function wait_for_process(pid: byte): void {
 }
 
 // Load an executable from QFS and create a process.
-function load_executable(path: byte[], parent_id: byte): byte {
+function load_executable(path: byte[], parent_id: byte, args: byte[], args_len: byte): byte {
   kernel::log("load: opening file");
   var slot = kernel::fs::qfs::file_open(path, kernel::fs::qfs::MODE_READ);
   if (slot == -1) {
@@ -124,7 +124,7 @@ function load_executable(path: byte[], parent_id: byte): byte {
     return 0;
   }
 
-  var pid = kernel::process::create_process(binary, parent_id);
+  var pid = kernel::process::create_process(binary, parent_id, args, args_len);
   kernel::log("load: process created");
   delete binary;
   return pid;

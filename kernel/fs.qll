@@ -123,8 +123,9 @@ namespace kernel {
       /////////////////////////////////////////////////////////////////////
 
       // Read a FAT entry for a given data sector.
+      // Note: FAT index equals sector number (not offset from data_start)
       function fat_read(data_sector: byte): byte {
-        var fat_index = data_sector - sb.data_start;
+        var fat_index = data_sector;
         var fat_sector = sb.fat_start + fat_index / FAT_ENTRIES_PER_SECTOR;
         var fat_offset = fat_index % FAT_ENTRIES_PER_SECTOR;
 
@@ -136,8 +137,9 @@ namespace kernel {
       }
 
       // Write a FAT entry for a given data sector.
+      // Note: FAT index equals sector number (not offset from data_start)
       function fat_write(data_sector: byte, value: byte): bool {
-        var fat_index = data_sector - sb.data_start;
+        var fat_index = data_sector;
         var fat_sector = sb.fat_start + fat_index / FAT_ENTRIES_PER_SECTOR;
         var fat_offset = fat_index % FAT_ENTRIES_PER_SECTOR;
 

@@ -19,6 +19,52 @@
   ; Halt with main's return value in r0
   halt
 
+; Kernel stack address for interrupt handlers.
+; When an interrupt fires from userspace, SP contains the user's virtual stack
+; address. With MMU disabled, using this as a physical address corrupts memory.
+; Interrupt handlers must switch to this kernel stack at the start.
+; Located at 0x1F000 (below kernel heap at 0x10000, above interrupt table).
+data @kernel_interrupt_sp 0x1F000
+
+; Interrupt trampoline for syscall handler.
+; This wrapper switches to the kernel stack BEFORE calling the QLL handler,
+; ensuring that the handler's prologue and stack operations use kernel memory.
+@global::kernel::support::syscall_trampoline:
+  ; Switch to kernel interrupt stack (before any stack operations!)
+  constant r63 @kernel_interrupt_sp
+  load r63 r63
+  ; Now call the actual QLL syscall handler
+  constant r0 @_syscall_return
+  constant r1 @global::kernel::syscall::_syscall_interrupt
+  jmp r1
+@_syscall_return:
+  ; Handler returned, now return from interrupt
+  ; INT 0x0 restores all registers from interrupt state at 0x2
+  constant r0 0x0
+  int r0
+
+; Interrupt trampoline for timer handler.
+@global::kernel::support::timer_trampoline:
+  constant r63 @kernel_interrupt_sp
+  load r63 r63
+  constant r0 @_timer_return
+  constant r1 @global::kernel::scheduler::_timer_interrupt
+  jmp r1
+@_timer_return:
+  constant r0 0x0
+  int r0
+
+; Interrupt trampoline for error handler.
+@global::kernel::support::error_trampoline:
+  constant r63 @kernel_interrupt_sp
+  load r63 r63
+  constant r0 @_error_return
+  constant r1 @global::kernel::process::_error_interrupt
+  jmp r1
+@_error_return:
+  constant r0 0x0
+  int r0
+
 ; Disable interrupts (write false to address 0x0).
 @global::kernel::support::disable_interrupts:
   constant r1 0x0000        ; Address 0x0 is interrupt enable flag.
