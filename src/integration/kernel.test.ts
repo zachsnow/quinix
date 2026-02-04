@@ -44,7 +44,7 @@ describe('Kernel: Module Compilation', () => {
     const entrypoint = AssemblyProgram.parse(entrypointText, PATHS.bare.entrypoint);
     const combined = AssemblyProgram.concat([entrypoint, program.compile()]);
     const [messages, binary] = combined.assemble();
-    expect(binary).not.toBeNull();
+    expect(binary).toBeDefined();
 
     const vm = new VM({ cycles: 500 });
     const result = await vm.run(binary!.encode());
@@ -90,7 +90,7 @@ describe('Kernel: Data Structures', () => {
     const entrypoint = AssemblyProgram.parse(entrypointText, PATHS.bare.entrypoint);
     const combined = AssemblyProgram.concat([entrypoint, program.compile()]);
     const [messages, binary] = combined.assemble();
-    expect(binary).not.toBeNull();
+    expect(binary).toBeDefined();
 
     const vm = new VM({ cycles: 500 });
     const result = await vm.run(binary!.encode());
@@ -122,7 +122,7 @@ describe('Kernel: Data Structures', () => {
     const entrypoint = AssemblyProgram.parse(entrypointText, PATHS.bare.entrypoint);
     const combined = AssemblyProgram.concat([entrypoint, program.compile()]);
     const [messages, binary] = combined.assemble();
-    expect(binary).not.toBeNull();
+    expect(binary).toBeDefined();
 
     const vm = new VM({ cycles: 500 });
     const result = await vm.run(binary!.encode());
@@ -159,7 +159,7 @@ describe('Kernel: Memory Management Types', () => {
     const entrypoint = AssemblyProgram.parse(entrypointText, PATHS.bare.entrypoint);
     const combined = AssemblyProgram.concat([entrypoint, program.compile()]);
     const [messages, binary] = combined.assemble();
-    expect(binary).not.toBeNull();
+    expect(binary).toBeDefined();
 
     const vm = new VM({ cycles: 500 });
     const result = await vm.run(binary!.encode());
@@ -191,7 +191,7 @@ describe('Kernel: Error Types', () => {
     const entrypoint = AssemblyProgram.parse(entrypointText, PATHS.bare.entrypoint);
     const combined = AssemblyProgram.concat([entrypoint, program.compile()]);
     const [messages, binary] = combined.assemble();
-    expect(binary).not.toBeNull();
+    expect(binary).toBeDefined();
 
     const vm = new VM({ cycles: 500 });
     const result = await vm.run(binary!.encode());
@@ -223,7 +223,7 @@ describe('Kernel: Interrupt Constants', () => {
     const entrypoint = AssemblyProgram.parse(entrypointText, PATHS.bare.entrypoint);
     const combined = AssemblyProgram.concat([entrypoint, program.compile()]);
     const [messages, binary] = combined.assemble();
-    expect(binary).not.toBeNull();
+    expect(binary).toBeDefined();
 
     const vm = new VM({ cycles: 500 });
     const result = await vm.run(binary!.encode());
