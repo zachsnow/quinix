@@ -1,7 +1,6 @@
 // Simple interactive shell for the kernel.
 namespace shell {
   // Current working directory path.
-  // QFS only has a flat root directory for now.
   global cwd: byte[64] = [0; 64];
   global cwd_len: byte = 1;
 
@@ -69,8 +68,45 @@ namespace shell {
     }
   }
 
+  // Terminal color helpers.
+  function _reset(): void { std::console::print("\x1b[0m"); }
+  function _bold(): void { std::console::print("\x1b[1m"); }
+  function _blue(): void { std::console::print("\x1b[34m"); }
+
+  // Build absolute path from relative path and cwd.
+  function _make_absolute(args: byte[], args_len: byte, out: byte[]): byte {
+    // If already absolute, just copy.
+    if (args_len > 0 && args[0] == 47) {  // starts with "/"
+      for (var i: byte = 0; i < args_len && i < cap out; i = i + 1) {
+        out[i] = args[i];
+      }
+      return args_len;
+    }
+
+    // Copy cwd first.
+    var out_len: byte = 0;
+    for (var j: byte = 0; j < cwd_len && out_len < cap out; j = j + 1) {
+      out[out_len] = cwd[j];
+      out_len = out_len + 1;
+    }
+
+    // Add separator if cwd doesn't end with '/'.
+    if (cwd_len > 0 && cwd[cwd_len - 1] != 47 && out_len < cap out) {
+      out[out_len] = 47;
+      out_len = out_len + 1;
+    }
+
+    // Append relative path.
+    for (var k: byte = 0; k < args_len && out_len < cap out; k = k + 1) {
+      out[out_len] = args[k];
+      out_len = out_len + 1;
+    }
+
+    return out_len;
+  }
+
   function cmd_help(): void {
-    std::console::print("Commands: help, pwd, ls, cat, run, exit\n");
+    std::console::print("Commands: help, pwd, cd, ls, cat, touch, rm, mkdir, run, exit\n");
   }
 
   function cmd_pwd(): void {
@@ -530,10 +566,18 @@ namespace shell {
           cmd_help();
         } else if (str_eq_n("pwd", cmd, cmd_len)) {
           cmd_pwd();
+        } else if (str_eq_n("cd", cmd, cmd_len)) {
+          cmd_cd(args, args_len);
         } else if (str_eq_n("ls", cmd, cmd_len)) {
-          cmd_ls();
+          cmd_ls(args, args_len);
         } else if (str_eq_n("cat", cmd, cmd_len)) {
           cmd_cat(args, args_len);
+        } else if (str_eq_n("touch", cmd, cmd_len)) {
+          cmd_touch(args, args_len);
+        } else if (str_eq_n("rm", cmd, cmd_len)) {
+          cmd_rm(args, args_len);
+        } else if (str_eq_n("mkdir", cmd, cmd_len)) {
+          cmd_mkdir(args, args_len);
         } else if (str_eq_n("run", cmd, cmd_len)) {
           cmd_run(args, args_len);
         } else if (str_eq_n("exit", cmd, cmd_len)) {

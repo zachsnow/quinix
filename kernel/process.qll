@@ -12,7 +12,6 @@ namespace kernel {
       parent_id: byte;  // 0 means no parent
       task: * scheduler::task;
       table: * memory::table;
-      files: fs::files;
     };
 
     global processes: std::vector<* process> = null;
@@ -111,7 +110,6 @@ namespace kernel {
         parent_id = parent_id,
         task = task,
         table = table,
-        files = fs::create_files(),
       };
 
       std::vector::add(&processes, process);
@@ -166,7 +164,6 @@ namespace kernel {
 
       memory::destroy_table(process->table);
       scheduler::destroy_task(process->task);
-      fs::destroy_files(process->files);
       delete process;
     }
 
