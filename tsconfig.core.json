@@ -5,5 +5,5 @@
     "types": []
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/platform/**/*.ts", "src/**/*.test.ts", "src/**/*.pegjs"]
+  "exclude": ["src/platform/**/*.ts", "src/**/*.test.ts", "src/**/*.pegjs", "src/test/**/*.ts", "src/integration/**/*.ts"]
 }
