@@ -1,93 +1,161 @@
-# Spec: Slice Types in Boolean Context
+# Spec: Type Conversions and Boolean Context
 
-## Problem
+## Overview
 
-Slice types (`T[]`) cannot be used in boolean context (with `!`, `&&`, `||`, `if`, `while`, etc.). The type checker requires "integral" types, which includes pointers and builtins but not slices.
+QLL has three categories of type conversion:
 
-```c
-var arr: byte[] = new byte[10];
-if (!arr) { ... }  // ERROR: expected integral type, actual byte[]
-```
+1. **Assignment Conversions** - Implicit conversions when assigning or passing arguments
+2. **Contextual Conversions** - Implicit extraction of a testable value in specific contexts
+3. **Explicit Casts** - Programmer-specified conversions via `<type>expr`
 
-**Workaround**: `if (!(&arr[0])) { ... }` - ugly and crashes on null slice.
+This spec addresses category 2, specifically boolean context.
 
-## Solution
+## Current Assignment Conversions
 
-Allow slices in boolean context by extracting and testing the underlying pointer.
+These are handled by `Type.isUnifiableWith()` and `Compiler.emitConversion()`:
 
-### Type Checker Changes
+| Source | Destination | Mechanism |
+|--------|-------------|-----------|
+| `T[N]` | `T[]` | Create slice descriptor with compile-time length |
+| `*T[N]` | `T[]` | Create slice descriptor from pointer |
+| `T[]` | `slice-struct` | Structural compatibility (same layout) |
+| `slice-struct` | `T[]` | Structural compatibility (same layout) |
 
-**File**: `src/lowlevel/types.ts`
+## Contextual Conversions
 
-Add a new property to `Type`:
+### Boolean Context
+
+A type can be used in boolean context (`!`, `&&`, `||`, `if`, `while`, `for`, `?:`) if it has a meaningful null/zero state.
+
+**Current** (`Type.integral`):
+- `byte`, `bool` - test if zero
+- `*T` - test if null
+- `() => T` - test if null
+
+**Proposed** (`Type.booleanTestable`):
+- All of the above, plus:
+- `T[]` - test if pointer component is null
+
+### The Pattern
+
+For single-word types, boolean testing is straightforward - compare to zero.
+
+For compound types, we need to identify a **presence component** - the field that determines whether the value is "present" or "empty":
+
+| Type | Presence Component | Offset |
+|------|-------------------|--------|
+| `T[]` | `pointer: *T` | 0 |
+
+This pattern could extend to future types:
+- `optional<T>` → test `present: bool` field
+- `result<T, E>` → test `ok: bool` field
+
+## Implementation
+
+### Type System (`src/lowlevel/types.ts`)
+
+Add to `Type` base class:
 
 ```typescript
-public get booleanTestable(): boolean {
-  const cType = this.resolve();
-  return cType.integral || cType instanceof SliceType;
+/**
+ * Returns info for boolean context testing, or null if not testable.
+ * For compound types, returns the offset and type of the presence component.
+ */
+public booleanTest(): { offset: number; size: number } | null {
+  if (this.integral) {
+    return { offset: 0, size: this.size };
+  }
+  return null;
 }
 ```
 
-**File**: `src/lowlevel/expressions.ts` and `src/lowlevel/statements.ts`
+Override in `SliceType`:
 
-Replace checks for `.integral` with `.booleanTestable` in:
-- `UnaryExpression.typecheck()` for `!` operator (~line 1722)
-- `BinaryExpression.typecheck()` for `&&` and `||` operators (~line 1435)
+```typescript
+public booleanTest(): { offset: number; size: number } | null {
+  return { offset: 0, size: 1 };  // Test pointer field (first word)
+}
+```
+
+### Type Checker (`src/lowlevel/expressions.ts`, `src/lowlevel/statements.ts`)
+
+Replace `type.integral` checks with `type.booleanTest() !== null` in:
+- `UnaryExpression.typecheck()` for `!` (~line 1722)
+- `BinaryExpression.typecheck()` for `&&`, `||` (~line 1435)
 - `ConditionalExpression.typecheck()` (~line 2729)
 - `IfStatement.typecheck()` (~line 353)
 - `ForStatement.typecheck()` (~line 450)
 - `WhileStatement.typecheck()` (~line 533)
 
-### Code Generation Changes
+### Code Generation (`src/lowlevel/compiler.ts`)
 
-**File**: `src/lowlevel/compiler.ts`
-
-When compiling a boolean test on a slice, extract the pointer field (offset 0) and test that:
+When emitting boolean tests, use `booleanTest()` to determine what to load:
 
 ```typescript
-// In UnaryExpression.compile() for '!':
-if (type instanceof SliceType) {
-  // Slice is 3 words: [pointer, length, capacity]
-  // Load just the pointer (first word) and test it
-  this.expression.compile(compiler);  // Push slice address
-  compiler.emit(Operation.LOAD, ...);  // Load pointer field
-  compiler.emit(Operation.NOT, ...);   // Negate
+function emitBooleanTest(compiler: Compiler, expr: Expression, type: Type): Register {
+  const test = type.booleanTest();
+  if (!test) throw new Error('Type not boolean testable');
+
+  const reg = expr.compile(compiler);
+
+  if (test.offset > 0 || test.size < type.size) {
+    // Compound type: load presence component
+    if (test.offset > 0) {
+      compiler.emitIncrement(reg, test.offset);
+    }
+    compiler.emit(Operation.LOAD, reg, reg);
+  }
+
+  return reg;
 }
 ```
 
-Similarly for `&&`, `||`, and conditional jumps - extract pointer before testing.
+## Semantics
 
-### Runtime Semantics
+- `!slice` → `slice.pointer == null`
+- `slice && x` → short-circuit if `slice.pointer == null`
+- `slice || x` → short-circuit if `slice.pointer != null`
+- `if (slice)` → branch if `slice.pointer != null`
+- `slice ? a : b` → `a` if `slice.pointer != null`, else `b`
 
-- `!slice` returns `true` if `slice.pointer == null`
-- `slice && x` short-circuits if `slice.pointer == null`
-- `slice || x` short-circuits if `slice.pointer != null`
-- `if (slice)` branches if `slice.pointer != null`
+Note: An empty slice (`len == 0`) with non-null pointer is **truthy**.
+This matches the semantics of empty arrays in C (non-null pointer, zero elements).
 
-### Test Cases
+## Test Cases
 
 ```c
-function test_slice_negation(): byte {
+function test_slice_boolean(): byte {
   var arr: byte[] = new byte[10];
-  if (!arr) { return 1; }  // Should not enter
+  if (!arr) { return 1; }      // Should not enter (non-null)
 
   delete arr;
-  if (!arr) { return 0; }  // Should enter (null after delete)
+  if (!arr) { return 0; }      // Should enter (null after delete)
 
   return 2;
 }
 
-function test_slice_and(): byte {
-  var a: byte[] = new byte[5];
-  var b: byte[] = new byte[5];
+function test_empty_slice(): byte {
+  var arr: byte[] = new byte[0];  // Empty but allocated
+  if (!arr) { return 1; }         // Should NOT enter (pointer is non-null)
+  if (len arr != 0) { return 2; }
+  return 0;
+}
 
-  if (a && b) { return 0; }  // Both non-null
-  return 1;
+function test_logical_ops(): byte {
+  var a: byte[] = new byte[5];
+  var b: byte[] = null;
+
+  if (a && b) { return 1; }   // Should not enter (b is null)
+  if (a || b) { return 0; }   // Should enter (a is non-null)
+  return 2;
 }
 ```
 
-## Notes
+## Relationship to Other Conversions
 
-- This is analogous to how pointers work in boolean context
-- No runtime overhead for the common case (just load first word of slice struct)
-- Consistent with C/C++ where arrays decay to pointers in boolean context
+This is distinct from assignment conversion:
+- Assignment: `T[N] → T[]` creates a new slice descriptor
+- Boolean: `T[] → bool` extracts and tests the pointer component
+
+The value remains a slice; we just extract information from it for the test.
+No new slice descriptor is created.
