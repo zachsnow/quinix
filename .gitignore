@@ -13,4 +13,5 @@ out.qasm
 tsconfig.build.tsbuildinfo
 *.qfs
 .worktrees/
+.test-tmp/
 image/dist/
