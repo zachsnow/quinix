@@ -16,6 +16,7 @@ bun run qvm kernel/kernel.qbin --disk image/disk.qfs
 ### QPU
 
 First thing's first: [let's design a CPU!](./docs/qpu.md)
+
 The QPU is an idealized 32-bit RISC processor. It supports a more-or-less
 arbitrary number of *peripherals*, which interact with it via direct memory
 access.  It supports hardware and software *interrupts*, including a timer
@@ -27,8 +28,9 @@ unit (or MMU), to assist in the implementation of virtual memory.
 Now that we have in mind a simple architecture, [let's build a virtual machine!](./docs/qvm.md)
 
 The Quinix virtual machine, or QVM, implements the QPU. It is implemented
-in TypeScript and runs on [bun](https://bun.sh). It models the memory of the system as a
+in TypeScript and runs on bun (and probably other runtimes). It models the memory of the system as a
 `Uint32Array`. It supports just a few peripherals for now, including console input and output.
+It even supports 32-bit color via a "display" peripheral, backed by SDL2.
 
 ### QASM
 
@@ -42,19 +44,25 @@ that make it somewhat easier to write binaries for our virtual machine.
 ### QLL
 
 Even writing assembly and assembling it with QASM can be tedious, but (for now) instead
-of improving the experience (for instance, by adding pseudo-instructions that are compiled
+of improving the QASM experience (for instance, by adding pseudo-instructions that are compiled
 to "native" instructions)... [Let's build a compiler!](./docs/qll.md)
 
 The Quinix "low-level language", or QLL, is something like a simplified C. To be honest,
-QLL is still pretty frustratingly low level, so we'll extend QLL as we go.
+QLL is still pretty frustratingly low level, so we'll extend QLL as we go. But it gets
+the job done. It also supports linking compiled QLL programs with QASM assembly, so that
+very low-level bits can be written directly in assembly.
 
 ### Quinix OS
 
 Finally, we have the tools we need... [Let's build an operating system!](./docs/qos.md)
 
-The Quinix OS is a (very) simply pre-emptive multi-tasking, monolithic operating system.
+The Quinix OS (QOS) is a _very_ simply preemptively multi-tasking, monolithic operating system.
 It provides a number of syscalls to user binaries, allowing them to access "hardware" peripherals
-like block devices, console output, and even a simple color display.
+like block devices, console output, and even a simple color display. It supports virtual
+memory via an MMU peripheral, giving each process its own "view" of a 32-bit address space.
+
+> So far QOS doesn't have "native" graphics support; implementing a simple window manager
+> is next on the list!
 
 ## Local development
 
@@ -91,6 +99,11 @@ Run tests:
 ```bash
 bun test
 ```
+
+## Browser
+
+The bulk of the Quinix infrastructure (the assembler, compiler, and virtual machine, along with a few peripherals)
+can be run in the browser via the `quinix.js` library. After building it can be found at `build/quinix.js`.
 
 ## Installing
 

@@ -101,6 +101,21 @@ abstract class Type extends Syntax {
   }
 
   /**
+   * Returns information for boolean context testing, or null if not testable.
+   *
+   * For single-word types (pointers, byte, bool), returns offset 0.
+   * For compound types like slices, returns the offset of the "presence" component.
+   *
+   * @returns { offset: number } if testable, null otherwise
+   */
+  public booleanTest(): { offset: number } | null {
+    if (this.integral) {
+      return { offset: 0 };
+    }
+    return null;
+  }
+
+  /**
    * A numeric type can be used with arithmetic operators and as
    * an array index.
    *
@@ -1084,6 +1099,14 @@ class SliceType extends Type {
     return new SliceType(
       this.type.substitute(typeTable),
     ).at(this.location).tag(this.tags);
+  }
+
+  /**
+   * Slices can be used in boolean context by testing the pointer component.
+   * A slice is truthy if its pointer is non-null.
+   */
+  public booleanTest(): { offset: number } | null {
+    return { offset: 0 };  // Test pointer field (first word of slice)
   }
 
   public toString() {

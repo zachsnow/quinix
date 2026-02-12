@@ -946,3 +946,160 @@ describe('Codegen: Compilation Errors', () => {
     `);
   });
 });
+
+describe('Codegen: Slice Boolean Context', () => {
+  const withAlloc = { includeAllocator: true, cycles: 5000 };
+
+  test('slice negation: non-null slice is falsy under !', async () => {
+    await expectQLL(0, `
+      function main(): byte {
+        var arr: byte[] = new byte[10];
+        if (!arr) {
+          return 1;  // Should not enter
+        }
+        return 0;
+      }
+    `, withAlloc);
+  });
+
+  test('slice negation: null slice is truthy under !', async () => {
+    await expectQLL(0, `
+      function main(): byte {
+        var arr: byte[] = new byte[10];
+        delete arr;
+        if (!arr) {
+          return 0;  // Should enter after delete
+        }
+        return 1;
+      }
+    `, withAlloc);
+  });
+
+  test('slice in if condition: non-null', async () => {
+    await expectQLL(0, `
+      function main(): byte {
+        var arr: byte[] = new byte[5];
+        if (arr) {
+          return 0;  // Should enter
+        }
+        return 1;
+      }
+    `, withAlloc);
+  });
+
+  test('slice in if condition: null after delete', async () => {
+    await expectQLL(0, `
+      function main(): byte {
+        var arr: byte[] = new byte[5];
+        delete arr;
+        if (arr) {
+          return 1;  // Should not enter
+        }
+        return 0;
+      }
+    `, withAlloc);
+  });
+
+  test('slice && operator: both non-null', async () => {
+    await expectQLL(0, `
+      function main(): byte {
+        var a: byte[] = new byte[5];
+        var b: byte[] = new byte[5];
+        if (a && b) {
+          return 0;  // Should enter
+        }
+        return 1;
+      }
+    `, withAlloc);
+  });
+
+  test('slice && operator: first null', async () => {
+    await expectQLL(0, `
+      function main(): byte {
+        var a: byte[] = new byte[5];
+        var b: byte[] = new byte[5];
+        delete a;
+        if (a && b) {
+          return 1;  // Should not enter
+        }
+        return 0;
+      }
+    `, withAlloc);
+  });
+
+  test('slice || operator: first non-null', async () => {
+    await expectQLL(0, `
+      function main(): byte {
+        var a: byte[] = new byte[5];
+        var b: byte[] = new byte[5];
+        delete b;
+        if (a || b) {
+          return 0;  // Should enter (a is non-null)
+        }
+        return 1;
+      }
+    `, withAlloc);
+  });
+
+  test('slice || operator: both null', async () => {
+    await expectQLL(0, `
+      function main(): byte {
+        var a: byte[] = new byte[5];
+        var b: byte[] = new byte[5];
+        delete a;
+        delete b;
+        if (a || b) {
+          return 1;  // Should not enter
+        }
+        return 0;
+      }
+    `, withAlloc);
+  });
+
+  test('slice in while condition', async () => {
+    await expectQLL(3, `
+      function main(): byte {
+        var arr: byte[] = new byte[5];
+        var count: byte = 0;
+        while (arr) {
+          count = count + 1;
+          if (count >= 3) {
+            delete arr;
+          }
+        }
+        return count;
+      }
+    `, withAlloc);
+  });
+
+  test('slice in ternary condition', async () => {
+    await expectQLL(42, `
+      function main(): byte {
+        var arr: byte[] = new byte[5];
+        return arr ? 42 : 0;
+      }
+    `, withAlloc);
+  });
+
+  test('slice in ternary condition: null', async () => {
+    await expectQLL(99, `
+      function main(): byte {
+        var arr: byte[] = new byte[5];
+        delete arr;
+        return arr ? 42 : 99;
+      }
+    `, withAlloc);
+  });
+
+  test('empty slice with non-null pointer is truthy', async () => {
+    await expectQLL(0, `
+      function main(): byte {
+        var arr: byte[] = new byte[0];  // Empty but allocated
+        if (!arr) {
+          return 1;  // Should NOT enter (pointer is non-null)
+        }
+        return 0;
+      }
+    `, withAlloc);
+  });
+});

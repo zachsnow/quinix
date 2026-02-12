@@ -348,10 +348,9 @@ class IfStatement extends Statement {
   public typecheck(context: TypeChecker): void {
     const conditionType = this.condition.typecheck(context);
 
-    // Integer conditions -- numbers, pointers, function pointers. We exclude
-    // arrays even though they are integral because they are always truthy.
-    if (!conditionType.integral) {
-      this.error(context, `expected integral type, actual ${conditionType}`);
+    // Boolean-testable types: numbers, pointers, function pointers, slices.
+    if (!conditionType.booleanTest()) {
+      this.error(context, `type ${conditionType} cannot be used in boolean context`);
     }
 
     this.ifBranch.typecheck(context);
@@ -362,7 +361,17 @@ class IfStatement extends Statement {
 
   public compile(compiler: Compiler): void {
     // Evaluate condition.
+    const condType = this.condition.concreteType.resolve();
     const cr = this.condition.compile(compiler);
+
+    // For slices, extract the pointer for the boolean test.
+    let testReg = cr;
+    if (condType instanceof SliceType) {
+      testReg = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, testReg, cr)).comment('slice pointer for if test'),
+      ]);
+    }
 
     const elseRef = compiler.generateReference('else');
     const endRef = compiler.generateReference('if_end');
@@ -371,8 +380,12 @@ class IfStatement extends Statement {
     // If the condition is false (0), jump to the else branch.
     compiler.emit([
       new ConstantDirective(r, new ReferenceConstant(elseRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, r))
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, testReg, r))
     ]);
+
+    if (testReg !== cr) {
+      compiler.deallocateRegister(testReg);
+    }
 
     // Otherwise, fall through to the if branch.
     this.ifBranch.compile(compiler);
@@ -446,9 +459,9 @@ class ForStatement extends Statement {
 
     const conditionType = this.condition.typecheck(nestedContext);
 
-    // Integer conditions and pointer conditions are allowed.
-    if (!conditionType.integral) {
-      this.error(nestedContext, `expected integral type, actual ${conditionType}`);
+    // Boolean-testable types are allowed.
+    if (!conditionType.booleanTest()) {
+      this.error(nestedContext, `type ${conditionType} cannot be used in boolean context`);
     }
 
     this.update.typecheck(nestedContext);
@@ -471,13 +484,27 @@ class ForStatement extends Statement {
       new LabelDirective(topRef),
     ]);
 
+    const condType = this.condition.concreteType.resolve();
     const cr = this.condition.compile(compiler);
+
+    // For slices, extract the pointer for the boolean test.
+    let testReg = cr;
+    if (condType instanceof SliceType) {
+      testReg = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, testReg, cr)).comment('slice pointer for for test'),
+      ]);
+    }
 
     // If the condition is false (0), jump to the end.
     compiler.emit([
       new ConstantDirective(r, new ReferenceConstant(endRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, r))
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, testReg, r))
     ]);
+
+    if (testReg !== cr) {
+      compiler.deallocateRegister(testReg);
+    }
 
     // For loop body. Continue jumps to continueRef (before update).
     compiler.loop(endRef, continueRef, () => {
@@ -529,9 +556,9 @@ class WhileStatement extends Statement {
   public typecheck(context: TypeChecker): void {
     const conditionType = this.condition.typecheck(context);
 
-    // Integer conditions and pointer conditions are allowed.
-    if (!conditionType.integral) {
-      this.error(context, `expected integral type, actual ${conditionType}`);
+    // Boolean-testable types are allowed.
+    if (!conditionType.booleanTest()) {
+      this.error(context, `type ${conditionType} cannot be used in boolean context`);
     }
 
     this.block.typecheck(context.loop());
@@ -546,13 +573,27 @@ class WhileStatement extends Statement {
       new LabelDirective(topRef),
     ]);
 
+    const condType = this.condition.concreteType.resolve();
     const cr = this.condition.compile(compiler);
+
+    // For slices, extract the pointer for the boolean test.
+    let testReg = cr;
+    if (condType instanceof SliceType) {
+      testReg = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, testReg, cr)).comment('slice pointer for while test'),
+      ]);
+    }
 
     // If the condition is false (0), jump to the end.
     compiler.emit([
       new ConstantDirective(r, new ReferenceConstant(endRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, r))
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, testReg, r))
     ]);
+
+    if (testReg !== cr) {
+      compiler.deallocateRegister(testReg);
+    }
 
     // While loop body. Continue jumps to topRef (condition recheck).
     compiler.loop(endRef, topRef, () => {

@@ -1431,12 +1431,12 @@ class BinaryExpression extends Expression {
 
       case '&&':
       case '||': {
-        // We can only treat integrals as truthy/falsy.
-        if (!tLeft.integral) {
-          this.error(context, `expected integral type, actual ${tLeft}`);
+        // We can only treat boolean-testable types as truthy/falsy.
+        if (!tLeft.booleanTest()) {
+          this.error(context, `type ${tLeft} cannot be used in boolean context`);
         }
-        if (!tRight.integral) {
-          this.error(context, `expected integral type, actual ${tRight}`);
+        if (!tRight.booleanTest()) {
+          this.error(context, `type ${tRight} cannot be used in boolean context`);
         }
 
         // Both sides must have the same type.
@@ -1546,15 +1546,29 @@ class BinaryExpression extends Expression {
         // Evaluate right, move  rr => lr.
         // Exit:
         // Return lr
+        const leftType = this.left.concreteType.resolve();
         const lr = this.left.compile(compiler);
+
+        // For slices, extract the pointer for the boolean test.
+        let testReg = lr;
+        if (leftType instanceof SliceType) {
+          testReg = compiler.allocateRegister();
+          compiler.emit([
+            new InstructionDirective(Instruction.createOperation(Operation.LOAD, testReg, lr)).comment('slice pointer for && test'),
+          ]);
+        }
 
         const endRef = compiler.generateReference('and_end');
         const r = compiler.allocateRegister();
 
         compiler.emit([
           new ConstantDirective(r, new ReferenceConstant(endRef)),
-          new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, lr, r)),
+          new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, testReg, r)),
         ]);
+
+        if (testReg !== lr) {
+          compiler.deallocateRegister(testReg);
+        }
 
         const rr = this.right.compile(compiler);
 
@@ -1576,15 +1590,29 @@ class BinaryExpression extends Expression {
         // Evaluate right, move rr => lr.
         // Exit:
         // Return lr
+        const leftType = this.left.concreteType.resolve();
         const lr = this.left.compile(compiler);
+
+        // For slices, extract the pointer for the boolean test.
+        let testReg = lr;
+        if (leftType instanceof SliceType) {
+          testReg = compiler.allocateRegister();
+          compiler.emit([
+            new InstructionDirective(Instruction.createOperation(Operation.LOAD, testReg, lr)).comment('slice pointer for || test'),
+          ]);
+        }
 
         const endRef = compiler.generateReference('or_end');
         const r = compiler.allocateRegister();
 
         compiler.emit([
           new ConstantDirective(r, new ReferenceConstant(endRef)),
-          new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, lr, r)),
+          new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, testReg, r)),
         ]);
+
+        if (testReg !== lr) {
+          compiler.deallocateRegister(testReg);
+        }
 
         const rr = this.right.compile(compiler);
 
@@ -1719,8 +1747,8 @@ class UnaryExpression extends Expression {
         return Type.Byte;
       }
       case '!': {
-        if (!type.integral) {
-          this.error(context, `expected integral type, actual ${type}`);
+        if (!type.booleanTest()) {
+          this.error(context, `type ${type} cannot be used in boolean context`);
         }
         return context.builtinType('bool');
       }
@@ -1805,7 +1833,20 @@ class UnaryExpression extends Expression {
         return er;
       }
       case '!': {
-        const er = this.expression.compile(compiler);
+        const exprType = this.expression.concreteType.resolve();
+        let er = this.expression.compile(compiler);
+
+        // For compound types like slices, extract the presence component.
+        const boolTest = exprType.booleanTest();
+        if (boolTest && boolTest.offset > 0) {
+          compiler.emitIncrement(er, boolTest.offset, 'boolean test offset');
+        }
+        // For slices, we need to load the pointer value (first word).
+        if (exprType instanceof SliceType) {
+          compiler.emit([
+            new InstructionDirective(Instruction.createOperation(Operation.LOAD, er, er)).comment('slice pointer for boolean test'),
+          ]);
+        }
 
         // We want !0 == 1, and !(non-zero) == 0. This is exactly the semantics of `EQ`.
         const r = compiler.allocateRegister();
@@ -2726,8 +2767,8 @@ class ConditionalExpression extends Expression {
   public typecheck(context: TypeChecker, contextual?: Type): Type {
     // A conditional's `condition` should be a type that is valid in a boolean context.
     const conditionType = this.condition.typecheck(context);
-    if (!conditionType.integral) {
-      this.error(context, `expected integral type, actual ${conditionType}`);
+    if (!conditionType.booleanTest()) {
+      this.error(context, `type ${conditionType} cannot be used in boolean context`);
     }
 
     // Each branch of the conditional should have the same type.
@@ -2741,7 +2782,17 @@ class ConditionalExpression extends Expression {
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
+    const condType = this.condition.concreteType.resolve();
     const cr = this.condition.compile(compiler, lvalue);
+
+    // For slices, extract the pointer for the boolean test.
+    let testReg = cr;
+    if (condType instanceof SliceType) {
+      testReg = compiler.allocateRegister();
+      compiler.emit([
+        new InstructionDirective(Instruction.createOperation(Operation.LOAD, testReg, cr)).comment('slice pointer for ?: test'),
+      ]);
+    }
 
     const elseRef = compiler.generateReference('cond_else');
     const endRef = compiler.generateReference('cond_end');
@@ -2749,8 +2800,12 @@ class ConditionalExpression extends Expression {
 
     compiler.emit([
       new ConstantDirective(r, new ReferenceConstant(elseRef)),
-      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, cr, r)),
+      new InstructionDirective(Instruction.createOperation(Operation.JZ, undefined, testReg, r)),
     ]);
+
+    if (testReg !== cr) {
+      compiler.deallocateRegister(testReg);
+    }
 
     const ir = this.ifExpression.compile(compiler, lvalue);
 
