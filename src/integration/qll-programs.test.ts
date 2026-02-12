@@ -18,7 +18,7 @@ import path from 'path';
 import { VM } from '@/vm/vm';
 import { LowLevelProgram } from '@/lowlevel/lowlevel';
 import { AssemblyProgram } from '@/assembly/assembly';
-import { PATHS, getStdLib } from '@test/helpers';
+import { getStdLib, getBareEntrypoint, getAllocator } from '@test/helpers';
 
 const ROOT_DIR = path.resolve(__dirname, '..', '..');
 
@@ -92,31 +92,6 @@ function parseDirectives(source: string): TestDirectives | null {
   return hasDirective ? directives : null;
 }
 
-// === Cached loaders ===
-
-let cachedEntrypoint: AssemblyProgram | null = null;
-let cachedAllocator: LowLevelProgram | null = null;
-
-function getEntrypoint(): AssemblyProgram {
-  if (!cachedEntrypoint) {
-    cachedEntrypoint = AssemblyProgram.parse(
-      fs.readFileSync(PATHS.bare.entrypoint, 'utf-8'),
-      PATHS.bare.entrypoint,
-    );
-  }
-  return cachedEntrypoint;
-}
-
-function getAllocator(): LowLevelProgram {
-  if (!cachedAllocator) {
-    cachedAllocator = LowLevelProgram.concat([
-      LowLevelProgram.parse(fs.readFileSync(PATHS.shared.alloc, 'utf-8'), PATHS.shared.alloc),
-      LowLevelProgram.parse(fs.readFileSync(PATHS.bare.alloc, 'utf-8'), PATHS.bare.alloc),
-    ]);
-  }
-  return cachedAllocator;
-}
-
 // === Test execution ===
 
 function compileAndRun(
@@ -140,7 +115,7 @@ function compileAndRun(
       return Promise.resolve(typeErrors.map(e => e.text).join('\n'));
     }
 
-    const entrypoint = getEntrypoint();
+    const entrypoint = getBareEntrypoint();
     const combined = AssemblyProgram.concat([entrypoint, program.compile()]);
     const [messages, binary] = combined.assemble();
 
@@ -181,7 +156,7 @@ function discoverTests(dir: string): Array<{ file: string; source: string; direc
 // === Run tests ===
 
 const TEST_DIRS = [
-  { dir: path.join(ROOT_DIR, 'examples', 'lowlevel', 'tests'), label: 'examples/lowlevel/tests' },
+  { dir: path.join(ROOT_DIR, 'tests', 'qll'), label: 'tests/qll' },
 ];
 
 for (const { dir, label } of TEST_DIRS) {

@@ -191,7 +191,7 @@ export interface CompileResult {
 let cachedBareEntrypoint: AssemblyProgram | null = null;
 let cachedAllocator: LowLevelProgram | null = null;
 
-function getBareEntrypoint(): AssemblyProgram {
+export function getBareEntrypoint(): AssemblyProgram {
   if (!cachedBareEntrypoint) {
     const text = fs.readFileSync(PATHS.bare.entrypoint, 'utf-8');
     cachedBareEntrypoint = AssemblyProgram.parse(text, PATHS.bare.entrypoint);
@@ -199,7 +199,7 @@ function getBareEntrypoint(): AssemblyProgram {
   return cachedBareEntrypoint;
 }
 
-function getAllocator(): LowLevelProgram {
+export function getAllocator(): LowLevelProgram {
   if (!cachedAllocator) {
     const sharedText = fs.readFileSync(PATHS.shared.alloc, 'utf-8');
     const bareText = fs.readFileSync(PATHS.bare.alloc, 'utf-8');
