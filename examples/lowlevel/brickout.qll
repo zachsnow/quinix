@@ -3,7 +3,6 @@
 // Run with:
 //   bun run bin/qrun.ts examples/lowlevel/brickout.qll -- --display 320x200 --keyboard
 
-.constant global CLOCK_BASE: byte = 0x301;
 .constant global DISPLAY_BASE: byte = 0x603;
 .constant global KEYBOARD_BASE: byte = 0x607;
 .constant global FB_ADDR: byte = 0x10000;
@@ -47,11 +46,6 @@ global ROW_COLORS: byte[5] = [
   0xFF00FF00,  // Green
   0xFF00AAFF,  // Light blue
 ];
-
-function clock_read(): byte {
-  var clock = <unsafe *byte>CLOCK_BASE;
-  return *clock;
-}
 
 function itoa(n: byte, buf: byte[]): void {
   var i: byte = 0;
@@ -151,10 +145,6 @@ function main(): byte {
   var bdx: byte = BALL_SPEED;
   var bdy: byte = 0 - BALL_SPEED;
 
-  // Frame timing
-  var last_time: byte = clock_read();
-  var frame_ms: byte = 16;  // ~60fps target
-
   // Initialize bricks
   for (var i: byte = 0; i < BRICK_COUNT; i = i + 1) {
     bricks[i] = 1;
@@ -171,12 +161,6 @@ function main(): byte {
   by = PADDLE_Y - BALL_R - 1;
 
   while (true) {
-    var now = clock_read();
-    if (now - last_time < frame_ms) {
-      continue;
-    }
-    last_time = now;
-
     // Read keyboard
     var key = keyboard::read(&kb);
 
@@ -365,9 +349,6 @@ function main(): byte {
     display::flip(DISPLAY_BASE);
   }
 
-  // Wait a moment before exiting
-  var end_time = clock_read();
-  while (clock_read() - end_time < 3000) {}
-
+  // Halt on game over/win (display stays visible)
   return 0;
 }
