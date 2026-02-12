@@ -2,21 +2,7 @@ import { Address } from "@/lib/types";
 import { Instruction, Operation, Program, Register } from "./instructions";
 import { BufferedPeripheral, DisplayPeripheral, TimerPeripheral, ClockPeripheral } from "./peripherals";
 import { VM } from "./vm";
-
-// Float conversion helpers for tests
-const floatBuffer = new ArrayBuffer(4);
-const floatIntView = new Uint32Array(floatBuffer);
-const floatFloatView = new Float32Array(floatBuffer);
-
-function floatToInt(f: number): number {
-  floatFloatView[0] = f;
-  return floatIntView[0];
-}
-
-function intToFloat(i: number): number {
-  floatIntView[0] = i >>> 0;
-  return floatFloatView[0];
-}
+import { floatToInt, intToFloat } from "@test/helpers";
 
 describe("VM", () => {
   async function run(instructions: Instruction[]): Promise<number> {

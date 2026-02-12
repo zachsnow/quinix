@@ -1,16 +1,7 @@
 import { Operation } from "@/vm/instructions";
 import { AssemblyProgram, ConstantDirective, DataDirective } from "./assembly";
 import { parse } from "./parser";
-
-// Float conversion helper for tests
-const floatBuffer = new ArrayBuffer(4);
-const floatIntView = new Uint32Array(floatBuffer);
-const floatFloatView = new Float32Array(floatBuffer);
-
-function floatToInt(f: number): number {
-  floatFloatView[0] = f;
-  return floatIntView[0];
-}
+import { floatToInt } from "@test/helpers";
 
 describe("Parser", () => {
   test("Data directives", () => {
