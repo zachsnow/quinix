@@ -227,7 +227,8 @@ class KeypressPeripheral extends Peripheral {
 
     const c = key.name.codePointAt(0);
     if (c !== undefined) {
-      this.mapping.view[this.mapping.base] = c;
+      this.mapping.view[0] = c;
+      this.mapping.view[1] = (this.mapping.view[1] + 1) >>> 0;
       this.vm.interrupt(this.interrupt);
     }
   }
