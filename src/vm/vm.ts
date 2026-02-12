@@ -220,7 +220,7 @@ class VM {
   private readonly memory: Memory;
 
   // MMU.
-  private mmu: MMU;
+  private mmu: Peripheral & MMU;
 
   // Register state.
   private readonly state: State;
