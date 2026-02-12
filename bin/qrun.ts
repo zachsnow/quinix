@@ -1,5 +1,4 @@
 #! /usr/bin/env bun
-import { $ } from "bun";
 import { parseArguments } from "@server/cli";
 
 interface Options {
@@ -54,8 +53,13 @@ async function main(): Promise<number> {
 
   console.log("Executing...");
   const vmArgs = verbose ? ["-v", "out.qbin", ...extraArgs] : ["out.qbin", ...extraArgs];
-  const vmResult = await $`bun run bin/qvm.ts ${vmArgs}`;
-  return vmResult.exitCode;
+  // Use Bun.spawn with inherited stdio so the VM gets the real TTY
+  // (needed for SDL display and keyboard raw mode)
+  const proc = Bun.spawn(["bun", "run", "bin/qvm.ts", ...vmArgs], {
+    stdio: ["inherit", "inherit", "inherit"],
+  });
+  const exitCode = await proc.exited;
+  return exitCode;
 }
 
 main()

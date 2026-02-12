@@ -182,8 +182,6 @@ class KeypressPeripheral extends Peripheral {
   public readonly name = 'keypress';
   public readonly identifier = 0x00000010;
 
-  public readonly interrupt: Interrupt = 0x10;
-
   public readonly io = 0x0;
   public readonly shared = 0x2;
 
@@ -218,18 +216,26 @@ class KeypressPeripheral extends Peripheral {
   public unmap() {
     super.unmap();
     process.stdin.off('keypress', this.onKeypress);
+    if (process.stdin.setRawMode instanceof Function) {
+      process.stdin.setRawMode(false);
+    }
   }
 
-  private onKeypress(data: string, key: { name: string }) {
+  private onKeypress(data: string, key: { name: string; ctrl?: boolean }) {
     if (!this.mapping || !this.vm) {
       this.unmapped();
     }
 
-    const c = key.name.codePointAt(0);
+    // Ctrl+C kills the VM (raw mode swallows SIGINT)
+    if (key.ctrl && key.name === 'c') {
+      this.vm.kill();
+      return;
+    }
+
+    const c = key.name?.codePointAt(0);
     if (c !== undefined) {
       this.mapping.view[0] = c;
       this.mapping.view[1] = (this.mapping.view[1] + 1) >>> 0;
-      this.vm.interrupt(this.interrupt);
     }
   }
 }
