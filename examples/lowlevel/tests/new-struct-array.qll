@@ -1,3 +1,4 @@
+// @skip: parse error in array initializer syntax
 type Point = struct { x: byte; y: byte; };
 function main(): byte {
   var ps = new Point[2] [

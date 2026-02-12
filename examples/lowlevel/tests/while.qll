@@ -1,3 +1,4 @@
+// @expect: 30
 
 type int = byte;
 

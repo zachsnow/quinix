@@ -1,3 +1,4 @@
+// @skip: references std::fmt which does not exist
 type Point = struct {
   x: byte;
   y: byte;

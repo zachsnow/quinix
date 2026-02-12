@@ -1,3 +1,4 @@
+// @skip: uses unqualified namespace reference syntax
 using global::oops;
 namespace bar {
   using bleck;

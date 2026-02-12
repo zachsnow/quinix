@@ -1,3 +1,4 @@
+// @expect: 10
 type bytefn = () => byte;
 
 function one(): byte {

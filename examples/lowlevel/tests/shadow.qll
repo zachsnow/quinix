@@ -1,3 +1,4 @@
+// @expect: 44
 function main(): byte {
   return foo::fn();
 }

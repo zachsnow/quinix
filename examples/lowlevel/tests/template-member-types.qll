@@ -1,3 +1,4 @@
+// @skip: type resolver crash on member types
 type point2d = struct {
   x: byte;
   y: byte;

@@ -1,3 +1,4 @@
+// @expect-error: unknown type identifier int
 function main(): byte {
   var i: byte = 42;
   var k: int = 0;

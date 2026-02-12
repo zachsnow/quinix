@@ -1,3 +1,4 @@
+// @expect: 66
 function main(): byte {
   var i: byte = 33;
   var p: * byte = &i;

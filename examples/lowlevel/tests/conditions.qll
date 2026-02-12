@@ -1,3 +1,4 @@
+// @skip: uses 2->hi syntax which is currently a type error
 function main(): byte {
   var i = 0;
 

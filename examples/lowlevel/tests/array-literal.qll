@@ -1,3 +1,4 @@
+// @expect: 20
 function main(): byte {
   var bs: byte[3] = [
     10,

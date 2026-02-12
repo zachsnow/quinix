@@ -1,3 +1,4 @@
+// @expect: 40
 function main(): byte {
     return fn(10,20,30,40);
 }

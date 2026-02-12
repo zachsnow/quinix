@@ -1,3 +1,4 @@
+// @expect: 6
 type Point = struct {
     x: byte;
     y: byte;

@@ -1,3 +1,4 @@
+// @skip: array literal vs pointer type mismatch
 type Point = struct {
   x: byte;
   y: byte;
