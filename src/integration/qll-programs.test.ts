@@ -5,8 +5,8 @@
  * Directives (in comments at the top of the file):
  *   @expect: <number>       - expected return value (decimal or hex)
  *   @expect-error: <string> - expected compilation error substring
- *   @libs: alloc            - include allocator
- *   @libs: std              - include standard library
+ *   @libs: alloc            - include allocator (for new/delete)
+ *   @libs: std              - include standard library (includes alloc)
  *   @cycles: <number>       - VM cycle budget (default: 5000)
  *   @skip                   - skip this test
  *   @skip: <reason>         - skip with reason
@@ -18,7 +18,7 @@ import path from 'path';
 import { VM } from '@/vm/vm';
 import { LowLevelProgram } from '@/lowlevel/lowlevel';
 import { AssemblyProgram } from '@/assembly/assembly';
-import { PATHS } from '@test/helpers';
+import { PATHS, getStdLib } from '@test/helpers';
 
 const ROOT_DIR = path.resolve(__dirname, '..', '..');
 
@@ -96,7 +96,6 @@ function parseDirectives(source: string): TestDirectives | null {
 
 let cachedEntrypoint: AssemblyProgram | null = null;
 let cachedAllocator: LowLevelProgram | null = null;
-let cachedStdLib: LowLevelProgram | null = null;
 
 function getEntrypoint(): AssemblyProgram {
   if (!cachedEntrypoint) {
@@ -116,27 +115,6 @@ function getAllocator(): LowLevelProgram {
     ]);
   }
   return cachedAllocator;
-}
-
-function getStdLib(): LowLevelProgram {
-  if (!cachedStdLib) {
-    const stdText = fs.readFileSync(PATHS.shared.std, 'utf-8');
-    const allocText = fs.readFileSync(PATHS.shared.alloc, 'utf-8');
-    const bufferedText = fs.readFileSync(path.join(ROOT_DIR, 'shared', 'buffered.qll'), 'utf-8');
-    const bareAllocText = fs.readFileSync(PATHS.bare.alloc, 'utf-8');
-    const bareWaitText = fs.readFileSync(path.join(ROOT_DIR, 'bare', 'wait.qll'), 'utf-8');
-    const bareConsoleText = fs.readFileSync(path.join(ROOT_DIR, 'bare', 'console.qll'), 'utf-8');
-
-    cachedStdLib = LowLevelProgram.concat([
-      LowLevelProgram.parse(bareWaitText, 'bare/wait.qll'),
-      LowLevelProgram.parse(bufferedText, 'shared/buffered.qll'),
-      LowLevelProgram.parse(stdText, PATHS.shared.std),
-      LowLevelProgram.parse(allocText, PATHS.shared.alloc),
-      LowLevelProgram.parse(bareAllocText, PATHS.bare.alloc),
-      LowLevelProgram.parse(bareConsoleText, 'bare/console.qll'),
-    ]);
-  }
-  return cachedStdLib;
 }
 
 // === Test execution ===

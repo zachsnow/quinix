@@ -347,10 +347,26 @@ export function expectCompileError(errorSubstring: string, source: string) {
 
 let cachedStdLib: LowLevelProgram | null = null;
 
+/**
+ * Load the full standard library with all bare-metal dependencies.
+ */
 export function getStdLib(): LowLevelProgram {
   if (!cachedStdLib) {
-    const text = fs.readFileSync(PATHS.shared.std, 'utf-8');
-    cachedStdLib = LowLevelProgram.parse(text, PATHS.shared.std);
+    const bareWaitText = fs.readFileSync(PATHS.bare.wait, 'utf-8');
+    const bufferedText = fs.readFileSync(path.join(ROOT_DIR, 'shared', 'buffered.qll'), 'utf-8');
+    const stdText = fs.readFileSync(PATHS.shared.std, 'utf-8');
+    const allocText = fs.readFileSync(PATHS.shared.alloc, 'utf-8');
+    const bareAllocText = fs.readFileSync(PATHS.bare.alloc, 'utf-8');
+    const bareConsoleText = fs.readFileSync(path.join(ROOT_DIR, 'bare', 'console.qll'), 'utf-8');
+
+    cachedStdLib = LowLevelProgram.concat([
+      LowLevelProgram.parse(bareWaitText, 'bare/wait.qll'),
+      LowLevelProgram.parse(bufferedText, 'shared/buffered.qll'),
+      LowLevelProgram.parse(stdText, PATHS.shared.std),
+      LowLevelProgram.parse(allocText, PATHS.shared.alloc),
+      LowLevelProgram.parse(bareAllocText, PATHS.bare.alloc),
+      LowLevelProgram.parse(bareConsoleText, 'bare/console.qll'),
+    ]);
   }
   return cachedStdLib;
 }
@@ -364,10 +380,9 @@ export async function runQLLWithStd(
 ): Promise<VMResult | string> {
   try {
     const stdLib = getStdLib();
-    const allocator = getAllocator();
     const userProgram = LowLevelProgram.parse(source, 'test.qll');
 
-    const program = LowLevelProgram.concat([stdLib, allocator, userProgram]);
+    const program = LowLevelProgram.concat([stdLib, userProgram]);
     const typeErrors = program.typecheck().errors;
 
     if (typeErrors.length) {
@@ -384,7 +399,7 @@ export async function runQLLWithStd(
 
     const vm = new VM({
       debug: options.debug ?? true,
-      cycles: options.cycles ?? 1000,
+      cycles: options.cycles ?? 5000,
       peripherals: options.peripherals,
     });
 
@@ -394,6 +409,17 @@ export async function runQLLWithStd(
       ? `${e.location.filename}(${e.location.start.line}): ${e.message}`
       : e.message;
   }
+}
+
+/**
+ * Run QLL with stdlib and expect a specific numeric result.
+ */
+export function expectQLLWithStd(value: number, source: string, options: VMOptions = {}) {
+  return expect(
+    runQLLWithStd(source, options).then(n =>
+      typeof n === 'string' ? n : Immediate.toString(n)
+    )
+  ).resolves.toBe(Immediate.toString(value));
 }
 
 // === Assertion Helpers ===
