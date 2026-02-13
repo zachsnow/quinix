@@ -9,6 +9,9 @@ when writing standalone programs that don't need OS services.
 
 - `alloc.qll` - Binds the shared allocator with heap at `0x8000`
 - `console.qll` - Direct console I/O via debug peripheral access
+- `display.qll` - Direct display peripheral access (init, flip)
+- `keyboard.qll` - Direct keyboard peripheral access (bitmask polling)
+- `wait.qll` - Busy-wait helpers
 - `entrypoint.qasm` - Baremetal program entry point (sets SP, calls main, halts)
 
 ## Allocator

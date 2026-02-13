@@ -69,8 +69,16 @@ Syscalls defined in `user/lib.qll`:
 - `EXIT (0)` - terminate process
 - `READ (1)` - read from handle
 - `WRITE (2)` - write to handle
-- `OPEN (3)` - open file (not implemented)
-- `CLOSE (4)` - close handle (not implemented)
+- `OPEN (3)` - open file by path
+- `CLOSE (4)` - close handle
+- `CREATE (5)` - create empty file
+- `DESTROY (6)` - delete file
+- `SPAWN (7)` - spawn process (not implemented)
+- `YIELD (8)` - yield to scheduler
+- `DISPLAY_OPEN (9)` - open display at requested resolution
+- `DISPLAY_FLIP (10)` - present framebuffer to screen
+- `DISPLAY_CLOSE (11)` - release display ownership
+- `KEY_STATE (12)` - read keyboard state bitmask
 
 ### Future: Process Info Block
 

@@ -7,7 +7,7 @@ The Quinix Virtual Machine (QVM) is a 32-bit virtual machine that executes binar
 The VM consists of several components:
 
 - **CPU** - Executes instructions (see [QPU](./qpu.md))
-- **Memory** - Linear address space of configurable size (default 1MB)
+- **Memory** - Linear address space of configurable size (default 4MB)
 - **MMU** - Virtual-to-physical address translation with page protection
 - **Peripherals** - Hardware devices mapped via DMA
 
@@ -126,7 +126,7 @@ The VM tracks execution statistics:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| size | 0x100000 (1MB) | Physical memory size |
+| size | 0x400000 (4MB) | Physical memory size |
 | peripheralFrequency | 1000 | Instructions between async yields |
 | cycles | unlimited | Maximum cycles before termination |
 

@@ -1,26 +1,30 @@
-# Display Peripheral
+# Display & Keyboard Peripherals
 
-A framebuffer-based color display peripheral for Quinix.
+Framebuffer-based color display and keyboard input peripherals for Quinix.
 
-## Overview
+## Display Peripheral
 
-The display peripheral provides a DMA-style color display. Programs allocate a framebuffer in physical memory and point the peripheral to it. On FLIP, the peripheral reads pixels from that address and updates the display. This mirrors how classic VGA and DMA-based graphics hardware worked.
+### Overview
 
-## Memory Layout
+The display peripheral provides a DMA-style color display. Programs allocate a framebuffer in memory and point the peripheral to it. On FLIP, the peripheral reads pixels from that address and updates the display. This mirrors how classic VGA and DMA-based graphics hardware worked.
+
+The display supports user-specified resolutions: the kernel writes the requested width and height to shared memory before each FLIP, similar to DOS video modes.
+
+### Memory Layout
 
 Memory is word-addressed (each offset is one 32-bit word).
 
 ```
 Offset  Description
 +0      Control register (IO - triggers notify)
-+1      Width in pixels (read-only)
-+2      Height in pixels (read-only)
++1      Width in pixels (writable)
++2      Height in pixels (writable)
 +3      Framebuffer pointer (physical address, writable)
 ```
 
-Total peripheral memory: 4 words (1 IO + 3 shared)
+Total peripheral memory: 4 words (1 IO + 3 shared).
 
-The framebuffer itself lives elsewhere in physical memory, allocated by the program.
+The framebuffer itself lives elsewhere in physical memory, allocated by the program (baremetal) or kernel (usermode).
 
 ### Control Register
 
@@ -31,15 +35,9 @@ The framebuffer itself lives elsewhere in physical memory, allocated by the prog
 | 0x02  | PENDING | Flip in progress |
 | 0xFF  | ERROR   | Error occurred |
 
-### Framebuffer Pointer
-
-Physical address of the framebuffer. The framebuffer must be a contiguous block of `width * height` 32-bit words in RGBA format.
-
-Programs are responsible for allocating this memory. In baremetal/kernel mode, this is straightforward. Usermode programs would request a buffer from the kernel via syscall.
-
 ### Pixel Format
 
-Each pixel is one 32-bit word in RGBA order (matches HTML canvas ImageData):
+Each pixel is one 32-bit word in RGBA order:
 
 ```
 Bits 0-7:   Red
@@ -54,91 +52,104 @@ Example values:
 - `0xFFFF0000` = opaque blue
 - `0x00000000` = transparent black
 
-## Implementation
+### Renderers
 
-### Peripheral Class
+Two rendering backends are available:
 
-```typescript
-type DisplayRenderer = (pixels: Uint32Array, width: number, height: number) => void;
+- **SDL2 via Bun FFI** (`src/platform/server/sdl-renderer.ts`) — Native window using SDL2. Supports dynamic resolution changes. Enable with `--display WxH`.
+- **HTML Canvas** (`src/platform/browser/`) — Browser-based rendering for the web interface.
 
-class DisplayPeripheral extends Peripheral {
-  public readonly name = "display";
-  public readonly identifier = 0x00000002;
-  public readonly io = 0x1;      // Control register (1 word)
-  public readonly shared = 0x3;  // Width + height + pointer (3 words)
+## Keyboard Peripheral
 
-  constructor(
-    private readonly width: number,
-    private readonly height: number,
-    private readonly renderer?: DisplayRenderer
-  ) {}
+### Overview
 
-  public map(vm: VM, mapping: PeripheralMapping): void {
-    super.map(vm, mapping);
-    mapping.view[1] = this.width;
-    mapping.view[2] = this.height;
-    mapping.view[3] = 0;  // Null pointer initially
-  }
+The keyboard peripheral provides real-time key state as a single bitmask word. Programs poll the bitmask to check which keys are currently held down.
 
-  public notify(address: Address): void {
-    const control = this.mapping.view[0];
-    if (control === 0x01) {  // FLIP
-      this.mapping.view[0] = 0x02;  // PENDING
+### Memory Layout
 
-      const pointer = this.mapping.view[3];
-      if (pointer && this.renderer) {
-        const pixelCount = this.width * this.height;
-        const framebuffer = this.vm.dump(pointer, pixelCount);
-        const pixels = new Uint32Array(pixelCount);
-        for (let i = 0; i < pixelCount; i++) {
-          pixels[i] = framebuffer[i];
-        }
-        this.renderer(pixels, this.width, this.height);
-      }
-
-      this.mapping.view[0] = 0x00;  // READY
-    }
-  }
-}
+```
+Offset  Description
++0      Key state bitmask (shared, read-only from program's perspective)
 ```
 
-### Browser Renderer (platform/browser)
+### Key Bitmask
 
-```typescript
-function createCanvasRenderer(canvas: HTMLCanvasElement): DisplayRenderer {
-  const ctx = canvas.getContext('2d')!;
+| Bit  | Value | Key |
+|------|-------|-----|
+| 0    | 0x01  | Left arrow |
+| 1    | 0x02  | Right arrow |
+| 2    | 0x04  | Up arrow |
+| 3    | 0x08  | Down arrow |
+| 4    | 0x10  | Space |
+| 5    | 0x20  | Escape |
 
-  return (pixels, width, height) => {
-    canvas.width = width;
-    canvas.height = height;
-    const imageData = ctx.createImageData(width, height);
+The SDL renderer updates this bitmask on key-down/key-up events.
 
-    for (let i = 0; i < pixels.length; i++) {
-      const pixel = pixels[i];
-      imageData.data[i * 4 + 0] = pixel & 0xFF;
-      imageData.data[i * 4 + 1] = (pixel >> 8) & 0xFF;
-      imageData.data[i * 4 + 2] = (pixel >> 16) & 0xFF;
-      imageData.data[i * 4 + 3] = (pixel >> 24) & 0xFF;
-    }
+## Peripheral Identifiers
 
-    ctx.putImageData(imageData, 0, 0);
-  };
-}
+| Peripheral | Identifier |
+|------------|------------|
+| Display    | 0x5        |
+| Keyboard   | 0x10       |
+
+## Usage
+
+### Baremetal
+
+Baremetal programs access peripherals directly via physical addresses:
+
+```c
+// Initialize display at known peripheral base address
+var fb = display::init(DISPLAY_BASE, SCREEN_W, SCREEN_H);
+graphics::clear(&fb, graphics::color::BLACK);
+graphics::fill_rect(&fb, 10, 10, 50, 50, graphics::color::RED);
+display::flip(DISPLAY_BASE);
+
+// Read keyboard state
+var keys = keyboard::read(KEYBOARD_BASE);
+if (keys & keyboard::KEY_LEFT) { /* ... */ }
 ```
 
-### Server Renderer (platform/server)
+Run with: `bun run bin/qvm.ts program.qbin --display 320x200 --keyboard`
 
-Two options:
+### Usermode (Kernel)
 
-1. **SDL2 via Bun FFI** - Native window, authentic retro feel
-2. **HTTP server + browser** - Opens browser window, reuses browser renderer
+Usermode programs use syscalls. The kernel maps the framebuffer into the process's virtual address space:
 
-Initial implementation will use HTTP+browser as fallback, with SDL2 as a stretch goal.
+```c
+// Request a 320x200 display
+var fb = display::open(320, 200);
+graphics::clear(&fb, graphics::color::BLACK);
+graphics::fill_rect(&fb, 10, 10, 50, 50, graphics::color::RED);
+display::flip();
+display::close();
 
-## Tasks
+// Read keyboard state
+var keys = keyboard::read();
+if (keys & keyboard::KEY_LEFT) { /* ... */ }
+```
 
-- [x] Add `DisplayPeripheral` class to `src/vm/peripherals.ts`
-- [x] Add `DisplayRenderer` type and canvas renderer to `src/platform/browser/`
-- [x] Add tests for peripheral memory layout and FLIP command
-- [ ] Add HTTP+browser renderer to `src/platform/server/`
-- [ ] Create example program that draws to the display
+Run with: `bun run bin/qvm.ts kernel/kernel.qbin --disk image/disk.qfs --display 320x200 --keyboard`
+
+### Display Syscalls
+
+| Syscall | Number | Args | Description |
+|---------|--------|------|-------------|
+| DISPLAY_OPEN  | 0x9 | result_ptr, width, height | Open display at requested resolution |
+| DISPLAY_FLIP  | 0xA | (none) | Present framebuffer to screen |
+| DISPLAY_CLOSE | 0xB | (none) | Release display ownership |
+| KEY_STATE     | 0xC | (none) | Returns key bitmask in r0 |
+
+`DISPLAY_OPEN` allocates a framebuffer in physical memory, maps it into the calling process's virtual address space at `0x40000`, and writes `{fb_addr, width, height}` to the result struct. Only one process can own the display at a time.
+
+## Graphics Library
+
+The `shared/graphics.qll` library provides drawing primitives that work with the framebuffer:
+
+- `graphics::clear(fb, color)` — Clear entire framebuffer
+- `graphics::fill_rect(fb, x, y, w, h, color)` — Filled rectangle
+- `graphics::fill_circle(fb, cx, cy, r, color)` — Filled circle
+- `graphics::font::draw_char(fb, x, y, ch, fg, bg)` — Draw character (5x7 bitmap font)
+- `graphics::font::draw_string(fb, x, y, str, fg, bg)` — Draw string
+
+Predefined colors in `graphics::color::`: `BLACK`, `WHITE`, `RED`, `GREEN`, `BLUE`, `YELLOW`, `GRAY`.

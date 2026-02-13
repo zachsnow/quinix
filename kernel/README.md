@@ -15,11 +15,11 @@ The Quinix operating system kernel.
 
 - `kernel.qll` - Entry point, initialization, panic handling
 - `alloc.qll` - Binds the shared allocator with heap at `0x10000`
-- `peripherals.qll` - Hardware peripheral configuration
-- `memory.qll` - Memory management
-- `process.qll` - Process management
-- `scheduler.qll` - Process scheduling
-- `syscall.qll` - System call handlers
+- `peripherals.qll` - Hardware peripheral discovery (timer, debug I/O, disk, clock, display, keyboard)
+- `memory.qll` - Physical memory allocation, page tables (up to 8 pages per process)
+- `process.qll` - Process management (with display cleanup on exit)
+- `scheduler.qll` - Preemptive process scheduling
+- `syscall.qll` - System call handlers (I/O, files, display, keyboard)
 - `fs.qll` - Filesystem (QFS)
 - `block.qll` - Block device interface
 - `console.qll` - Kernel console

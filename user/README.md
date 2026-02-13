@@ -10,7 +10,9 @@ syscall interface, allocator binding, and entrypoint for user programs.
 - `lib.qll` - OS interface: file handles, syscall wrappers, I/O functions
 - `alloc.qll` - Binds the shared allocator with heap at `0x3000` (virtual address)
 - `console.qll` - Console I/O via syscalls
-- `support.qasm` - Low-level syscall implementation (int 0x80)
+- `display.qll` - Display and keyboard interface via syscalls
+- `wait.qll` - Busy-wait helpers
+- `support.qasm` - Low-level syscall implementation (int 0x80, syscall/syscall1/syscall2/syscall3)
 - `entrypoint.qasm` - Usermode program entry point
 
 ## Allocator

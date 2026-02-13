@@ -13,5 +13,11 @@ binaries in `data/bin`.
 Then, run the kernel with the image, from the root of the repository:
 
 ```bash
-bun run qvm kernel/kernel.qbin --disk image/disk.qfs
+bun run bin/qvm.ts kernel/kernel.qbin --disk image/disk.qfs
+```
+
+For graphical programs (e.g. brickout), add display and keyboard support:
+
+```bash
+bun run bin/qvm.ts kernel/kernel.qbin --disk image/disk.qfs --display 320x200 --keyboard
 ```
