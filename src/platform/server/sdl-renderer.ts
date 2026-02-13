@@ -11,6 +11,45 @@ const SDL_WINDOW_SHOWN = 0x00000004;
 const SDL_PIXELFORMAT_ARGB8888 = 0x16362004;
 const SDL_TEXTUREACCESS_STREAMING = 1;
 
+// SDL event types
+const SDL_KEYDOWN = 0x300;
+const SDL_KEYUP = 0x301;
+const SDL_QUIT = 0x100;
+
+// SDL keycodes
+const SDLK_LEFT = 0x40000050;
+const SDLK_RIGHT = 0x4000004f;
+const SDLK_UP = 0x40000052;
+const SDLK_DOWN = 0x40000051;
+const SDLK_SPACE = 32;
+const SDLK_ESCAPE = 27;
+const SDLK_a = 97;
+const SDLK_d = 100;
+const SDLK_w = 119;
+const SDLK_s = 115;
+
+// Key state bitmask bits
+export const KEY_BIT_LEFT = 0x01;
+export const KEY_BIT_RIGHT = 0x02;
+export const KEY_BIT_UP = 0x04;
+export const KEY_BIT_DOWN = 0x08;
+export const KEY_BIT_SPACE = 0x10;
+export const KEY_BIT_ESCAPE = 0x20;
+
+function sdlKeyToBit(sym: number): number {
+  switch (sym) {
+    case SDLK_LEFT: case SDLK_a: return KEY_BIT_LEFT;
+    case SDLK_RIGHT: case SDLK_d: return KEY_BIT_RIGHT;
+    case SDLK_UP: case SDLK_w: return KEY_BIT_UP;
+    case SDLK_DOWN: case SDLK_s: return KEY_BIT_DOWN;
+    case SDLK_SPACE: return KEY_BIT_SPACE;
+    case SDLK_ESCAPE: return KEY_BIT_ESCAPE;
+    default: return 0;
+  }
+}
+
+export type KeyCallback = (keyState: number) => void;
+
 // Find SDL2 library path based on platform
 function getSDLPath(): string {
   if (process.platform === "darwin") {
@@ -115,7 +154,8 @@ const SDL_WINDOWPOS_CENTERED = 0x2FFF0000;
  */
 export function createSDLRenderer(
   title: string = "Quinix Display",
-  scale: number = 2
+  scale: number = 2,
+  onKey?: KeyCallback,
 ): { renderer: DisplayRenderer; cleanup: () => void } {
   // Set app name hint before init (for macOS menu bar)
   const appNameHint = Buffer.from("SDL_APP_NAME\0", "utf8");
@@ -136,12 +176,34 @@ export function createSDLRenderer(
   // Encode title as null-terminated buffer
   const titleBuffer = Buffer.from(title + "\0", "utf8");
 
+  // Key state bitmask, updated by event pump
+  let keyState = 0;
+
+  function pumpEvents(buf: Buffer) {
+    while (sdl.symbols.SDL_PollEvent(ptr(buf))) {
+      const type = buf.readUInt32LE(0);
+      if (type === SDL_KEYDOWN || type === SDL_KEYUP) {
+        // SDL_KeyboardEvent: keysym.sym is at byte offset 20
+        const sym = buf.readInt32LE(20);
+        const bit = sdlKeyToBit(sym);
+        if (bit) {
+          if (type === SDL_KEYDOWN) {
+            keyState |= bit;
+          } else {
+            keyState &= ~bit;
+          }
+          if (onKey) {
+            onKey(keyState);
+          }
+        }
+      }
+    }
+  }
+
   // Background event pump to keep window responsive
   const eventBuffer = Buffer.alloc(64);
   const pollInterval = setInterval(() => {
-    while (sdl.symbols.SDL_PollEvent(ptr(eventBuffer))) {
-      // Drain event queue to keep window responsive
-    }
+    pumpEvents(eventBuffer);
   }, 50);
 
   const displayRenderer: DisplayRenderer = (pixels, width, height) => {
@@ -212,12 +274,8 @@ export function createSDLRenderer(
     sdl.symbols.SDL_RenderCopy(renderer, texture, null, null);
     sdl.symbols.SDL_RenderPresent(renderer);
 
-    // Poll events to keep window responsive
-    const eventBuffer = Buffer.alloc(64);  // SDL_Event is ~56 bytes
-    while (sdl.symbols.SDL_PollEvent(ptr(eventBuffer))) {
-      // Just drain the event queue for now
-      // Could handle SDL_QUIT etc. here
-    }
+    // Poll events to keep window responsive and capture key state
+    pumpEvents(Buffer.alloc(64));
   };
 
   const cleanup = () => {

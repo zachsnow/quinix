@@ -174,19 +174,19 @@ function main(): byte {
     }
     last_time = now;
 
-    // Read keyboard (poll returns 0 if no new keypress)
-    var key = keyboard::poll(&kb);
+    // Read keyboard state bitmask
+    var keys = keyboard::read(&kb);
 
     // Move paddle
     var old_px = px;
-    if (key == 'l' || key == 'a') {
+    if (keys & keyboard::KEY_LEFT) {
       if (px >= PADDLE_SPEED) {
         px = px - PADDLE_SPEED;
       } else {
         px = 0;
       }
     }
-    if (key == 'r' || key == 'd') {
+    if (keys & keyboard::KEY_RIGHT) {
       if (px + PADDLE_W + PADDLE_SPEED <= SCREEN_W) {
         px = px + PADDLE_SPEED;
       } else {
@@ -211,7 +211,7 @@ function main(): byte {
       }
 
       // Launch on space or up
-      if (key == 's' || key == 'u' || key == ' ') {
+      if (keys & (keyboard::KEY_SPACE | keyboard::KEY_UP)) {
         bdx = BALL_SPEED;
         bdy = 0 - BALL_SPEED;
         state = STATE_PLAYING;

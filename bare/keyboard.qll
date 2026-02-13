@@ -3,51 +3,39 @@
 //
 // With default qvm peripheral set + display + keyboard:
 //   0x603: Display (4 words)
-//   0x607: Keyboard (2 words)
+//   0x607: Keyboard (1 word)
 //
 // Memory layout at base address:
-//   +0: Key code (first char of key name, e.g. 'l' for left arrow)
-//   +1: Event counter (increments on each keypress)
+//   +0: Key state bitmask (bits set while keys are held down)
 
 namespace keyboard {
-  // Key codes (first character of Node.js key.name)
-  .constant global KEY_LEFT: byte = 'l';    // "left"
-  .constant global KEY_RIGHT: byte = 'r';   // "right"
-  .constant global KEY_UP: byte = 'u';      // "up"
-  .constant global KEY_DOWN: byte = 'd';    // "down"
-  .constant global KEY_SPACE: byte = 's';   // "space"
-  .constant global KEY_RETURN: byte = 'r';  // "return" (same as right)
-  .constant global KEY_ESCAPE: byte = 'e';  // "escape"
+  // Key bitmask bits (match SDL renderer KEY_BIT_* constants)
+  .constant global KEY_LEFT: byte = 0x01;
+  .constant global KEY_RIGHT: byte = 0x02;
+  .constant global KEY_UP: byte = 0x04;
+  .constant global KEY_DOWN: byte = 0x08;
+  .constant global KEY_SPACE: byte = 0x10;
+  .constant global KEY_ESCAPE: byte = 0x20;
 
   // Keyboard state
   type state = struct {
-    key_ptr: *byte;
-    counter_ptr: *byte;
-    last_counter: byte;
+    keys_ptr: *byte;
   };
 
   // Initialize keyboard from base address
   function init(base: byte): state {
-    var base_ptr = <unsafe *byte>base;
     return state {
-      key_ptr = base_ptr,
-      counter_ptr = <unsafe *byte>(base + 1),
-      last_counter = 0,
+      keys_ptr = <unsafe *byte>base,
     };
   }
 
-  // Read the current key code (0 if no key pressed yet)
+  // Read the current key state bitmask
   function read(kb: *state): byte {
-    return *kb->key_ptr;
+    return *kb->keys_ptr;
   }
 
-  // Check if a new key event has occurred since last poll
-  function poll(kb: *state): byte {
-    var counter = *kb->counter_ptr;
-    if (counter != kb->last_counter) {
-      kb->last_counter = counter;
-      return *kb->key_ptr;
-    }
-    return 0;
+  // Check if a specific key is currently held down
+  function held(kb: *state, key: byte): bool {
+    return (*kb->keys_ptr & key) != 0;
   }
 }

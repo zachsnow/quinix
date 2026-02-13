@@ -182,7 +182,13 @@ if (argv.disk) {
   blockDevice = new BlockDevicePeripheral(storage, SECTOR_SIZE_WORDS);
 }
 
-// 4. Create display peripheral if enabled.
+// 4. Create keyboard peripheral if requested (needed before display for callback).
+let keypressPeripheral: KeypressPeripheral | null = null;
+if (argv.keyboard) {
+  keypressPeripheral = new KeypressPeripheral();
+}
+
+// 5. Create display peripheral if enabled.
 let displayCleanup: (() => void) | null = null;
 let displayPeripheral: DisplayPeripheral | null = null;
 if (argv.display) {
@@ -203,7 +209,7 @@ if (argv.display) {
     // SDL-based renderer
     const scale = argv["display-scale"] ? parseInt(argv["display-scale"], 10) : 2;
     try {
-      const { renderer, cleanup } = createSDLRenderer("Quinix Display", scale);
+      const { renderer, cleanup } = createSDLRenderer("Quinix Display", scale, keypressPeripheral?.onKeyState);
       displayCleanup = cleanup;
       displayPeripheral = new DisplayPeripheral(width, height, renderer);
       log.debug(`display: ${width}x${height} @ ${scale}x scale`);
@@ -227,12 +233,12 @@ const peripherals: Peripheral[] = [
 if (displayPeripheral) {
   peripherals.push(displayPeripheral);
 }
-if (argv.keyboard) {
+if (keypressPeripheral) {
   if (!displayPeripheral) {
     console.error("error: --keyboard requires --display");
     process.exit(1);
   }
-  peripherals.push(new KeypressPeripheral());
+  peripherals.push(keypressPeripheral);
 }
 if (blockDevice) {
   peripherals.push(blockDevice);

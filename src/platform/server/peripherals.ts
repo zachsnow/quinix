@@ -8,7 +8,7 @@ import { Peripheral, BufferedPeripheral } from '@/vm/peripherals';
 import type { PeripheralMapping } from '@/vm/peripherals';
 import fs from 'fs';
 import path from 'path';
-import readline from 'readline';
+
 
 const log = logger('vm:peripherals');
 
@@ -173,71 +173,31 @@ class DebugBreakPeripheral extends Peripheral {
 }
 
 /**
- * Listens for keypresses and triggers int 0x10.
+ * Keyboard peripheral using SDL key events.
  *
- * @remarks this will hang listening on stdin (even with `off()`) so it shouldn't
- * be included in the test suite for now. Only works in Node.js environments.
+ * Shared memory layout:
+ *   +0: key state bitmask (updated on each SDL key event)
+ *        bit 0 = left, bit 1 = right, bit 2 = up, bit 3 = down,
+ *        bit 4 = space, bit 5 = escape
  */
 class KeypressPeripheral extends Peripheral {
   public readonly name = 'keypress';
   public readonly identifier = 0x00000010;
 
   public readonly io = 0x0;
-  public readonly shared = 0x2;
+  public readonly shared = 0x1;
 
-  private initialized = false;
-
-  public constructor() {
-    super();
-
-    // Bind for easier listener removal.
-    this.onKeypress = this.onKeypress.bind(this);
-  }
-
-  private initReadline() {
-    if (this.initialized) {
+  /**
+   * Called by the SDL renderer's event pump with the current key bitmask.
+   */
+  public onKeyState = (keyState: number) => {
+    if (!this.mapping) {
       return;
     }
-    readline.emitKeypressEvents(process.stdin);
-    if (process.stdin.setRawMode instanceof Function) {
-      process.stdin.setRawMode(true);
-    }
-    this.initialized = true;
-  }
+    this.mapping.view[0] = keyState;
+  };
 
   public notify(address: Address) { }
-
-  public map(vm: VM, mapping: PeripheralMapping) {
-    super.map(vm, mapping);
-    this.initReadline();
-    process.stdin.on('keypress', this.onKeypress);
-  }
-
-  public unmap() {
-    super.unmap();
-    process.stdin.off('keypress', this.onKeypress);
-    if (process.stdin.setRawMode instanceof Function) {
-      process.stdin.setRawMode(false);
-    }
-  }
-
-  private onKeypress(data: string, key: { name: string; ctrl?: boolean }) {
-    if (!this.mapping || !this.vm) {
-      this.unmapped();
-    }
-
-    // Ctrl+C kills the VM (raw mode swallows SIGINT)
-    if (key.ctrl && key.name === 'c') {
-      this.vm.kill();
-      return;
-    }
-
-    const c = key.name?.codePointAt(0);
-    if (c !== undefined) {
-      this.mapping.view[0] = c;
-      this.mapping.view[1] = (this.mapping.view[1] + 1) >>> 0;
-    }
-  }
 }
 
 /**
