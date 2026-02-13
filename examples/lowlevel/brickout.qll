@@ -174,8 +174,8 @@ function main(): byte {
     }
     last_time = now;
 
-    // Read keyboard
-    var key = keyboard::read(&kb);
+    // Read keyboard (poll returns 0 if no new keypress)
+    var key = keyboard::poll(&kb);
 
     // Move paddle
     var old_px = px;
@@ -211,8 +211,7 @@ function main(): byte {
       }
 
       // Launch on space or up
-      var new_key = keyboard::poll(&kb);
-      if (new_key == 's' || new_key == 'u' || new_key == ' ') {
+      if (key == 's' || key == 'u' || key == ' ') {
         bdx = BALL_SPEED;
         bdy = 0 - BALL_SPEED;
         state = STATE_PLAYING;
