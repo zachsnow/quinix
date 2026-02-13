@@ -120,7 +120,7 @@ function draw_hud(fb: *graphics::framebuffer, score: byte, lives: byte): void {
 
 function main(): byte {
   // Open display via syscall — framebuffer is mapped into our address space
-  var fb = display::open();
+  var fb = display::open(SCREEN_W, SCREEN_H);
   if (!fb.pixels) {
     lib::print("error: could not open display\n");
     return 1;

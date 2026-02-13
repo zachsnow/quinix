@@ -348,10 +348,18 @@ namespace kernel {
       var proc = process::current_process();
       var disp = peripherals::display;
 
-      // Read dimensions from display peripheral shared memory
-      var width = disp[unsafe 1];
-      var height = disp[unsafe 2];
+      // Read requested dimensions from syscall args
+      var width = sc.arg1;
+      var height = sc.arg2;
+      if (!width || !height) {
+        log("syscall: display_open: invalid dimensions");
+        return -1;
+      }
       var fb_size = width * height;
+
+      // Write requested dimensions to display peripheral shared memory
+      disp[unsafe 1] = width;
+      disp[unsafe 2] = height;
 
       // Allocate physical memory for framebuffer
       var fb_phys = memory::allocate_physical_memory(fb_size);

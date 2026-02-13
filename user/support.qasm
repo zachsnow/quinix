@@ -78,3 +78,39 @@
   load r1 r63       ; Get return address and return.
   add r63 r63 r62
   jmp r1
+
+; Stack layout after caller pushes 4 args and we push return:
+;   SP + 0: return address
+;   SP + 1: arg2
+;   SP + 2: arg1
+;   SP + 3: arg0
+;   SP + 4: syscall
+@global::lib::support::syscall3:
+  sub r63 r63 r62   ; Push return address (QLL convention: sub then store)
+  store r63 r0
+
+  mov r0 r63        ; Get syscall from SP + 4
+  constant r1 0x4
+  add r0 r0 r1
+  load r0 r0
+
+  mov r1 r63        ; Get arg0 from SP + 3
+  constant r2 0x3
+  add r1 r1 r2
+  load r1 r1
+
+  mov r2 r63        ; Get arg1 from SP + 2
+  constant r3 0x2
+  add r2 r2 r3
+  load r2 r2
+
+  mov r3 r63        ; Get arg2 from SP + 1
+  add r3 r3 r62
+  load r3 r3
+
+  constant r4 0x80  ; Trigger 0x80 interrupt; return will be in `r0`.
+  int r4
+
+  load r1 r63       ; Get return address and return.
+  add r63 r63 r62
+  jmp r1

@@ -22,6 +22,7 @@ namespace lib {
     function syscall(syscall: byte): byte;
     function syscall1(syscall: byte, arg0: byte): byte;
     function syscall2(syscall: byte, arg0: byte, arg1: byte): byte;
+    function syscall3(syscall: byte, arg0: byte, arg1: byte, arg2: byte): byte;
 
     function debugger(): void;
   }

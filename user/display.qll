@@ -1,20 +1,22 @@
 // Usermode display and keyboard interface via syscalls.
 //
 // Usage:
-//   var fb = display::open();
+//   var fb = display::open(320, 200);
 //   graphics::fill_rect(&fb, 0, 0, 100, 100, graphics::color::RED);
 //   display::flip();
 //   display::close();
 
 namespace display {
-  // Open the display and get a framebuffer to draw into.
+  // Open the display at the requested resolution and get a framebuffer.
   // Returns a graphics::framebuffer with pixels mapped into this process's
   // virtual address space. Only one process can own the display at a time.
-  function open(): graphics::framebuffer {
+  function open(width: byte, height: byte): graphics::framebuffer {
     var result: byte[3];
-    lib::support::syscall1(
+    lib::support::syscall3(
       lib::support::DISPLAY_OPEN_SYSCALL,
-      <unsafe byte>&result[0]
+      <unsafe byte>&result[0],
+      width,
+      height
     );
     return graphics::framebuffer {
       pixels = <unsafe *byte>result[0],

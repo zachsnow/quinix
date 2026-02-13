@@ -468,7 +468,10 @@ class DisplayPeripheral extends Peripheral {
 
       const pointer = this.mapping.view[this.POINTER_ADDR];
       if (pointer && this.renderer) {
-        const pixelCount = this.width * this.height;
+        // Read dimensions from shared memory (set by kernel before flip)
+        const width = this.mapping.view[this.WIDTH_ADDR];
+        const height = this.mapping.view[this.HEIGHT_ADDR];
+        const pixelCount = width * height;
 
         // Read framebuffer from physical memory using dump view
         const framebuffer = this.vm.dump(pointer, pixelCount);
@@ -477,7 +480,7 @@ class DisplayPeripheral extends Peripheral {
           pixels[i] = framebuffer[i];
         }
 
-        this.renderer(pixels, this.width, this.height);
+        this.renderer(pixels, width, height);
       }
 
       this.mapping.view[this.CONTROL_ADDR] = this.READY;
