@@ -52,13 +52,11 @@ namespace kernel {
       }
 
       // Restore the next task"s state.
-      log("scheduler: switching to task");
       _restore_current_task();
     }
 
     // Timer handler - called by trampoline which handles stack switching and INT return.
     .export function _timer_interrupt(): void {
-      log("scheduler: timer interrupt");
       _schedule_task(interrupts::state);
     }
 

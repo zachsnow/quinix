@@ -13,6 +13,7 @@ namespace kernel {
     .constant global DISPLAY_FLIP: byte = 0xA;
     .constant global DISPLAY_CLOSE: byte = 0xB;
     .constant global KEY_STATE: byte = 0xC;
+    .constant global KEY_ASCII: byte = 0xD;
 
     type syscall = struct {
       syscall: byte;
@@ -26,7 +27,6 @@ namespace kernel {
 
     // Syscall handler - called by trampoline which handles stack switching and INT return.
     .export function _syscall_interrupt(): void {
-      log("syscall: interrupt received");
       // Arguments are passed in r0...r3.
       var sc = syscall {
         syscall = interrupts::state->registers[0],
@@ -46,7 +46,6 @@ namespace kernel {
       var result = fn(sc);
       // Put result in r0 for return to user
       interrupts::state->registers[0] = result;
-      log("syscall: done");
     }
 
     global syscalls: handler[] = [
@@ -63,6 +62,7 @@ namespace kernel {
       _display_flip,
       _display_close,
       _key_state,
+      _key_ascii,
     ];
 
     function _translate_pointer<T>(p: * byte): * T {
@@ -440,6 +440,26 @@ namespace kernel {
         return 0;
       }
       return peripherals::keyboard[unsafe 0];
+    }
+
+    // Check if an ASCII key is held. arg0 = ASCII code (0-127).
+    // Returns 1 if held, 0 if not.
+    function _key_ascii(sc: syscall): byte {
+      if (!peripherals::keyboard) {
+        return 0;
+      }
+      var ascii = sc.arg0;
+      if (ascii > 127) {
+        return 0;
+      }
+      var word = 1 + (ascii / 32);
+      var bit: byte = 1;
+      var shift = ascii % 32;
+      while (shift > 0) {
+        bit = bit * 2;
+        shift = shift - 1;
+      }
+      return (peripherals::keyboard[unsafe word] & bit) != 0;
     }
 
     function release_display(pid: byte): void {
