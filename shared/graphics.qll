@@ -144,6 +144,58 @@ namespace graphics {
     }
   }
 
+  // Draw circle outline using midpoint circle algorithm
+  function circle(fb: *framebuffer, cx: byte, cy: byte, r: byte, color: byte): void {
+    var x: byte = r;
+    var y: byte = 0;
+    var d: byte = 1 - r;
+
+    while (x >= y) {
+      set_pixel(fb, cx + x, cy + y, color);
+      set_pixel(fb, cx - x, cy + y, color);
+      set_pixel(fb, cx + x, cy - y, color);
+      set_pixel(fb, cx - x, cy - y, color);
+      set_pixel(fb, cx + y, cy + x, color);
+      set_pixel(fb, cx - y, cy + x, color);
+      set_pixel(fb, cx + y, cy - x, color);
+      set_pixel(fb, cx - y, cy - x, color);
+      y = y + 1;
+      if (d <= 0) {
+        d = d + 2 * y + 1;
+      } else {
+        x = x - 1;
+        d = d + 2 * y - 2 * x + 1;
+      }
+    }
+  }
+
+  // Draw filled circle using midpoint circle algorithm with horizontal spans
+  function fill_circle(fb: *framebuffer, cx: byte, cy: byte, r: byte, color: byte): void {
+    var x: byte = r;
+    var y: byte = 0;
+    var d: byte = 1 - r;
+
+    // Draw center horizontal line
+    hline(fb, cx - r, cy, 2 * r + 1, color);
+
+    while (x >= y) {
+      y = y + 1;
+      if (d <= 0) {
+        d = d + 2 * y + 1;
+      } else {
+        // x decreased: draw wide spans for the previous x
+        hline(fb, cx - x, cy + y - 1, 2 * x + 1, color);
+        hline(fb, cx - x, cy - y + 1, 2 * x + 1, color);
+        x = x - 1;
+        d = d + 2 * y - 2 * x + 1;
+      }
+      if (x >= y) {
+        hline(fb, cx - y, cy + x, 2 * y + 1, color);
+        hline(fb, cx - y, cy - x, 2 * y + 1, color);
+      }
+    }
+  }
+
   // Blit (copy) a region from one framebuffer to another
   function blit(
     dst: *framebuffer, dx: byte, dy: byte,

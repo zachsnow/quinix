@@ -15,6 +15,7 @@ import {
   DebugInputPeripheral,
   DebugOutputPeripheral,
   FileBlockStorage,
+  KeypressPeripheral,
 } from "@server/peripherals";
 import { createFileRenderer } from "@server/file-renderer";
 import { createSDLRenderer } from "@server/sdl-renderer";
@@ -39,6 +40,7 @@ interface Options {
   break: string;
   "break-write": string;
   watchpoint: string;
+  keyboard: boolean;
   stats: boolean;
 }
 
@@ -93,6 +95,12 @@ const argv = parseArguments<Options>(
         describe: "watch physical address range for writes (e.g. 0x2-0x43)",
         type: "string",
         default: "",
+      },
+      keyboard: {
+        alias: "k",
+        describe: "enable keyboard peripheral (requires --display)",
+        type: "boolean",
+        default: false,
       },
       stats: {
         alias: "s",
@@ -174,7 +182,13 @@ if (argv.disk) {
   blockDevice = new BlockDevicePeripheral(storage, SECTOR_SIZE_WORDS);
 }
 
-// 4. Create display peripheral if enabled.
+// 4. Create keyboard peripheral if requested (needed before display for callback).
+let keypressPeripheral: KeypressPeripheral | null = null;
+if (argv.keyboard) {
+  keypressPeripheral = new KeypressPeripheral();
+}
+
+// 5. Create display peripheral if enabled.
 let displayCleanup: (() => void) | null = null;
 let displayPeripheral: DisplayPeripheral | null = null;
 if (argv.display) {
@@ -195,7 +209,7 @@ if (argv.display) {
     // SDL-based renderer
     const scale = argv["display-scale"] ? parseInt(argv["display-scale"], 10) : 2;
     try {
-      const { renderer, cleanup } = createSDLRenderer("Quinix Display", scale);
+      const { renderer, cleanup } = createSDLRenderer("Quinix Display", scale, keypressPeripheral?.onKeyState);
       displayCleanup = cleanup;
       displayPeripheral = new DisplayPeripheral(width, height, renderer);
       log.debug(`display: ${width}x${height} @ ${scale}x scale`);
@@ -218,6 +232,13 @@ const peripherals: Peripheral[] = [
 ];
 if (displayPeripheral) {
   peripherals.push(displayPeripheral);
+}
+if (keypressPeripheral) {
+  if (!displayPeripheral) {
+    console.error("error: --keyboard requires --display");
+    process.exit(1);
+  }
+  peripherals.push(keypressPeripheral);
 }
 if (blockDevice) {
   peripherals.push(blockDevice);

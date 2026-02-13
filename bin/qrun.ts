@@ -54,8 +54,13 @@ async function main(): Promise<number> {
 
   console.log("Executing...");
   const vmArgs = verbose ? ["-v", "out.qbin", ...extraArgs] : ["out.qbin", ...extraArgs];
-  const vmResult = await $`bun run bin/qvm.ts ${vmArgs}`;
-  return vmResult.exitCode;
+  const proc = Bun.spawn(["bun", "run", "bin/qvm.ts", ...vmArgs], {
+    stdio: ["inherit", "inherit", "inherit"],
+  });
+  process.on("SIGINT", () => {
+    proc.kill("SIGINT");
+  });
+  return await proc.exited;
 }
 
 main()

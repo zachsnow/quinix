@@ -294,10 +294,17 @@ class ResolvablePromise<T> {
   }
 }
 
+let releaseCounter = 0;
+const RELEASE_YIELD_INTERVAL = 100;
+
 function release(): Promise<void> {
-  return new Promise((resolve) => {
-    queueMicrotask(resolve);
-  });
+  if (++releaseCounter >= RELEASE_YIELD_INTERVAL) {
+    releaseCounter = 0;
+    // Full yield: let the event loop process timers, IO, and signals.
+    return new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  // Fast yield: stay in the microtask queue.
+  return new Promise((resolve) => queueMicrotask(resolve));
 }
 
 /**
