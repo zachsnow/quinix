@@ -1057,6 +1057,14 @@ class FunctionCompiler extends StorageCompiler {
   }
 
   /**
+   * Returns true if the saved frame pointer is nested (refCount > 1),
+   * meaning an outer call is also using it and it must be caller-saved.
+   */
+  public get isNestedFrameSave(): boolean {
+    return this.savedFramePointerRefCount > 1;
+  }
+
+  /**
    * Restores the frame pointer after call argument compilation.
    * Only deallocates the register when the last nested call restores.
    */

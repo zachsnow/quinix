@@ -2103,8 +2103,14 @@ class CallExpression extends Expression {
     // This allows local variable access to work as SP changes.
     const savedFp = compiler.saveFramePointer();
 
-    // Get caller-save registers to preserve (excluding target and saved frame pointer).
-    const callerSave = compiler.registers.callerSave.filter((r) => r !== tr && r !== savedFp);
+    // Get caller-save registers to preserve (excluding target register which is
+    // needed for the JMP instruction). For the outermost call, also exclude
+    // savedFp since it will be deallocated by restoreFramePointer before the
+    // call and the pop would conflict with the return value register. For nested
+    // calls, savedFp must be included because the callee may clobber it and the
+    // outer call still needs it.
+    const excludeFp = !compiler.isNestedFrameSave;
+    const callerSave = compiler.registers.callerSave.filter((r) => r !== tr && (!excludeFp || r !== savedFp));
 
     // Push caller-save registers.
     callerSave.forEach((r) => {
