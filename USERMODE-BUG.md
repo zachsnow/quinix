@@ -1,79 +1,52 @@
 # Usermode Binary Execution Bug
 
-## Summary
+## Status: RESOLVED
 
-User binaries loaded by the kernel shell (`run /bin/hello.qbin`) never execute.
-The scheduler switches to the user task but no user code runs — no output, no
-syscalls, no faults.
+## Root Cause
 
-## Steps to reproduce
+The binary load buffer in `kernel/kernel.qll:load_executable` was only `0x1000`
+words (4096). User binaries that include the standard library (with font data,
+allocator, etc.) are ~5968 words. The read loop also capped total reads at
+`0x1000 - total`, so only the first 4096 words were loaded. The remaining words
+were left as zero (HALT instructions), causing the user code to hit a HALT when
+execution reached the unloaded portion.
 
-```bash
-./build.sh --all
-(sleep 1; echo "run /bin/hello.qbin") | timeout 15 bun run bin/qvm.ts kernel/kernel.qbin --disk image/disk.qfs -s
-```
+## Fix
 
-## Expected behavior
+Changed the buffer from `0x1000` to `0x8000` (matching `DEFAULT_EXECUTABLE_SIZE`)
+in `kernel/kernel.qll:load_executable`, and updated the read loop cap accordingly.
 
-The user program prints "Hello from userspace!" and exits.
+## Investigation Notes
 
-## Actual behavior
+### What worked correctly
+- Kernel boot, shell, filesystem, process creation
+- Timer interrupt handling and scheduler task switching
+- INT 0x0 (interrupt return) correctly restored user task state (IP=0x1000,
+  SP=0x2b000, interrupts enabled, MMU enabled)
+- MMU correctly mapped virtual 0x1000 to physical 0x20000
 
-The kernel creates the process and the scheduler switches to the user task,
-then nothing happens. The VM burns through cycles silently until killed.
+### The misleading symptom
+The VM appeared to "hang" after the scheduler switched to the user task. In
+reality, user code WAS executing — but it ran through the `_init` function
+(initializing font data, ~87K cycles), then hit a HALT instruction in the
+unloaded portion of the binary.
 
-```
-process: creating process struct
-process: enqueuing task
-process: created process
-load: process created
-scheduler: timer interrupt
-scheduler: switching to task
-<--- hangs here --->
-```
+### How it was found
+1. Added instruction tracing after INT 0x0 — confirmed user code was executing.
+2. The HALT fired at virtual 0x208b (the `main` function's entry point in the
+   rearranged binary).
+3. The binary file at that offset contained valid code (`0x073f3f3e` = `sub r63
+   r63 r62`), but physical memory had 0x0 (HALT).
+4. A memory check right after INT 0x0 confirmed the address was already zero
+   BEFORE user code ran — the binary was never loaded there.
+5. `load_executable` allocates `new byte[0x1000]` and reads at most `0x1000`
+   words. The binary is 5968 words, so words 4096-5967 were never loaded.
 
-## Observations
-
-1. Kernel boot, shell, filesystem, process creation all work correctly.
-2. After the scheduler switches tasks, all subsequent timer interrupts are
-   ignored with "interrupts disabled".
-3. The verbose trace (`--verbose -c 5500000`) shows:
-   - No "interrupt 0x0: return" messages after the task switch.
-   - No FAULT messages.
-   - Only 2 timer interrupt attempts, both ignored as "interrupts disabled".
-4. Stats show `interrupts handled: 1` (the timer that triggered the switch)
-   and `interrupts ignored: 4-53` (all subsequent timers).
-5. The bug reproduces at HEAD and at 998c62b ("Fix interrupt stack corruption
-   by switching to kernel stack in trampolines").
-
-## Analysis
-
-The timer interrupt handler flow is:
-
-1. Timer fires → `prepareInterrupt(TIMER)` → stores registers, disables
-   interrupts, disables MMU, jumps to timer trampoline.
-2. Trampoline switches to kernel stack, calls `_timer_interrupt`.
-3. Scheduler saves current task state, restores user task state
-   (IP=0x1000, SP=top of stack) to `*interrupts::state` at address 0x2.
-4. Trampoline does `INT 0x0` (return).
-5. VM's `prepareInterrupt(RETURN)` should: restore registers from 0x2,
-   re-enable interrupts, re-enable MMU.
-6. User task should execute at virtual IP 0x1000.
-
-The fact that interrupts remain disabled after step 4 suggests either:
-
-- The INT 0x0 in the trampoline never executes (trampoline stuck or crashing).
-- INT 0x0 executes but `interruptRestore()` restores an IP of 0, triggering
-  "invalid interrupt return" fault — but we don't see that in verbose output.
-- The user task starts but immediately faults, which disables interrupts. The
-  error handler would log "process: error interrupt!" but we don't see that
-  either.
-- Something else prevents the trampoline from reaching `INT 0x0`.
-
-## Next steps
-
-- Set a breakpoint at the timer trampoline's `INT 0x0` to verify it executes.
-- Dump the interrupt state at address 0x2 after the scheduler writes it to
-  verify the user task's IP/SP are correct.
-- Check if the MMU page table is correctly rebuilt when `mmu.enable()` is
-  called during INT 0x0 return.
+### Why the binary is so large
+A simple `lib::print("Hello from Quinix!")` program compiles to ~5968 words
+because the standard library includes:
+- Graphics font data (760 words, initialized in `_init`)
+- Memory allocator (`alloc`, `dealloc`, `_merge_blocks`)
+- String formatting (`std::fmt::fs`)
+- System allocator wrappers
+- Syscall support routines

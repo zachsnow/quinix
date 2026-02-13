@@ -102,17 +102,18 @@ function load_executable(path: byte[], parent_id: byte, args: byte[], args_len: 
   }
 
   // Allocate buffer for binary (in words, not bytes).
-  var binary = new byte[0x1000];
+  // Must be large enough for the largest executable (matching DEFAULT_EXECUTABLE_SIZE).
+  var binary = new byte[0x8000];
   var ptr = &binary[0];
   var total: byte = 0;
 
   // Read words (not bytes) since binaries are 32-bit word-oriented.
   kernel::log("load: reading file");
-  var n = kernel::fs::qfs::file_read_words(slot, ptr, 0x1000);
+  var n = kernel::fs::qfs::file_read_words(slot, ptr, 0x8000);
   while (n > 0) {
     total = total + n;
     ptr = <unsafe *byte>(<unsafe byte>ptr + n);
-    n = kernel::fs::qfs::file_read_words(slot, ptr, 0x1000 - total);
+    n = kernel::fs::qfs::file_read_words(slot, ptr, 0x8000 - total);
   }
   len binary = total;
   kernel::fs::qfs::file_close(slot);
