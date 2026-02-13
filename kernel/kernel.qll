@@ -101,22 +101,39 @@ function load_executable(path: byte[], parent_id: byte, args: byte[], args_len: 
     return 0;
   }
 
-  // Allocate buffer for binary (in words, not bytes).
-  // Must be large enough for the largest executable (matching DEFAULT_EXECUTABLE_SIZE).
-  var binary = new byte[0x8000];
+  // Allocate buffer matching the executable page size. Binaries larger than
+  // this can't fit in the executable page and must be rejected.
+  var max_size = kernel::process::DEFAULT_EXECUTABLE_SIZE;
+  var binary = new byte[max_size];
   var ptr = &binary[0];
   var total: byte = 0;
 
   // Read words (not bytes) since binaries are 32-bit word-oriented.
   kernel::log("load: reading file");
-  var n = kernel::fs::qfs::file_read_words(slot, ptr, 0x8000);
+  var n = kernel::fs::qfs::file_read_words(slot, ptr, max_size);
   while (n > 0) {
     total = total + n;
     ptr = <unsafe *byte>(<unsafe byte>ptr + n);
-    n = kernel::fs::qfs::file_read_words(slot, ptr, 0x8000 - total);
+    n = kernel::fs::qfs::file_read_words(slot, ptr, max_size - total);
   }
+
+  // Check if the file had more data than we could read.
+  var overflow: byte = 0;
+  if (total == max_size) {
+    var dummy: byte = 0;
+    if (kernel::fs::qfs::file_read_words(slot, &dummy, 1) > 0) {
+      overflow = 1;
+    }
+  }
+
   len binary = total;
   kernel::fs::qfs::file_close(slot);
+
+  if (overflow) {
+    kernel::log("load: binary too large for executable page");
+    delete binary;
+    return 0;
+  }
 
   kernel::log("load: creating process");
   if (total == 0) {
