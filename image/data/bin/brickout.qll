@@ -154,6 +154,11 @@ function main(): byte {
     // Read keyboard state via syscall
     var keys = keyboard::read();
 
+    // Quit on 'q' or Escape
+    if ((keys & keyboard::KEY_ESCAPE) || keyboard::key('q')) {
+      break;
+    }
+
     // Move paddle
     var old_px = px;
     if (keys & keyboard::KEY_LEFT) {

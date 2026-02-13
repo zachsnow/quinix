@@ -37,21 +37,34 @@ namespace display {
 }
 
 namespace keyboard {
-  // Key bitmask bits (match SDL renderer KEY_BIT_* constants)
+  // Special/modifier key bits (word 0, returned by read())
   .constant global KEY_LEFT: byte = 0x01;
   .constant global KEY_RIGHT: byte = 0x02;
   .constant global KEY_UP: byte = 0x04;
   .constant global KEY_DOWN: byte = 0x08;
   .constant global KEY_SPACE: byte = 0x10;
   .constant global KEY_ESCAPE: byte = 0x20;
+  .constant global KEY_ENTER: byte = 0x40;
+  .constant global KEY_TAB: byte = 0x80;
+  .constant global KEY_BACKSPACE: byte = 0x100;
+  .constant global KEY_DELETE: byte = 0x200;
+  .constant global KEY_SHIFT: byte = 0x400;
+  .constant global KEY_CTRL: byte = 0x800;
+  .constant global KEY_ALT: byte = 0x1000;
+  .constant global KEY_META: byte = 0x2000;
 
-  // Read the current key state bitmask via syscall.
+  // Read the special/modifier key bitmask via syscall.
   function read(): byte {
     return lib::support::syscall(lib::support::KEY_STATE_SYSCALL);
   }
 
-  // Check if a specific key is currently held down.
+  // Check if a special/modifier key is held.
   function held(keys: byte, key: byte): bool {
     return (keys & key) != 0;
+  }
+
+  // Check if an ASCII key is held (e.g. 'q', 'a', '1').
+  function key(ascii: byte): bool {
+    return lib::support::syscall1(lib::support::KEY_ASCII_SYSCALL, ascii) != 0;
   }
 }

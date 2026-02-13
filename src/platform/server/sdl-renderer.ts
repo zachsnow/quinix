@@ -17,38 +17,91 @@ const SDL_KEYUP = 0x301;
 const SDL_QUIT = 0x100;
 
 // SDL keycodes
-const SDLK_LEFT = 0x40000050;
-const SDLK_RIGHT = 0x4000004f;
+const SDLK_BACKSPACE = 8;
+const SDLK_TAB = 9;
+const SDLK_RETURN = 13;
+const SDLK_ESCAPE = 27;
+const SDLK_SPACE = 32;
+const SDLK_DELETE = 127;
 const SDLK_UP = 0x40000052;
 const SDLK_DOWN = 0x40000051;
-const SDLK_SPACE = 32;
-const SDLK_ESCAPE = 27;
-const SDLK_a = 97;
-const SDLK_d = 100;
-const SDLK_w = 119;
-const SDLK_s = 115;
+const SDLK_LEFT = 0x40000050;
+const SDLK_RIGHT = 0x4000004f;
+const SDLK_LSHIFT = 0x400000e1;
+const SDLK_RSHIFT = 0x400000e5;
+const SDLK_LCTRL = 0x400000e0;
+const SDLK_RCTRL = 0x400000e4;
+const SDLK_LALT = 0x400000e2;
+const SDLK_RALT = 0x400000e6;
+const SDLK_LGUI = 0x400000e3;
+const SDLK_RGUI = 0x400000e7;
 
-// Key state bitmask bits
+// Keyboard state: 5 words mapped to the peripheral.
+//
+// Word 0: Special/modifier key bitmask.
+// Words 1-4: ASCII key state. Bit N of word M means ASCII code (M-1)*32 + N.
+//   Word 1: ASCII 0-31 (control characters)
+//   Word 2: ASCII 32-63 (space, digits, punctuation)
+//   Word 3: ASCII 64-95 (uppercase letters, @, [, \, ], ^, _)
+//   Word 4: ASCII 96-127 (lowercase letters, backtick, {, |, }, ~)
+export const KEY_WORDS = 5;
+
+// Word 0 bit assignments: special/modifier keys.
 export const KEY_BIT_LEFT = 0x01;
 export const KEY_BIT_RIGHT = 0x02;
 export const KEY_BIT_UP = 0x04;
 export const KEY_BIT_DOWN = 0x08;
 export const KEY_BIT_SPACE = 0x10;
 export const KEY_BIT_ESCAPE = 0x20;
+export const KEY_BIT_ENTER = 0x40;
+export const KEY_BIT_TAB = 0x80;
+export const KEY_BIT_BACKSPACE = 0x100;
+export const KEY_BIT_DELETE = 0x200;
+export const KEY_BIT_SHIFT = 0x400;
+export const KEY_BIT_CTRL = 0x800;
+export const KEY_BIT_ALT = 0x1000;
+export const KEY_BIT_META = 0x2000;
 
-function sdlKeyToBit(sym: number): number {
+// Map an SDL keycode to { word, bit } in the 5-word key state.
+// Returns undefined if the key isn't mapped.
+function sdlKeyToState(sym: number): { word: number; bit: number } | undefined {
+  // Special/modifier keys → word 0.
   switch (sym) {
-    case SDLK_LEFT: case SDLK_a: return KEY_BIT_LEFT;
-    case SDLK_RIGHT: case SDLK_d: return KEY_BIT_RIGHT;
-    case SDLK_UP: case SDLK_w: return KEY_BIT_UP;
-    case SDLK_DOWN: case SDLK_s: return KEY_BIT_DOWN;
-    case SDLK_SPACE: return KEY_BIT_SPACE;
-    case SDLK_ESCAPE: return KEY_BIT_ESCAPE;
-    default: return 0;
+    case SDLK_LEFT: return { word: 0, bit: KEY_BIT_LEFT };
+    case SDLK_RIGHT: return { word: 0, bit: KEY_BIT_RIGHT };
+    case SDLK_UP: return { word: 0, bit: KEY_BIT_UP };
+    case SDLK_DOWN: return { word: 0, bit: KEY_BIT_DOWN };
+    case SDLK_SPACE: return { word: 0, bit: KEY_BIT_SPACE };
+    case SDLK_ESCAPE: return { word: 0, bit: KEY_BIT_ESCAPE };
+    case SDLK_RETURN: return { word: 0, bit: KEY_BIT_ENTER };
+    case SDLK_TAB: return { word: 0, bit: KEY_BIT_TAB };
+    case SDLK_BACKSPACE: return { word: 0, bit: KEY_BIT_BACKSPACE };
+    case SDLK_DELETE: return { word: 0, bit: KEY_BIT_DELETE };
+    case SDLK_LSHIFT: case SDLK_RSHIFT: return { word: 0, bit: KEY_BIT_SHIFT };
+    case SDLK_LCTRL: case SDLK_RCTRL: return { word: 0, bit: KEY_BIT_CTRL };
+    case SDLK_LALT: case SDLK_RALT: return { word: 0, bit: KEY_BIT_ALT };
+    case SDLK_LGUI: case SDLK_RGUI: return { word: 0, bit: KEY_BIT_META };
   }
+
+  // ASCII keys (0-127) → words 1-4.
+  if (sym >= 0 && sym <= 127) {
+    const word = 1 + ((sym >> 5) | 0);  // sym / 32, offset by 1
+    const bit = 1 << (sym & 31);        // sym % 32
+    return { word, bit };
+  }
+
+  return undefined;
 }
 
-export type KeyCallback = (keyState: number) => void;
+// Also map WASD to arrow bits for convenience (in addition to their ASCII positions).
+const WASD_MAP: Record<number, number> = {
+  97:  KEY_BIT_LEFT,   // 'a'
+  100: KEY_BIT_RIGHT,  // 'd'
+  119: KEY_BIT_UP,     // 'w'
+  115: KEY_BIT_DOWN,   // 's'
+};
+
+export type KeyCallback = (keyState: Int32Array) => void;
 
 // Find SDL2 library path based on platform
 function getSDLPath(): string {
@@ -176,8 +229,8 @@ export function createSDLRenderer(
   // Encode title as null-terminated buffer
   const titleBuffer = Buffer.from(title + "\0", "utf8");
 
-  // Key state bitmask, updated by event pump
-  let keyState = 0;
+  // Key state: 5 words (word 0 = special/modifier, words 1-4 = ASCII).
+  const keyState = new Int32Array(KEY_WORDS);
 
   function pumpEvents(buf: Buffer) {
     while (sdl.symbols.SDL_PollEvent(ptr(buf))) {
@@ -185,16 +238,31 @@ export function createSDLRenderer(
       if (type === SDL_KEYDOWN || type === SDL_KEYUP) {
         // SDL_KeyboardEvent: keysym.sym is at byte offset 20
         const sym = buf.readInt32LE(20);
-        const bit = sdlKeyToBit(sym);
-        if (bit) {
+        let changed = false;
+
+        const state = sdlKeyToState(sym);
+        if (state) {
           if (type === SDL_KEYDOWN) {
-            keyState |= bit;
+            keyState[state.word] |= state.bit;
           } else {
-            keyState &= ~bit;
+            keyState[state.word] &= ~state.bit;
           }
-          if (onKey) {
-            onKey(keyState);
+          changed = true;
+        }
+
+        // WASD also sets arrow bits in word 0.
+        const wasdBit = WASD_MAP[sym];
+        if (wasdBit) {
+          if (type === SDL_KEYDOWN) {
+            keyState[0] |= wasdBit;
+          } else {
+            keyState[0] &= ~wasdBit;
           }
+          changed = true;
+        }
+
+        if (changed && onKey) {
+          onKey(keyState);
         }
       }
     }

@@ -175,26 +175,31 @@ class DebugBreakPeripheral extends Peripheral {
 /**
  * Keyboard peripheral using SDL key events.
  *
- * Shared memory layout:
- *   +0: key state bitmask (updated on each SDL key event)
- *        bit 0 = left, bit 1 = right, bit 2 = up, bit 3 = down,
- *        bit 4 = space, bit 5 = escape
+ * Shared memory layout (5 words):
+ *   +0: Special/modifier key bitmask (arrows, space, escape, enter, tab,
+ *       backspace, delete, shift, ctrl, alt, meta)
+ *   +1: ASCII 0-31 key state (bit N = ASCII code N)
+ *   +2: ASCII 32-63 key state (bit N = ASCII code 32+N)
+ *   +3: ASCII 64-95 key state (bit N = ASCII code 64+N)
+ *   +4: ASCII 96-127 key state (bit N = ASCII code 96+N)
  */
 class KeypressPeripheral extends Peripheral {
   public readonly name = 'keypress';
   public readonly identifier = 0x00000010;
 
   public readonly io = 0x0;
-  public readonly shared = 0x1;
+  public readonly shared = 0x5;
 
   /**
-   * Called by the SDL renderer's event pump with the current key bitmask.
+   * Called by the SDL renderer's event pump with the current key state.
    */
-  public onKeyState = (keyState: number) => {
+  public onKeyState = (keyState: Int32Array) => {
     if (!this.mapping) {
       return;
     }
-    this.mapping.view[0] = keyState;
+    for (let i = 0; i < keyState.length; i++) {
+      this.mapping.view[i] = keyState[i];
+    }
   };
 
   public notify(address: Address) { }

@@ -5,7 +5,7 @@
 
 .constant global CLOCK_BASE: byte = 0x301;
 .constant global DISPLAY_BASE: byte = 0x603;
-.constant global KEYBOARD_BASE: byte = 0x607;
+.constant global KEYBOARD_BASE: byte = 0x607;  // 5 words
 .constant global FB_ADDR: byte = 0x10000;
 
 .constant global SCREEN_W: byte = 320;
@@ -176,6 +176,11 @@ function main(): byte {
 
     // Read keyboard state bitmask
     var keys = keyboard::read(&kb);
+
+    // Quit on 'q' or Escape
+    if ((keys & keyboard::KEY_ESCAPE) || keyboard::key(&kb, 'q')) {
+      break;
+    }
 
     // Move paddle
     var old_px = px;

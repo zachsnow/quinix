@@ -18,6 +18,7 @@ namespace lib {
     .constant global DISPLAY_FLIP_SYSCALL: byte = 0xA;
     .constant global DISPLAY_CLOSE_SYSCALL: byte = 0xB;
     .constant global KEY_STATE_SYSCALL: byte = 0xC;
+    .constant global KEY_ASCII_SYSCALL: byte = 0xD;
 
     function syscall(syscall: byte): byte;
     function syscall1(syscall: byte, arg0: byte): byte;
