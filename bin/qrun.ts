@@ -33,41 +33,28 @@ const argv = parseArguments<Options>(
 // Get any extra args after -- to pass to qvm
 const extraArgs = argv["--"] || [];
 
-async function main(): Promise<number> {
-  const file = argv.file;
-  const verbose = argv.verbose;
+const file = argv.file;
+const verbose = argv.verbose;
 
-  console.log("Compiling...");
-  const compileArgs = verbose ? ["-v", file] : [file];
-  const compileResult = await $`bun run bin/qllc.ts ${compileArgs}`.quiet();
-  if (compileResult.exitCode !== 0) {
-    console.error(compileResult.stderr.toString());
-    return compileResult.exitCode;
-  }
-
-  console.log("Assembling...");
-  const asmResult = await $`bun run bin/qasm.ts out.qasm`.quiet();
-  if (asmResult.exitCode !== 0) {
-    console.error(asmResult.stderr.toString());
-    return asmResult.exitCode;
-  }
-
-  console.log("Executing...");
-  const vmArgs = verbose ? ["-v", "out.qbin", ...extraArgs] : ["out.qbin", ...extraArgs];
-  // Use Bun.spawn with inherited stdio so the VM gets the real TTY
-  // (needed for SDL display and keyboard raw mode)
-  const proc = Bun.spawn(["bun", "run", "bin/qvm.ts", ...vmArgs], {
-    stdio: ["inherit", "inherit", "inherit"],
-  });
-  const exitCode = await proc.exited;
-  return exitCode;
+console.log("Compiling...");
+const compileArgs = verbose ? ["-v", file] : [file];
+const compileResult = await $`bun run bin/qllc.ts ${compileArgs}`.quiet();
+if (compileResult.exitCode !== 0) {
+  console.error(compileResult.stderr.toString());
+  process.exit(compileResult.exitCode);
 }
 
-main()
-  .then((code) => {
-    process.exit(code);
-  })
-  .catch((e) => {
-    console.error(`error: ${e}`);
-    process.exit(-1);
-  });
+console.log("Assembling...");
+const asmResult = await $`bun run bin/qasm.ts out.qasm`.quiet();
+if (asmResult.exitCode !== 0) {
+  console.error(asmResult.stderr.toString());
+  process.exit(asmResult.exitCode);
+}
+
+console.log("Executing...");
+// Re-write process.argv so qvm.ts parses the right arguments,
+// then import it directly. This keeps SDL in the same process,
+// which is required on macOS for window creation.
+const vmArgs = verbose ? ["-v", "out.qbin", ...extraArgs] : ["out.qbin", ...extraArgs];
+process.argv = [process.argv[0], "bin/qvm.ts", ...vmArgs];
+await import("./qvm.ts");
