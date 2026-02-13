@@ -9,6 +9,10 @@ namespace kernel {
     .constant global DESTROY: byte = 0x6;
     .constant global SPAWN: byte = 0x7;
     .constant global YIELD: byte = 0x8;
+    .constant global DISPLAY_OPEN: byte = 0x9;
+    .constant global DISPLAY_FLIP: byte = 0xA;
+    .constant global DISPLAY_CLOSE: byte = 0xB;
+    .constant global KEY_STATE: byte = 0xC;
 
     type syscall = struct {
       syscall: byte;
@@ -55,6 +59,10 @@ namespace kernel {
       _destroy,
       _spawn,
       _yield,
+      _display_open,
+      _display_flip,
+      _display_close,
+      _key_state,
     ];
 
     function _translate_pointer<T>(p: * byte): * T {
@@ -315,6 +323,122 @@ namespace kernel {
     function _yield(sc: syscall): byte {
       scheduler::_schedule_task(interrupts::state);
       return 0;
+    }
+
+    // Display state
+    .constant global FRAMEBUFFER_VIRTUAL_BASE: byte = 0x40000;
+    global display_owner_pid: byte = 0;
+    global display_fb_phys: byte = 0;
+
+    function _display_open(sc: syscall): byte {
+      log("syscall: display_open");
+
+      // Check display peripheral exists
+      if (!peripherals::display) {
+        log("syscall: display_open: no display");
+        return -1;
+      }
+
+      // Check not already owned
+      if (display_owner_pid) {
+        log("syscall: display_open: already owned");
+        return -1;
+      }
+
+      var proc = process::current_process();
+      var disp = peripherals::display;
+
+      // Read dimensions from display peripheral shared memory
+      var width = disp[unsafe 1];
+      var height = disp[unsafe 2];
+      var fb_size = width * height;
+
+      // Allocate physical memory for framebuffer
+      var fb_phys = memory::allocate_physical_memory(fb_size);
+      if (!fb_phys) {
+        log("syscall: display_open: out of memory");
+        return -1;
+      }
+      display_fb_phys = fb_phys;
+
+      // Set the display peripheral's framebuffer pointer
+      disp[unsafe 3] = fb_phys;
+
+      // Map framebuffer into process's virtual address space
+      if (!memory::add_page(
+        proc->table,
+        FRAMEBUFFER_VIRTUAL_BASE,
+        fb_phys,
+        fb_size,
+        memory::flags::PRESENT | memory::flags::READ | memory::flags::WRITE
+      )) {
+        log("syscall: display_open: add_page failed");
+        return -1;
+      }
+
+      // Rebuild MMU cache with new page
+      memory::use_table(proc->table);
+
+      // Write results to user-space struct: {fb_addr, width, height}
+      var result_ptr = _translate(<unsafe *byte>sc.arg0);
+      if (!result_ptr) {
+        log("syscall: display_open: bad result pointer");
+        return -1;
+      }
+      result_ptr[unsafe 0] = FRAMEBUFFER_VIRTUAL_BASE;
+      result_ptr[unsafe 1] = width;
+      result_ptr[unsafe 2] = height;
+
+      display_owner_pid = proc->id;
+      log("syscall: display_open: ok");
+      return 0;
+    }
+
+    function _display_flip(sc: syscall): byte {
+      if (!peripherals::display) {
+        return -1;
+      }
+
+      var proc = process::current_process();
+      if (proc->id != display_owner_pid) {
+        return -1;
+      }
+
+      // Write FLIP command to display peripheral control register
+      var disp = peripherals::display;
+      disp[unsafe 0] = 0x01;  // FLIP
+
+      // Spin-wait for completion
+      std::wait_while(disp, 0x02);  // PENDING
+
+      return 0;
+    }
+
+    function _display_close(sc: syscall): byte {
+      log("syscall: display_close");
+
+      var proc = process::current_process();
+      if (proc->id != display_owner_pid) {
+        return -1;
+      }
+
+      display_owner_pid = 0;
+      display_fb_phys = 0;
+      return 0;
+    }
+
+    function _key_state(sc: syscall): byte {
+      if (!peripherals::keyboard) {
+        return 0;
+      }
+      return peripherals::keyboard[unsafe 0];
+    }
+
+    function release_display(pid: byte): void {
+      if (display_owner_pid == pid) {
+        display_owner_pid = 0;
+        display_fb_phys = 0;
+      }
     }
 
     function init(): void {

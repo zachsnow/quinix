@@ -153,6 +153,9 @@ namespace kernel {
 
       log("process: destroying process");
 
+      // Release display if this process owns it
+      syscall::release_display(process->id);
+
       // First kill all children recursively
       _kill_children(process->id);
 

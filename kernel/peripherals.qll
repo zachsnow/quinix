@@ -77,6 +77,28 @@ namespace kernel {
     }
 
     //
+    // Display.
+    // Memory layout: [control][width][height][fb_pointer]
+    //
+    .constant global display_identifier: byte = 0x5;
+    global display: * byte = null;
+
+    function _init_display(entry: * peripheral_table_entry): void {
+      display = entry->address;
+    }
+
+    //
+    // Keyboard.
+    // Memory layout: [key_state_bitmask]
+    //
+    .constant global keyboard_identifier: byte = 0x10;
+    global keyboard: * byte = null;
+
+    function _init_keyboard(entry: * peripheral_table_entry): void {
+      keyboard = entry->address;
+    }
+
+    //
     // Peripheral initialization.
     //
     type init_table_entry = struct {
@@ -114,6 +136,16 @@ namespace kernel {
       init_table_entry {
         identifier = block_device_identifier,
         init = _init_block_device,
+        required = false,
+      },
+      init_table_entry {
+        identifier = display_identifier,
+        init = _init_display,
+        required = false,
+      },
+      init_table_entry {
+        identifier = keyboard_identifier,
+        init = _init_keyboard,
         required = false,
       },
     ];

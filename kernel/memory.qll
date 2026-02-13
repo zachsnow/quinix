@@ -1,8 +1,9 @@
 namespace kernel::memory {
   // Configuration
-  .constant global TOTAL_PHYSICAL_MEMORY: byte = 0x100000;  // 1MB
+  .constant global TOTAL_PHYSICAL_MEMORY: byte = 0x400000;  // 4MB
   .constant global KERNEL_RESERVED: byte = 0x20000;         // 128KB for kernel
   .constant global CHUNK_SIZE: byte = 0x1000;               // 4KB chunks
+  .constant global MAX_PAGES_PER_PROCESS: byte = 8;
 
   // Kernel heap is managed by std::alloc (shared/alloc.qll).
   // See kernel/alloc.qll which sets std::heap to 0x10000.
@@ -98,10 +99,11 @@ namespace kernel::memory {
       return null;
     }
 
-    // Allocate table memory: [count: 1 word][page0][page1][page2]
-    // We map 3 pages: executable, heap, and stack.
+    // Allocate table memory with room for MAX_PAGES entries.
+    // We start with 3 pages (executable, heap, stack) but leave room for more
+    // (e.g. framebuffer mapped by DISPLAY_OPEN syscall).
     var page_count: byte = 3;
-    var table_size = 1 + page_count * sizeof page;
+    var table_size = 1 + MAX_PAGES_PER_PROCESS * sizeof page;
     var t: * table = allocate_kernel_memory(table_size);
     if (!t) {
       return null;
@@ -135,6 +137,22 @@ namespace kernel::memory {
     };
 
     return t;
+  }
+
+  function add_page(t: * table, virt: byte, phys: byte, size: byte, f: flags): bool {
+    var count = table_count(t);
+    if (count >= MAX_PAGES_PER_PROCESS) {
+      log("memory: add_page: max pages reached");
+      return false;
+    }
+    *table_page(t, count) = page {
+      virtual_address = virt,
+      physical_address = phys,
+      size = size,
+      flags = f,
+    };
+    *t = count + 1;
+    return true;
   }
 
   function destroy_table(t: * table): void {

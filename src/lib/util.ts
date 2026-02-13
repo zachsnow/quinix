@@ -294,6 +294,8 @@ class ResolvablePromise<T> {
   }
 }
 
+declare function queueMicrotask(callback: () => void): void;
+
 let releaseCounter = 0;
 const RELEASE_YIELD_INTERVAL = 100;
 

@@ -14,6 +14,10 @@ namespace lib {
     .constant global DESTROY_SYSCALL: byte = 0x6;
     .constant global SPAWN_SYSCALL: byte = 0x7;
     .constant global YIELD_SYSCALL: byte = 0x8;
+    .constant global DISPLAY_OPEN_SYSCALL: byte = 0x9;
+    .constant global DISPLAY_FLIP_SYSCALL: byte = 0xA;
+    .constant global DISPLAY_CLOSE_SYSCALL: byte = 0xB;
+    .constant global KEY_STATE_SYSCALL: byte = 0xC;
 
     function syscall(syscall: byte): byte;
     function syscall1(syscall: byte, arg0: byte): byte;

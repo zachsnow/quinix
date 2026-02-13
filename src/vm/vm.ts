@@ -215,7 +215,7 @@ class VM {
   private peripheralAddresses: PeripheralAddressMap = {};
 
   // Memory.
-  public static readonly DEFAULT_MEMORY_SIZE = 0x00100000; // 1MB
+  public static readonly DEFAULT_MEMORY_SIZE = 0x00400000; // 4MB
   private readonly memorySize: number;
   private readonly memory: Memory;
 
