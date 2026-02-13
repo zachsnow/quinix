@@ -351,7 +351,7 @@ namespace kernel {
       // Read requested dimensions from syscall args
       var width = sc.arg1;
       var height = sc.arg2;
-      if (!width || !height) {
+      if (!width || !height || width > 1920 || height > 1080) {
         log("syscall: display_open: invalid dimensions");
         return -1;
       }
