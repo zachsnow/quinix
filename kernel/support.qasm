@@ -1,7 +1,7 @@
 ; Kernel entrypoint
 ; Sets up SP and ONE, calls global init, calls main, halts.
 @_entrypoint:
-  constant r63 0xFFFFF      ; SP = top of 1MB memory
+  constant r63 0x3FFFFF     ; SP = top of 4MB memory
   constant r62 0x1          ; ONE = 1
 
   ; Call global init

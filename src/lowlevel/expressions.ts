@@ -406,6 +406,10 @@ function compileLiteralExpressions(hint: string, compiler: Compiler, literalExpr
       ]);
       compiler.emitStaticStore(ri, zr, literalExpression.type.size);
       compiler.deallocateRegister(zr);
+      // emitStaticStore already advanced ri for size > 1.
+      if (literalExpression.type.size > 1) {
+        needsIncrement = false;
+      }
     }
 
     if (needsIncrement && i < literalExpressions.length - 1) {

@@ -13,9 +13,12 @@ namespace kernel::memory {
   global user_pool_current: byte = 0x0;
   global user_pool_size: byte = 0x0;
 
-  // Hex format helper for logging addresses/sizes.
-  function fh(n: byte): std::fmt {
-    return std::fmt { fmt_type = std::fmt::fmt_type::U, n = n, base = 16 };
+  // Logging helper: print a hex number.
+  function log_hex(n: byte): void {
+    var buf: byte[12];
+    std::str::utoa(n, buf, 16);
+    std::console::print("0x");
+    std::console::print(buf);
   }
 
   type flags = byte;
@@ -68,27 +71,30 @@ namespace kernel::memory {
 
     // Check if we have space
     if(user_pool_current + bytes_needed > user_pool_size){
-      std::fmt::print([
-        std::fmt::fs("memory: OOM: requested=0x"), fh(size),
-        std::fmt::fs(" (aligned=0x"), fh(bytes_needed),
-        std::fmt::fs(") used=0x"), fh(user_pool_current),
-        std::fmt::fs("/0x"), fh(user_pool_size),
-        std::fmt::nl,
-      ]);
+      std::console::print("memory: OOM: requested=");
+      log_hex(size);
+      std::console::print(" aligned=");
+      log_hex(bytes_needed);
+      std::console::print(" used=");
+      log_hex(user_pool_current);
+      std::console::print("/");
+      log_hex(user_pool_size);
+      std::console::print("\n");
       return 0;
     }
 
     var address = user_pool_base + user_pool_current;
     user_pool_current = user_pool_current + bytes_needed;
 
-    std::fmt::print([
-      std::fmt::fs("memory: alloc 0x"), fh(bytes_needed),
-      std::fmt::fs(" at 0x"), fh(address),
-      std::fmt::fs(" (used=0x"), fh(user_pool_current),
-      std::fmt::fs("/0x"), fh(user_pool_size),
-      std::fmt::fs(")"),
-      std::fmt::nl,
-    ]);
+    std::console::print("memory: alloc ");
+    log_hex(bytes_needed);
+    std::console::print(" at ");
+    log_hex(address);
+    std::console::print(" (used ");
+    log_hex(user_pool_current);
+    std::console::print("/");
+    log_hex(user_pool_size);
+    std::console::print(")\n");
     return address;
   }
 
@@ -112,13 +118,15 @@ namespace kernel::memory {
     var stack_base = heap_base + heap_size + 0x1000;
 
     var total_size = executable_size + heap_size + stack_size;
-    std::fmt::print([
-      std::fmt::fs("memory: create_table: exec=0x"), fh(executable_size),
-      std::fmt::fs(" heap=0x"), fh(heap_size),
-      std::fmt::fs(" stack=0x"), fh(stack_size),
-      std::fmt::fs(" total=0x"), fh(total_size),
-      std::fmt::nl,
-    ]);
+    std::console::print("memory: create_table exec=");
+    log_hex(executable_size);
+    std::console::print(" heap=");
+    log_hex(heap_size);
+    std::console::print(" stack=");
+    log_hex(stack_size);
+    std::console::print(" total=");
+    log_hex(total_size);
+    std::console::print("\n");
 
     // Find an available physical location.
     var base = allocate_physical_memory(total_size);
@@ -233,14 +241,6 @@ namespace kernel::memory {
     user_pool_base = KERNEL_RESERVED;
     user_pool_current = 0;
     user_pool_size = TOTAL_PHYSICAL_MEMORY - KERNEL_RESERVED;
-
-    std::fmt::print([
-      std::fmt::fs("memory: total=0x"), fh(TOTAL_PHYSICAL_MEMORY),
-      std::fmt::fs(" reserved=0x"), fh(KERNEL_RESERVED),
-      std::fmt::fs(" pool=0x"), fh(user_pool_size),
-      std::fmt::fs(" base=0x"), fh(user_pool_base),
-      std::fmt::nl,
-    ]);
 
     // Initialize MMU peripheral
     mmu_base_address = kernel::peripherals::mmu;
