@@ -1,0 +1,9 @@
+// @skip: system::alloc assembly reference not resolved
+type Point = struct { x: byte; y: byte; };
+function main(): byte {
+  var ps = new Point[7] ... Point {
+    x = 55,
+    y = 66,
+  };
+  return ps[4].y;
+}

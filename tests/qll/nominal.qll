@@ -1,0 +1,6 @@
+// @expect: 0
+type int = byte;
+function main(): byte {
+  var i: int = 0;
+  return <byte>i;
+}
