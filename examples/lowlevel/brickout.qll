@@ -3,6 +3,7 @@
 // Run with:
 //   bun run bin/qrun.ts examples/lowlevel/brickout.qll -- --display 320x200 --keyboard
 
+.constant global CLOCK_BASE: byte = 0x301;
 .constant global DISPLAY_BASE: byte = 0x603;
 .constant global KEYBOARD_BASE: byte = 0x607;
 .constant global FB_ADDR: byte = 0x10000;
@@ -145,6 +146,11 @@ function main(): byte {
   var bdx: byte = BALL_SPEED;
   var bdy: byte = 0 - BALL_SPEED;
 
+  // Frame timing
+  var clock = <unsafe *byte>CLOCK_BASE;
+  var last_time: byte = *clock;
+  var frame_ms: byte = 16;  // ~60fps target
+
   // Initialize bricks
   for (var i: byte = 0; i < BRICK_COUNT; i = i + 1) {
     bricks[i] = 1;
@@ -161,6 +167,13 @@ function main(): byte {
   by = PADDLE_Y - BALL_R - 1;
 
   while (true) {
+    // Frame timing
+    var now = *clock;
+    if (now - last_time < frame_ms) {
+      continue;
+    }
+    last_time = now;
+
     // Read keyboard
     var key = keyboard::read(&kb);
 
@@ -349,6 +362,9 @@ function main(): byte {
     display::flip(DISPLAY_BASE);
   }
 
-  // Halt on game over/win (display stays visible)
+  // Show result for 3 seconds
+  var end_time = *clock;
+  while (*clock - end_time < 3000) {}
+
   return 0;
 }

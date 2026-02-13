@@ -33,28 +33,41 @@ const argv = parseArguments<Options>(
 // Get any extra args after -- to pass to qvm
 const extraArgs = argv["--"] || [];
 
-const file = argv.file;
-const verbose = argv.verbose;
+async function main(): Promise<number> {
+  const file = argv.file;
+  const verbose = argv.verbose;
 
-console.log("Compiling...");
-const compileArgs = verbose ? ["-v", file] : [file];
-const compileResult = await $`bun run bin/qllc.ts ${compileArgs}`.quiet();
-if (compileResult.exitCode !== 0) {
-  console.error(compileResult.stderr.toString());
-  process.exit(compileResult.exitCode);
+  console.log("Compiling...");
+  const compileArgs = verbose ? ["-v", file] : [file];
+  const compileResult = await $`bun run bin/qllc.ts ${compileArgs}`.quiet();
+  if (compileResult.exitCode !== 0) {
+    console.error(compileResult.stderr.toString());
+    return compileResult.exitCode;
+  }
+
+  console.log("Assembling...");
+  const asmResult = await $`bun run bin/qasm.ts out.qasm`.quiet();
+  if (asmResult.exitCode !== 0) {
+    console.error(asmResult.stderr.toString());
+    return asmResult.exitCode;
+  }
+
+  console.log("Executing...");
+  const vmArgs = verbose ? ["-v", "out.qbin", ...extraArgs] : ["out.qbin", ...extraArgs];
+  const proc = Bun.spawn(["bun", "run", "bin/qvm.ts", ...vmArgs], {
+    stdio: ["inherit", "inherit", "inherit"],
+  });
+  process.on("SIGINT", () => {
+    proc.kill("SIGINT");
+  });
+  return await proc.exited;
 }
 
-console.log("Assembling...");
-const asmResult = await $`bun run bin/qasm.ts out.qasm`.quiet();
-if (asmResult.exitCode !== 0) {
-  console.error(asmResult.stderr.toString());
-  process.exit(asmResult.exitCode);
-}
-
-console.log("Executing...");
-// Re-write process.argv so qvm.ts parses the right arguments,
-// then import it directly. This keeps SDL in the same process,
-// which is required on macOS for window creation.
-const vmArgs = verbose ? ["-v", "out.qbin", ...extraArgs] : ["out.qbin", ...extraArgs];
-process.argv = [process.argv[0], "bin/qvm.ts", ...vmArgs];
-await import("./qvm.ts");
+main()
+  .then((code) => {
+    process.exit(code);
+  })
+  .catch((e) => {
+    console.error(`error: ${e}`);
+    process.exit(-1);
+  });
