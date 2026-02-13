@@ -1,8 +1,8 @@
 namespace kernel::memory {
   // Configuration
-  .constant global TOTAL_PHYSICAL_MEMORY: byte = 0x400000;  // 4MB
-  .constant global KERNEL_RESERVED: byte = 0x20000;         // 128KB for kernel
-  .constant global CHUNK_SIZE: byte = 0x1000;               // 4KB chunks
+  .constant global TOTAL_PHYSICAL_MEMORY: byte = 0x400000;  // 4M words (16MB)
+  .constant global KERNEL_RESERVED: byte = 0x20000;         // 128K words for kernel
+  .constant global CHUNK_SIZE: byte = 0x1000;               // 4K words per chunk
   .constant global MAX_PAGES_PER_PROCESS: byte = 8;
 
   // Kernel heap is managed by std::alloc (shared/alloc.qll).
@@ -12,6 +12,11 @@ namespace kernel::memory {
   global user_pool_base: byte = 0x0;
   global user_pool_current: byte = 0x0;
   global user_pool_size: byte = 0x0;
+
+  // Hex format helper for logging addresses/sizes.
+  function fh(n: byte): std::fmt {
+    return std::fmt { fmt_type = std::fmt::fmt_type::U, n = n, base = 16 };
+  }
 
   type flags = byte;
   namespace flags {
@@ -63,14 +68,27 @@ namespace kernel::memory {
 
     // Check if we have space
     if(user_pool_current + bytes_needed > user_pool_size){
-      log("memory: out of physical memory");
+      std::fmt::print([
+        std::fmt::fs("memory: OOM: requested=0x"), fh(size),
+        std::fmt::fs(" (aligned=0x"), fh(bytes_needed),
+        std::fmt::fs(") used=0x"), fh(user_pool_current),
+        std::fmt::fs("/0x"), fh(user_pool_size),
+        std::fmt::nl,
+      ]);
       return 0;
     }
 
     var address = user_pool_base + user_pool_current;
     user_pool_current = user_pool_current + bytes_needed;
 
-    log("memory: allocated physical memory");
+    std::fmt::print([
+      std::fmt::fs("memory: alloc 0x"), fh(bytes_needed),
+      std::fmt::fs(" at 0x"), fh(address),
+      std::fmt::fs(" (used=0x"), fh(user_pool_current),
+      std::fmt::fs("/0x"), fh(user_pool_size),
+      std::fmt::fs(")"),
+      std::fmt::nl,
+    ]);
     return address;
   }
 
@@ -93,8 +111,17 @@ namespace kernel::memory {
     var heap_base = executable_base + executable_size + 0x1000;
     var stack_base = heap_base + heap_size + 0x1000;
 
+    var total_size = executable_size + heap_size + stack_size;
+    std::fmt::print([
+      std::fmt::fs("memory: create_table: exec=0x"), fh(executable_size),
+      std::fmt::fs(" heap=0x"), fh(heap_size),
+      std::fmt::fs(" stack=0x"), fh(stack_size),
+      std::fmt::fs(" total=0x"), fh(total_size),
+      std::fmt::nl,
+    ]);
+
     // Find an available physical location.
-    var base = allocate_physical_memory(executable_size + heap_size + stack_size);
+    var base = allocate_physical_memory(total_size);
     if (!base) {
       return null;
     }
@@ -111,7 +138,6 @@ namespace kernel::memory {
 
     // Set count
     *t = page_count;
-    log("memory: table at kernel addr, phys base:");
 
     // Set pages
     // Note: WRITE is included because the executable section also contains
@@ -207,6 +233,14 @@ namespace kernel::memory {
     user_pool_base = KERNEL_RESERVED;
     user_pool_current = 0;
     user_pool_size = TOTAL_PHYSICAL_MEMORY - KERNEL_RESERVED;
+
+    std::fmt::print([
+      std::fmt::fs("memory: total=0x"), fh(TOTAL_PHYSICAL_MEMORY),
+      std::fmt::fs(" reserved=0x"), fh(KERNEL_RESERVED),
+      std::fmt::fs(" pool=0x"), fh(user_pool_size),
+      std::fmt::fs(" base=0x"), fh(user_pool_base),
+      std::fmt::nl,
+    ]);
 
     // Initialize MMU peripheral
     mmu_base_address = kernel::peripherals::mmu;
