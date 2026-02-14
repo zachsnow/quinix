@@ -1,4 +1,4 @@
-// @skip: type resolver crash on member types
+// @skip: requires dependent types (T.x return type syntax)
 type point2d = struct {
   x: byte;
   y: byte;

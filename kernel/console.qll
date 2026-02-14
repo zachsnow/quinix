@@ -15,7 +15,7 @@ namespace std::console {
   // Read a line of input into buffer.
   // Returns: number of bytes read, or -1 on error.
   // Caller must set `len buffer = result` if needed.
-  function input(buffer: byte[]): byte {
+  function input(buffer: string): byte {
     if (!kernel::peripherals::debug_input) {
       return -1;
     }

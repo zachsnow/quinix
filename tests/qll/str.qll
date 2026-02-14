@@ -1,5 +1,5 @@
-// @skip: type mismatch byte[] vs * byte
+// @expect: 0x48
 function main(): byte {
-  var s: * byte = "Hello!";
+  var s: string = "Hello!";
   return s[0];
 }
