@@ -1,7 +1,8 @@
-// @skip: parse error in array initializer syntax
+// @expect: 0x55
+// @libs: alloc
 type Point = struct { x: byte; y: byte; };
 function main(): byte {
-  var ps = new Point[2] [
+  var ps = new Point[3] [
     Point {
       x = 0x55,
       y = 0x66,
@@ -15,6 +16,5 @@ function main(): byte {
       y = 0xaa,
     },
   ];
-  var qs = new Point;
-  return (*qs).x;
+  return ps[0].x;
 }

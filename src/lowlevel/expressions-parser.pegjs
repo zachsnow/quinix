@@ -49,6 +49,13 @@ NewArrayExpression
         ).at(location(), text(), options);
     }
 
+    // Array literal initializer: new T[n] [e1, e2, ...]
+    / NewToken _ t:ElementType _ "[" _ s:Expression _ "]" _ e:ArrayExpression {
+        return new NewArrayExpression(
+            new SliceType(t).at(t.location), s, e, false
+        ).at(location(), text(), options);
+    }
+
     // Zero.
     / NewToken _ t:ElementType _ "[" _ s:Expression _ "]" {
         return new NewArrayExpression(
