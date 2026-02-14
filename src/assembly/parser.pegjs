@@ -75,11 +75,14 @@ UnaryUpdateOperation
   / "ftoi" { return Operation.FTOI; }
 
 BinaryOperation
-  = "jz" { return Operation.JZ; }
+  = "rjnz" { return Operation.RJNZ; }
+  / "rjz" { return Operation.RJZ; }
+  / "jz" { return Operation.JZ; }
   / "jnz" { return Operation.JNZ; }
 
 UnaryOperation
-  = "jmp" { return Operation.JMP; }
+  = "rjmp" { return Operation.RJMP; }
+  / "jmp" { return Operation.JMP; }
   / "int" { return Operation.INT; }
 
 NullaryOperation

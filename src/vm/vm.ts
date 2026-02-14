@@ -1199,6 +1199,27 @@ class VM {
           }
           break;
 
+        case Operation.RJMP: {
+          const offset = registers[sr0] | 0;
+          registers[Register.IP] = (virtualIp + offset) >>> 0;
+          ipOffset = 0;
+          break;
+        }
+        case Operation.RJZ:
+          if (registers[sr0] === 0) {
+            const offset = registers[sr1] | 0;
+            registers[Register.IP] = (virtualIp + offset) >>> 0;
+            ipOffset = 0;
+          }
+          break;
+        case Operation.RJNZ:
+          if (registers[sr0] !== 0) {
+            const offset = registers[sr1] | 0;
+            registers[Register.IP] = (virtualIp + offset) >>> 0;
+            ipOffset = 0;
+          }
+          break;
+
         case Operation.NOP:
           break;
 

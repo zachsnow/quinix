@@ -54,6 +54,11 @@ enum Operation {
   ITOF,
   UTOF,
   FTOI,
+
+  // Relative jumps
+  RJMP,
+  RJZ,
+  RJNZ,
 }
 
 namespace Operation {
@@ -100,6 +105,9 @@ namespace Operation {
     "itof d s",
     "utof d s",
     "ftoi d s",
+    "rjmp s",
+    "rjz s s",
+    "rjnz s s",
   ].map((spec) => {
     const parts = spec.split(" ");
     const name = parts[0];
