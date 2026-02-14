@@ -20,8 +20,11 @@ IntLiteral
   / digits:[0-9]+ { return parseInt(digits.join(''), 10); }
 
 FloatLiteral
-  = sign:"-"? whole:[0-9]+ "." frac:[0-9]+ exp:Exponent? "f" { return floatToInt(parseFloat((sign || '') + whole.join('') + '.' + frac.join('') + (exp || ''))); }
-  / sign:"-"? whole:[0-9]+ exp:Exponent "f" { return floatToInt(parseFloat((sign || '') + whole.join('') + (exp || ''))); }
+  = "-Inf" { return floatToInt(-Infinity); }
+  / "Inf" { return floatToInt(Infinity); }
+  / "NaN" { return floatToInt(NaN); }
+  / sign:"-"? whole:[0-9]+ "." frac:[0-9]+ exp:Exponent? "f" { const f = parseFloat((sign || '') + whole.join('') + '.' + frac.join('') + (exp || '')); if (!Number.isFinite(f)) { error('float literal out of range; use Inf or -Inf'); } return floatToInt(f); }
+  / sign:"-"? whole:[0-9]+ exp:Exponent "f" { const f = parseFloat((sign || '') + whole.join('') + (exp || '')); if (!Number.isFinite(f)) { error('float literal out of range; use Inf or -Inf'); } return floatToInt(f); }
 
 Exponent
   = [eE] sign:[+-]? digits:[0-9]+ { return 'e' + (sign || '') + digits.join(''); }
