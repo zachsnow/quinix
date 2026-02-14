@@ -1,5 +1,6 @@
 import { Address } from "@/lib/types";
 import {
+  InternalError,
   Messages,
   SymbolTable,
   Syntax,
@@ -260,7 +261,15 @@ class DataDirective extends Directive {
   }
 
   public preassemble(assembler: Assembler, ip: Address): void {
-    this.reference.preassemble(assembler, ip);
+    try {
+      this.reference.preassemble(assembler, ip);
+    } catch (e) {
+      if (e instanceof InternalError) {
+        this.error(assembler, `duplicate label ${this.reference}`);
+      } else {
+        throw e;
+      }
+    }
   }
 
   public assemble(assembler: Assembler): Instruction[] {
@@ -376,7 +385,15 @@ class LabelDirective extends Directive {
   }
 
   public preassemble(assembler: Assembler, ip: Address): void {
-    this.reference.preassemble(assembler, ip);
+    try {
+      this.reference.preassemble(assembler, ip);
+    } catch (e) {
+      if (e instanceof InternalError) {
+        this.error(assembler, `duplicate label ${this.reference}`);
+      } else {
+        throw e;
+      }
+    }
   }
 
   public assemble(assembler: Assembler): Instruction[] {
