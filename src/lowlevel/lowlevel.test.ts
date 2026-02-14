@@ -413,13 +413,16 @@ describe('QLLC typechecking', () => {
 
   describe('Typechecking errors', () => {
     test('nominal check', () => {
+      // Named types are convertible to their underlying type, so returning
+      // an `int` (alias for `byte`) from a function returning `byte` is allowed,
+      // consistent with variable init, assignment, and function args.
       expect(errors(`
         type int = byte;
         function main(): byte {
           var i: int = 0;
           return i;
         }
-      `)).toEqual(['expected byte, actual int']);
+      `)).toEqual([]);
     });
 
     test('arithmetic', () => {
