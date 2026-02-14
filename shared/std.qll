@@ -235,6 +235,79 @@ namespace std {
     function utoa(number: byte, buffer: string, base: byte): bool {
       return ntoa(number, buffer, base, false);
     }
+
+    function equal(a: string, b: string): bool {
+      if (len a != len b) {
+        return false;
+      }
+      for (var i = 0; i < len a; i = i + 1) {
+        if (a[i] != b[i]) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function index_of(haystack: string, needle: byte): byte {
+      for (var i = 0; i < len haystack; i = i + 1) {
+        if (haystack[i] == needle) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function starts_with(s: string, prefix: string): bool {
+      if (len prefix > len s) {
+        return false;
+      }
+      for (var i = 0; i < len prefix; i = i + 1) {
+        if (s[i] != prefix[i]) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function ends_with(s: string, suffix: string): bool {
+      if (len suffix > len s) {
+        return false;
+      }
+      var offset = len s - len suffix;
+      for (var i = 0; i < len suffix; i = i + 1) {
+        if (s[offset + i] != suffix[i]) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function concat(a: string, b: string): string {
+      var result: string = new byte[len a + len b];
+      for (var i = 0; i < len a; i = i + 1) {
+        result[i] = a[i];
+      }
+      for (var j = 0; j < len b; j = j + 1) {
+        result[len a + j] = b[j];
+      }
+      return result;
+    }
+
+    function to_upper(s: string): void {
+      for (var i = 0; i < len s; i = i + 1) {
+        if (s[i] >= 97 && s[i] <= 122) {
+          s[i] = s[i] - 32;
+        }
+      }
+    }
+
+    function to_lower(s: string): void {
+      for (var i = 0; i < len s; i = i + 1) {
+        if (s[i] >= 65 && s[i] <= 90) {
+          s[i] = s[i] + 32;
+        }
+      }
+    }
   }
 
   type fmt = struct {
