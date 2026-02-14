@@ -113,7 +113,7 @@ data @kernel_interrupt_sp 0x1F000
 
   ; Update the interrupt count to ensure high interrupts (like syscall 0x80) are mapped.
   ; The count must be at least as high as the highest interrupt number used.
-  constant r5 0x43        ; Count address (REGISTER_COUNT + 2).
+  constant r5 0x44        ; Count address (REGISTER_COUNT + 3, after fault reason).
   constant r6 0x80        ; Ensure count >= 128 for syscalls.
   store r5 r6             ; Update count.
 

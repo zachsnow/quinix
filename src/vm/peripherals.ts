@@ -2,7 +2,7 @@ import { logger } from "@/lib/logger";
 import { Address, Memory, Offset } from "@/lib/types";
 import { Immediate, Instruction } from "./instructions";
 import type { Interrupt } from "./vm";
-import { VM } from "./vm";
+import { FaultReason, VM } from "./vm";
 
 const log = logger("vm:peripherals");
 
@@ -34,7 +34,7 @@ abstract class Peripheral {
   protected unmapped(): never {
     const message = `unmapped peripheral ${this.name}`;
     if (this.vm) {
-      this.vm.fault(message);
+      this.vm.fault(FaultReason.MEMORY_FAULT, message);
     }
     throw new Error(message);
   }

@@ -154,6 +154,15 @@ namespace Interrupt {
   export const FAULT = 0x1;
 }
 
+type FaultReason = number;
+namespace FaultReason {
+  export const INVALID_INSTRUCTION = 0x01;
+  export const UNIMPLEMENTED_INSTRUCTION = 0x02;
+  export const MEMORY_FAULT = 0x03;
+  export const OUT_OF_BOUNDS = 0x04;
+  export const INVALID_INTERRUPT = 0x05;
+}
+
 type PeripheralAddressMap = { [address: number]: PeripheralMapping };
 
 type VMResult = number;
@@ -173,6 +182,7 @@ class VM {
   //  byte: r0 -- stored register
   //  ...
   //  byte: rn -- stored register
+  //  byte: fault reason
   //  byte: handler entry count
   //  byte: handler entry 0 address
   //  ...
@@ -180,8 +190,10 @@ class VM {
   private readonly INTERRUPT_TABLE_ENABLED_ADDR: Address = 0x0000;
   private readonly INTERRUPT_TABLE_ENTRIES_ADDR_ADDR: Address = 0x0001;
   private readonly INTERRUPT_TABLE_REGISTERS_ADDR: Address = 0x0002;
-  private readonly INTERRUPT_TABLE_COUNT_ADDR: Address =
+  private readonly INTERRUPT_TABLE_FAULT_REASON_ADDR: Address =
     Register.REGISTER_COUNT + 0x2;
+  private readonly INTERRUPT_TABLE_COUNT_ADDR: Address =
+    Register.REGISTER_COUNT + 0x3;
   private readonly INTERRUPT_TABLE_ENTRIES_ADDR: Address =
     this.INTERRUPT_TABLE_COUNT_ADDR + 0x1;
 
@@ -276,7 +288,7 @@ class VM {
     throw new Error(`vm: critical fault: ${message}`);
   }
 
-  public fault(message: string): void {
+  public fault(reason: FaultReason, message: string): void {
     console.error(`[FAULT] ${message}`);
     log.debug(`[FAULT] ${message}`);
 
@@ -285,6 +297,7 @@ class VM {
     }
 
     this.state.faulting = true;
+    this.memory[this.INTERRUPT_TABLE_FAULT_REASON_ADDR] = reason;
     // Faults don't advance IP - we want to save the faulting instruction's address
     if (!this.prepareInterrupt(Interrupt.FAULT, false)) {
       throw new Error(`fault: unhandled fault: ${message}`);
@@ -768,7 +781,7 @@ class VM {
       // If we restored an `ip` of 0 we performed an invalid return,
       // bail out.
       if (!this.state.registers[Register.IP]) {
-        this.fault(`invalid interrupt return`);
+        this.fault(FaultReason.INVALID_INTERRUPT, `invalid interrupt return`);
         return true;
       }
 
@@ -795,6 +808,7 @@ class VM {
     const handlerCount = this.memory[this.INTERRUPT_TABLE_COUNT_ADDR];
     if (interrupt > handlerCount) {
       this.fault(
+        FaultReason.INVALID_INTERRUPT,
         `invalid interrupt ${Immediate.toString(
           interrupt
         )} (${handlerCount} mapped)`
@@ -919,6 +933,7 @@ class VM {
       let physicalIp = mmu.translate(virtualIp, AccessFlags.Execute);
       if (physicalIp === undefined) {
         this.fault(
+          FaultReason.MEMORY_FAULT,
           `memory fault: ${Address.toString(
             virtualIp
           )} not executable fetching instruction`
@@ -929,6 +944,7 @@ class VM {
       // The physical address must fit within the constraints of "physical" memory.
       if (physicalIp >= memorySize) {
         this.fault(
+          FaultReason.OUT_OF_BOUNDS,
           `memory fault: ${Address.toString(
             physicalIp
           )} out of bounds fetching instruction`
@@ -943,6 +959,7 @@ class VM {
       // Invalid instruction check
       if (!Operation.isValid(operation)) {
         this.fault(
+          FaultReason.INVALID_INSTRUCTION,
           `${Address.toString(virtualIp)}: invalid instruction: ${Immediate.toString(encoded)}`
         );
         return "continue";
@@ -997,6 +1014,7 @@ class VM {
           );
           if (physicalAddress === undefined) {
             this.fault(
+              FaultReason.MEMORY_FAULT,
               `memory fault: ${Address.toString(
                 virtualAddress
               )} invalid mapping reading`
@@ -1006,6 +1024,7 @@ class VM {
 
           if (physicalAddress >= memorySize) {
             this.fault(
+              FaultReason.OUT_OF_BOUNDS,
               `memory fault: ${Address.toString(
                 physicalAddress
               )} out of bounds reading`
@@ -1040,6 +1059,7 @@ class VM {
           );
           if (physicalAddress === undefined) {
             this.fault(
+              FaultReason.MEMORY_FAULT,
               `memory fault: ${Address.toString(
                 virtualAddress
               )} invalid mapping writing at IP=${Address.toString(virtualIp)}`
@@ -1049,6 +1069,7 @@ class VM {
 
           if (physicalAddress >= memorySize) {
             this.fault(
+              FaultReason.OUT_OF_BOUNDS,
               `memory fault: ${Address.toString(
                 physicalAddress
               )} out of bounds writing`
@@ -1090,6 +1111,7 @@ class VM {
           );
           if (physicalAddress === undefined) {
             this.fault(
+              FaultReason.MEMORY_FAULT,
               `memory fault: ${Address.toString(
                 virtualAddress
               )} invalid mapping`
@@ -1099,6 +1121,7 @@ class VM {
 
           if (physicalAddress >= memorySize) {
             this.fault(
+              FaultReason.OUT_OF_BOUNDS,
               `memory fault: ${Address.toString(physicalAddress)} out of bounds`
             );
             return "continue";
@@ -1287,7 +1310,7 @@ class VM {
         }
 
         default:
-          this.fault(`unimplemented instruction: ${operation}`);
+          this.fault(FaultReason.UNIMPLEMENTED_INSTRUCTION, `unimplemented instruction: ${operation}`);
           return "continue";
       }
 
@@ -1313,7 +1336,7 @@ class VM {
   }
 }
 
-export { State, VM };
+export { FaultReason, State, VM };
 export type {
   Breakpoint, DebuggerFactory, IDebugger, Interrupt, VMResult,
   VMStepResult, Watchpoint, WatchpointCallback, WatchpointType
