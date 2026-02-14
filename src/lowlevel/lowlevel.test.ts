@@ -7,7 +7,8 @@ import { LowLevelProgram } from './lowlevel';
 import { Compiler } from './compiler';
 import { parse as _parse } from './parser';
 import { VM, VMResult } from '@/vm/vm';
-import { DisplayPeripheral } from '@/vm/peripherals';
+import { ClockPeripheral, DisplayPeripheral, TimerPeripheral } from '@/vm/peripherals';
+import { DebugBreakPeripheral, DebugOutputPeripheral, DebugInputPeripheral, DebugFilePeripheral } from '@server/peripherals';
 import { Immediate } from '@/lib/types';
 import { AssemblyProgram } from '@/assembly/assembly';
 import { createFileRenderer } from '@server/file-renderer';
@@ -2312,15 +2313,12 @@ describe('Display e2e', () => {
 
       // Minimal test program: set 3 pixels and flip
       const testProgram = LowLevelProgram.parse(`
-        .constant global DISPLAY_BASE: byte = 0x300;  // Only peripheral
-        .constant global FB_ADDR: byte = 0x10000;
-
         function main(): byte {
-          var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
+          var fb = display::open(4, 4);
           graphics::set_pixel(&fb, 0, 0, graphics::color::RED);
           graphics::set_pixel(&fb, 1, 0, graphics::color::GREEN);
           graphics::set_pixel(&fb, 2, 0, graphics::color::BLUE);
-          display::flip(DISPLAY_BASE);
+          display::flip();
           return 0;
         }
       `);
@@ -2337,10 +2335,18 @@ describe('Display e2e', () => {
         throw new Error(messages.toString());
       }
 
-      // Run with display peripheral
+      // Run with standard peripheral set so display ends up at 0x603
       const renderer = createFileRenderer(tempFile);
       const display = new DisplayPeripheral(4, 4, renderer);
-      const vm = new VM({ peripherals: [display], cycles: 50000 });
+      const vm = new VM({ peripherals: [
+        new TimerPeripheral(),
+        new ClockPeripheral(),
+        new DebugBreakPeripheral(),
+        new DebugOutputPeripheral(),
+        new DebugInputPeripheral(),
+        new DebugFilePeripheral('.'),
+        display,
+      ], cycles: 50000 });
       await vm.run(binary.encode());
 
       // Verify PPM output

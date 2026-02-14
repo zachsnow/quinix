@@ -461,7 +461,10 @@ namespace kernel {
         bit = bit * 2;
         shift = shift - 1;
       }
-      return (peripherals::keyboard[unsafe word] & bit) != 0;
+      if (peripherals::keyboard[unsafe word] & bit) {
+        return 1;
+      }
+      return 0;
     }
 
     // Return milliseconds since VM start from clock peripheral.

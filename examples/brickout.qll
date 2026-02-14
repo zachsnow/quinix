@@ -172,7 +172,7 @@ function main(): byte {
     var keys = keyboard::read();
 
     // Quit on 'q' or Escape
-    if ((keys & keyboard::KEY_ESCAPE) || keyboard::key('q')) {
+    if (keyboard::held(keys, keyboard::KEY_ESCAPE) || keyboard::key('q')) {
       break;
     }
 
