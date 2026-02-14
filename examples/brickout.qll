@@ -357,10 +357,6 @@ function main(): byte {
     display::flip();
   }
 
-  // Show result for 3 seconds
-  var end_time = clock::now();
-  while (clock::now() - end_time < 3000) {}
-
   display::close();
   return 0;
 }
