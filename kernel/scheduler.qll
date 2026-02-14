@@ -104,15 +104,8 @@ namespace kernel {
           panic("scheduler: no tasks after destroy");
         }
         current_task = tasks;
-        // If we"re switching to the kernel task (no page table), halt instead
-        // because the kernel can"t run with MMU enabled and no valid page table.
-        if(!current_task->table){
-          log("All user tasks completed");
-          support::halt(0);
-        }
         log("scheduler: restoring other task state");
-        *interrupts::state = current_task->state;
-        memory::use_table(current_task->table);
+        _restore_current_task();
       }
       log("scheduler: destroy_task done");
     }
