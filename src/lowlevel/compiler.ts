@@ -91,12 +91,6 @@ type Parameter = {
   size: number;
 }
 
-type CallArgument = {
-  register: Register;
-  size: number;
-  integral: boolean;
-}
-
 class Compiler {
   public static readonly NULL_ERROR = 0xe0000000;
   public static readonly BOUNDS_ERROR = 0xe0000001;
@@ -274,76 +268,93 @@ class Compiler {
   }
 
   /**
-   * Compiles a call to a function using the QLL calling convention. Returns the
-   * register holding the return value. Note that the target and argument registers
-   * *are* deallocated.
-   *
-   * @param argumentRegisters the registers holding the arguments to pass to the function.
-   * @param target the register holding the address of the function body.
+   * When set, this register holds the saved frame pointer. Used during call
+   * argument compilation to allow push-as-you-go without breaking local access.
    */
-  public emitCall(args: CallArgument[], target: Register, comment: string = ''): Register {
-    const returnToRef = this.generateReference();
+  protected savedFramePointer: Register | undefined;
+  private savedFramePointerRefCount: number = 0;
 
-    // Push caller-save registers; skip pushing those that hold the target
-    // or the arguments, since we will push and deallocate those separately.
-    const callerSave = this.registers.callerSave.filter((r) => {
-      if (r === target) {
-        return false;
-      }
-      return !args.find((arg) => {
-        return arg.register === r;
-      });
-    });
+  /**
+   * Saves the frame pointer to a register for use during call argument compilation.
+   * Supports nesting via reference counting.
+   */
+  protected saveFramePointer(): void {
+    this.savedFramePointerRefCount++;
+    if (this.savedFramePointer === undefined) {
+      this.savedFramePointer = this.allocateRegister();
+      this.emitPeek(this.savedFramePointer, 'save frame pointer');
+    }
+  }
+
+  /**
+   * Restores the frame pointer after call argument compilation.
+   * Only deallocates the register when the last nested call restores.
+   */
+  protected restoreFramePointer(): void {
+    if (this.savedFramePointer === undefined || this.savedFramePointerRefCount === 0) {
+      throw new InternalError('frame pointer not saved');
+    }
+    this.savedFramePointerRefCount--;
+    if (this.savedFramePointerRefCount === 0) {
+      this.deallocateRegister(this.savedFramePointer);
+      this.savedFramePointer = undefined;
+    }
+  }
+
+  /**
+   * Compiles a call to a function using the QLL calling convention. The caller
+   * provides a `pushArgs` callback that compiles and pushes arguments onto the
+   * stack, returning the total argument size. The target register is deallocated.
+   *
+   * @param target the register holding the address of the function body.
+   * @param pushArgs callback that pushes arguments and returns total arg size.
+   */
+  public emitCall(target: Register, pushArgs: () => number): Register {
+    // Save frame pointer before pushing caller-save registers so it captures
+    // the true frame base for local/parameter access during arg compilation.
+    this.saveFramePointer();
+
+    // Exclude target (needed for JMP). Exclude savedFp for the outermost call
+    // since it will be deallocated before the call; include it for nested calls
+    // so it survives the inner call.
+    const outermost = this.savedFramePointerRefCount === 1;
+    const callerSave = this.registers.callerSave.filter((r) =>
+      r !== target && !(outermost && r === this.savedFramePointer)
+    );
     callerSave.forEach((r) => {
       this.emitPush(r, 'push caller-save register');
     });
 
-    // Push arguments to stack and deallocate the argument registers.
-    // The caller should not reuse argument registers after emitCall returns.
-    let argSize = 0;
-    args.forEach((arg) => {
-      if (arg.integral) {
-        this.emitPush(arg.register, 'push argument');
-      }
-      else {
-        this.emitPushMany(arg.size, 'allocate argument storage');
-        const r = this.allocateRegister();
-        this.emitMove(r, Compiler.SP);
-        this.emitStaticCopy(r, arg.register, arg.size, 'store argument');
-        this.deallocateRegister(r);
-      }
+    // Push arguments.
+    const argSize = pushArgs();
 
-      this.deallocateRegister(arg.register);
-      argSize += arg.size;
-    });
+    // Restore frame pointer.
+    this.restoreFramePointer();
 
     // Emit call.
+    const returnToRef = this.generateReference();
     this.emit([
-      // Set up return-to address.
       new ConstantDirective(Compiler.RET, new ReferenceConstant(returnToRef)).comment('set up return address'),
-
-      // Call.
-      new InstructionDirective(Instruction.createOperation(Operation.JMP, undefined, target)).comment(comment),
-
-      // Return-to label.
+      new InstructionDirective(Instruction.createOperation(Operation.JMP, undefined, target)).comment('call'),
       new LabelDirective(returnToRef).comment('return address'),
     ]);
 
-    // Save the return value.
-    const dr = this.allocateRegister();
-    this.emitMove(dr, Compiler.RET);
-
-    // Deallocate target so that popping can use it.
+    // Deallocate target.
     this.deallocateRegister(target);
 
-    // Pop all of the arguments.
+    // Pop arguments and caller-save registers. RET is a reserved register
+    // so its value survives the pops. We allocate dr afterward to avoid
+    // conflicting with registers that were deallocated inside the callback
+    // but are still in the caller-save set.
     this.emitPopMany(argSize, 'pop arguments');
-
-    // Pop caller-save registers.
     callerSave.reverse();
     callerSave.forEach((r) => {
       this.emitPop(r, 'pop caller-save register');
     });
+
+    // Save the return value.
+    const dr = this.allocateRegister();
+    this.emitMove(dr, Compiler.RET);
 
     return dr;
   }
@@ -356,13 +367,15 @@ class Compiler {
    * This register is deallocated after use.
    */
   public emitNew(sr: Register, comment: string = ''): Register {
-    const reference = new Reference(this.allocator);
     const tr = this.allocateRegister();
     this.emit([
-      new ConstantDirective(tr, new ReferenceConstant(reference)).comment('allocator'),
+      new ConstantDirective(tr, new ReferenceConstant(new Reference(this.allocator))).comment(comment || 'allocator'),
     ]);
-
-    return this.emitCall([{ register: sr, size: 1, integral: true }], tr, comment);
+    return this.emitCall(tr, () => {
+      this.emitPush(sr, 'push argument');
+      this.deallocateRegister(sr);
+      return 1;
+    });
   }
 
   /**
@@ -371,12 +384,15 @@ class Compiler {
    * @param sr the register containing the pointer to deallocate.
    */
   public emitDelete(sr: Register, comment: string = ''): Register {
-    const reference = new Reference(this.deallocator);
     const tr = this.allocateRegister();
     this.emit([
-      new ConstantDirective(tr, new ReferenceConstant(reference)).comment('deallocator'),
+      new ConstantDirective(tr, new ReferenceConstant(new Reference(this.deallocator))).comment(comment || 'deallocator'),
     ]);
-    return this.emitCall([{ register: sr, size: 1, integral: true }], tr, comment);
+    return this.emitCall(tr, () => {
+      this.emitPush(sr, 'push argument');
+      this.deallocateRegister(sr);
+      return 1;
+    });
   }
 
   public emitPush(r: Register, comment: string = ''): void {
@@ -997,17 +1013,6 @@ class FunctionCompiler extends StorageCompiler {
   private readonly parameterStorage: number = 0;
   private parameters: { [identifier: string]: number } = {};
 
-  /**
-   * When set, this register holds the saved frame pointer. Used during call
-   * argument compilation to allow push-as-you-go without breaking local access.
-   */
-  private savedFramePointer: Register | undefined;
-
-  /**
-   * Reference count for nested saveFramePointer calls.
-   */
-  private savedFramePointerRefCount: number = 0;
-
   public constructor(identifier: string, parameters: Parameter[]) {
     super(identifier);
 
@@ -1037,46 +1042,6 @@ class FunctionCompiler extends StorageCompiler {
   public allocateStorage(identifier: string, size: number = 1): void {
     this.localStorage += size;
     this.locals[identifier] = this.localStorage;
-  }
-
-  /**
-   * Saves the frame pointer to a register for use during call argument compilation.
-   * This allows push-as-you-go without breaking local variable access.
-   * Returns the register holding the saved frame pointer.
-   * Supports nesting via reference counting.
-   */
-  public saveFramePointer(): Register {
-    this.savedFramePointerRefCount++;
-    if (this.savedFramePointer !== undefined) {
-      // Already saved by outer call, reuse it.
-      return this.savedFramePointer;
-    }
-    this.savedFramePointer = this.allocateRegister();
-    this.emitPeek(this.savedFramePointer, 'save frame pointer for call');
-    return this.savedFramePointer;
-  }
-
-  /**
-   * Returns true if the saved frame pointer is nested (refCount > 1),
-   * meaning an outer call is also using it and it must be caller-saved.
-   */
-  public get isNestedFrameSave(): boolean {
-    return this.savedFramePointerRefCount > 1;
-  }
-
-  /**
-   * Restores the frame pointer after call argument compilation.
-   * Only deallocates the register when the last nested call restores.
-   */
-  public restoreFramePointer(): void {
-    if (this.savedFramePointer === undefined || this.savedFramePointerRefCount === 0) {
-      throw new InternalError('frame pointer not saved');
-    }
-    this.savedFramePointerRefCount--;
-    if (this.savedFramePointerRefCount === 0) {
-      this.deallocateRegister(this.savedFramePointer);
-      this.savedFramePointer = undefined;
-    }
   }
 
   /**
