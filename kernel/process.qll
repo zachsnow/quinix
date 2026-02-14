@@ -163,7 +163,7 @@ namespace kernel {
       if(i == -1){
         panic("process: unknown process");
       }
-      std::vector::remove(processes, i);
+      std::vector::remove(&processes, i);
 
       memory::destroy_table(process->table);
       scheduler::destroy_task(process->task);

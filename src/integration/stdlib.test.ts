@@ -312,7 +312,7 @@ describe('std::vector', () => {
         std::vector::add<byte>(&v, 10);
         std::vector::add<byte>(&v, 20);
         std::vector::add<byte>(&v, 30);
-        std::vector::remove<byte>(v, 1);
+        std::vector::remove<byte>(&v, 1);
         return v[1];
       }
     `, { cycles: 10000 });

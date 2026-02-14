@@ -122,16 +122,16 @@ namespace std {
       (*vec)[i] = element;
     }
 
-    function remove<T>(vec: vector<T>, index: byte): void {
-      var n = len vec - 1;
+    function remove<T>(vec: * vector<T>, index: byte): void {
+      var n = len *vec - 1;
       for (var i = index; i < n; i = i + 1) {
-        vec[i] = vec[i + 1];
+        (*vec)[i] = (*vec)[i + 1];
       }
-      len vec = n;
+      len *vec = n;
     }
 
-    function remove_by<T, C>(vec: vector<T>, fn: (T, C) => bool, context: C): void {
-      var index = find_by(vec, fn, context);
+    function remove_by<T, C>(vec: * vector<T>, fn: (T, C) => bool, context: C): void {
+      var index = find_by(*vec, fn, context);
       if (index == -1) {
         return;
       }
