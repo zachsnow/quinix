@@ -764,7 +764,6 @@ class IdentifierType extends Type {
       this.type.kindcheck(namespaceContext, kindchecker.visit(this.qualifiedIdentifier));
     }
     else {
-      debugger;
       this.error(context, `unknown type identifier ${this.identifier}`);
 
       // We don't have a real qualified identifier for this, but we expect
@@ -951,6 +950,8 @@ class ArrayType extends Type {
   }
 }
 
+const SLICE_DESCRIPTOR_SIZE = 3;
+
 class SliceType extends Type {
   public constructor(
     private type: Type,
@@ -1092,7 +1093,7 @@ class SliceType extends Type {
 
   public get size(): number {
     // Layout: [pointer][length][capacity]
-    return 3;
+    return SLICE_DESCRIPTOR_SIZE;
   }
 
   public substitute(typeTable: TypeTable): Type {
@@ -1263,5 +1264,6 @@ export {
   BuiltinType, IdentifierType, TemplateType, PointerType, ArrayType, SliceType, StructType, FunctionType,
   VariableType,
   TemplateInstantiationType, DotType, SuffixType,
+  SLICE_DESCRIPTOR_SIZE,
 };
 export type { Storage };

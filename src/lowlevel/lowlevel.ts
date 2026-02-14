@@ -16,7 +16,7 @@ import {
   AssemblyProgram,
 } from '@/assembly/assembly';
 import { Instruction, Operation, Register } from '@/vm/instructions';
-import { Type, TypedIdentifier, TypedStorage, FunctionType, TemplateType, Storage, ArrayType, SliceType } from './types';
+import { Type, TypedIdentifier, TypedStorage, FunctionType, TemplateType, Storage, ArrayType, SliceType, SLICE_DESCRIPTOR_SIZE } from './types';
 import { Expression, StringLiteralExpression } from './expressions';
 import { BlockStatement } from './statements';
 import { TypeChecker, KindChecker, Source } from './typechecker';
@@ -345,13 +345,11 @@ class GlobalDeclaration extends BaseValueDeclaration {
       new ConstantDirective(dr, new ReferenceConstant(reference)).comment(`reference global ${this.qualifiedIdentifier}`),
     ]);
 
-    // Handle array-to-slice conversion.
-    const cGlobalType = this.type.resolve();
-    const cExprType = this.expression.concreteType.resolve();
-    if (cGlobalType instanceof SliceType && cExprType instanceof ArrayType) {
-      const sliceReg = compiler.emitArrayToSlice(sr, cExprType.length);
-      compiler.emitStaticCopy(dr, sliceReg, 3, 'copy slice descriptor');
-      compiler.deallocateRegister(sliceReg);
+    // Handle implicit conversions (e.g. array-to-slice).
+    const convertedSr = compiler.emitConversion(sr, this.expression.concreteType, this.type);
+    if (convertedSr !== sr) {
+      compiler.emitStaticCopy(dr, convertedSr, this.type.size, 'copy converted value');
+      compiler.deallocateRegister(convertedSr);
     }
     else if (this.type.integral || this.type.isFloat) {
       compiler.emitStaticStore(dr, sr, 1, `store to global ${this.qualifiedIdentifier}`);

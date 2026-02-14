@@ -9,7 +9,7 @@ import {
   Reference,
 } from '@/assembly/assembly';
 import { Register, Instruction, Operation, Immediate } from '@/vm/instructions';
-import { Storage, Type, SliceType, ArrayType, PointerType } from './types';
+import { Storage, Type, SliceType, ArrayType, PointerType, SLICE_DESCRIPTOR_SIZE } from './types';
 
 class RegisterAllocator {
   private unallocatedCallerSave: Register[];
@@ -857,9 +857,9 @@ abstract class StorageCompiler extends Compiler {
    * @returns Register containing the address of a new slice descriptor.
    */
   public emitArrayToSlice(arrayReg: Register, length: number): Register {
-    // Allocate temporary storage for slice descriptor (3 words).
+    // Allocate temporary storage for slice descriptor.
     const tempId = this.generateIdentifier('slice_temp');
-    this.allocateStorage(tempId, 3);
+    this.allocateStorage(tempId, SLICE_DESCRIPTOR_SIZE);
 
     const sliceReg = this.allocateRegister();
     this.emitIdentifier(tempId, 'local', sliceReg, false);

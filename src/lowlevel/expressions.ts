@@ -12,10 +12,18 @@ import { duplicates, IFileRange, InternalError, IParseOptions, stringToCodePoint
 import { Compiler, StorageCompiler } from './compiler';
 import { TypeTable } from './tables';
 import { KindChecker, TypeChecker } from './typechecker';
-import { ArrayType, FunctionType, PointerType, SliceType, Storage, StructType, TemplateType, Type, VariableType } from './types';
+import { ArrayType, FunctionType, PointerType, SliceType, SLICE_DESCRIPTOR_SIZE, Storage, StructType, TemplateType, Type, VariableType } from './types';
 
 ///////////////////////////////////////////////////////////////////////
 // Expressions.
+//
+// Register naming convention used throughout this file:
+//   lr - left register        rr - right register
+//   dr - destination register sr - source register
+//   tr - temporary register   cr - count/condition register
+//   hr - heap register        mr - multiplier register
+//   er - expression register  pr - pointer register
+//   zr - zero register
 ///////////////////////////////////////////////////////////////////////
 /**
  * Abstract base class for expressions.
@@ -1115,9 +1123,9 @@ class NewArrayExpression extends Expression {
       compiler.emitMove(sizeReg, cr, 'new[]: data size (recompute)');
     }
 
-    // Allocate stack storage for the slice descriptor (3 words: pointer, length, capacity).
+    // Allocate stack storage for the slice descriptor.
     const sliceId = compiler.generateIdentifier('new_slice');
-    compiler.allocateStorage(sliceId, 3);
+    compiler.allocateStorage(sliceId, SLICE_DESCRIPTOR_SIZE);
     const sliceR = compiler.allocateRegister();
     compiler.emitIdentifier(sliceId, 'local', sliceR, false);
 
@@ -1134,7 +1142,7 @@ class NewArrayExpression extends Expression {
       new InstructionDirective(Instruction.createOperation(Operation.JNZ, undefined, hr, initR)),
       // Allocation failed: create null slice (all zeros).
     ]);
-    compiler.emitStaticStore(sliceR, zeroR, 3, 'null slice');
+    compiler.emitStaticStore(sliceR, zeroR, SLICE_DESCRIPTOR_SIZE, 'null slice');
     compiler.emit([
       new InstructionDirective(Instruction.createOperation(Operation.JMP, undefined, endR)),
       new LabelDirective(initRef),
@@ -2638,9 +2646,9 @@ class SliceExpression extends SuffixExpression {
     }
     compiler.deallocateRegister(er);
 
-    // Allocate stack storage for the slice descriptor (3 words: pointer, length, capacity).
+    // Allocate stack storage for the slice descriptor.
     const sliceId = compiler.generateIdentifier('slice');
-    compiler.allocateStorage(sliceId, 3);
+    compiler.allocateStorage(sliceId, SLICE_DESCRIPTOR_SIZE);
     const sliceR = compiler.allocateRegister();
     compiler.emitIdentifier(sliceId, 'local', sliceR, false);
 
