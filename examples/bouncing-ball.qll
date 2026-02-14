@@ -1,17 +1,9 @@
 // Bouncing ball demo with FPS counter
-.constant global CLOCK_BASE: byte = 0x301;
-.constant global DISPLAY_BASE: byte = 0x603;
-.constant global FB_ADDR: byte = 0x10000;
+// Run with: bun run bin/qrun.ts examples/bouncing-ball.qll -- --display 320x200
 
 .constant global BALL_SIZE: byte = 8;
 .constant global SCREEN_W: byte = 320;
 .constant global SCREEN_H: byte = 200;
-
-// Read milliseconds from clock peripheral
-function clock_read(): byte {
-  var clock = <unsafe *byte>CLOCK_BASE;
-  return *clock;
-}
 
 // Convert number to decimal string (up to 5 digits)
 function itoa(n: byte, buf: byte[]): void {
@@ -41,7 +33,7 @@ function itoa(n: byte, buf: byte[]): void {
 }
 
 function main(): byte {
-  var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
+  var fb = display::open(SCREEN_W, SCREEN_H);
 
   var x: byte = 50;
   var y: byte = 50;
@@ -52,7 +44,7 @@ function main(): byte {
   var frames: byte = 0;
   var fps: byte = 0;
   var last_fps: byte = 0;
-  var last_time: byte = clock_read();
+  var last_time: byte = clock::now();
   var fps_buf: byte[6];
 
   while (true) {
@@ -90,7 +82,7 @@ function main(): byte {
 
     // FPS calculation
     frames = frames + 1;
-    var now = clock_read();
+    var now = clock::now();
     if (now - last_time >= 1000) {
       fps = frames;
       frames = 0;
@@ -106,8 +98,9 @@ function main(): byte {
     }
 
     // Show it
-    display::flip(DISPLAY_BASE);
+    display::flip();
   }
 
+  display::close();
   return 0;
 }

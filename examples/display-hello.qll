@@ -1,9 +1,8 @@
 // Simple display hello world
-.constant global DISPLAY_BASE: byte = 0x603;
-.constant global FB_ADDR: byte = 0x10000;
+// Run with: bun run bin/qrun.ts examples/display-hello.qll -- --display 320x200
 
 function main(): byte {
-  var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
+  var fb = display::open(320, 200);
 
   // Draw a few pixels directly
   graphics::set_pixel(&fb, 10, 10, graphics::color::RED);
@@ -12,12 +11,13 @@ function main(): byte {
   graphics::set_pixel(&fb, 10, 11, graphics::color::WHITE);
 
   // Show it
-  display::flip(DISPLAY_BASE);
+  display::flip();
 
   // Wait for input so window stays open
   std::console::print("Press Enter to exit\n");
   var buf: byte[8];
   std::console::input(buf);
 
+  display::close();
   return 0;
 }

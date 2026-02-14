@@ -1,15 +1,8 @@
 // Simple display demo - basic shapes only.
-// Run with: bun run bin/qrun.ts examples/lowlevel/display-simple.qll -- --display 320x200
-
-// Display peripheral base address
-.constant global DISPLAY_BASE: byte = 0x603;
-
-// Framebuffer in physical memory
-.constant global FB_ADDR: byte = 0x10000;
+// Run with: bun run bin/qrun.ts examples/display-simple.qll -- --display 320x200
 
 function main(): byte {
-  // Initialize display
-  var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
+  var fb = display::open(320, 200);
 
   // Clear to dark blue
   graphics::clear(&fb, graphics::rgb(0x20, 0x20, 0x60));
@@ -34,12 +27,13 @@ function main(): byte {
   graphics::fill_rect(&fb, 140, 150, 100, 30, graphics::color::GRAY);
 
   // Flip to display
-  display::flip(DISPLAY_BASE);
+  display::flip();
 
   // Keep window open
   std::console::print("Display demo running. Press Enter to exit.\n");
   var buf: byte[16];
   std::console::input(buf);
 
+  display::close();
   return 0;
 }

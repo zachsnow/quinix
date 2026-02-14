@@ -1,19 +1,10 @@
 // Display demo - shows graphics primitives and text rendering.
-// Run with: bun run bin/qrun.ts examples/lowlevel/display-demo.qll -- --display 320x200
-
-// Display peripheral base address (after Timer, DebugBreak, DebugOutput, DebugInput, DebugFile)
-.constant global DISPLAY_BASE: byte = 0x603;
-
-// Framebuffer in physical memory (after peripheral region)
-// 320x200 = 64000 pixels = 64000 words = 0xFA00 words
-.constant global FB_ADDR: byte = 0x10000;
+// Run with: bun run bin/qrun.ts examples/display-demo.qll -- --display 320x200
 
 function main(): byte {
-  // Initialize display
-  var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
+  var fb = display::open(320, 200);
 
   // Pre-compute background color to avoid nested function calls
-  // (workaround for register allocation issue with complex expressions)
   var bg = graphics::rgb(0x20, 0x20, 0x60);
 
   // Clear to dark blue
@@ -39,12 +30,13 @@ function main(): byte {
   graphics::font::draw_string(&fb, 20, 170, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", graphics::color::WHITE, bg);
 
   // Flip to display
-  display::flip(DISPLAY_BASE);
+  display::flip();
 
   // Keep window open
   std::console::print("Display demo running. Press Enter to exit.\n");
   var buf: byte[16];
   std::console::input(buf);
 
+  display::close();
   return 0;
 }

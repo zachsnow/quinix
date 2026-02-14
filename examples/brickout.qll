@@ -1,12 +1,8 @@
 // Brickout - a Breakout clone for Quinix
 //
-// Run with:
-//   bun run bin/qrun.ts examples/lowlevel/brickout.qll -- --display 320x200 --keyboard
-
-.constant global CLOCK_BASE: byte = 0x301;
-.constant global DISPLAY_BASE: byte = 0x603;
-.constant global KEYBOARD_BASE: byte = 0x607;  // 5 words
-.constant global FB_ADDR: byte = 0x10000;
+// Compiles for both bare-metal and user-mode targets:
+//   bun run bin/qrun.ts examples/brickout.qll -- --display 320x200 --keyboard
+//   bun run bin/qllc.ts --target=user examples/brickout.qll
 
 .constant global SCREEN_W: byte = 320;
 .constant global SCREEN_H: byte = 200;
@@ -125,8 +121,7 @@ function draw_hud(fb: *graphics::framebuffer, score: byte, lives: byte): void {
 }
 
 function main(): byte {
-  var fb = display::init(DISPLAY_BASE, <unsafe *byte>FB_ADDR);
-  var kb = keyboard::init(KEYBOARD_BASE);
+  var fb = display::open(SCREEN_W, SCREEN_H);
 
   // Brick state: 1 = alive, 0 = destroyed
   var bricks: byte[50];
@@ -147,8 +142,7 @@ function main(): byte {
   var bdy: byte = 0 - BALL_SPEED;
 
   // Frame timing
-  var clock = <unsafe *byte>CLOCK_BASE;
-  var last_time: byte = *clock;
+  var last_time: byte = clock::now();
   var frame_ms: byte = 16;  // ~60fps target
 
   // Initialize bricks
@@ -168,17 +162,17 @@ function main(): byte {
 
   while (true) {
     // Frame timing
-    var now = *clock;
+    var now = clock::now();
     if (now - last_time < frame_ms) {
       continue;
     }
     last_time = now;
 
-    // Read keyboard state bitmask
-    var keys = keyboard::read(&kb);
+    // Read keyboard state
+    var keys = keyboard::read();
 
     // Quit on 'q' or Escape
-    if ((keys & keyboard::KEY_ESCAPE) || keyboard::key(&kb, 'q')) {
+    if ((keys & keyboard::KEY_ESCAPE) || keyboard::key('q')) {
       break;
     }
 
@@ -301,7 +295,6 @@ function main(): byte {
               graphics::fill_rect(&fb, brick_x, brick_y, BRICK_W, BRICK_H, graphics::color::BLACK);
 
               // Determine bounce direction
-              // Check which side the ball hit
               var overlap_left = (bx + BALL_R) - brick_x;
               var overlap_right = (brick_x + BRICK_W) - (bx - BALL_R);
               var overlap_top = (by + BALL_R) - brick_y;
@@ -338,8 +331,6 @@ function main(): byte {
           if (state == STATE_WIN) {
             break;
           }
-          // Break out of outer loop too if we hit a brick
-          // (check by seeing if we already broke from inner loop via score change)
         }
       }
     }
@@ -348,7 +339,7 @@ function main(): byte {
       graphics::font::draw_string(&fb, 112, 96, "GAME OVER", graphics::color::RED, graphics::color::BLACK);
       draw_ball(&fb, bx, by);
       draw_paddle(&fb, px);
-      display::flip(DISPLAY_BASE);
+      display::flip();
       break;
     }
 
@@ -356,19 +347,20 @@ function main(): byte {
       graphics::font::draw_string(&fb, 120, 96, "YOU WIN!", graphics::color::YELLOW, graphics::color::BLACK);
       draw_ball(&fb, bx, by);
       draw_paddle(&fb, px);
-      display::flip(DISPLAY_BASE);
+      display::flip();
       break;
     }
 
     // Draw
     draw_ball(&fb, bx, by);
     draw_paddle(&fb, px);
-    display::flip(DISPLAY_BASE);
+    display::flip();
   }
 
   // Show result for 3 seconds
-  var end_time = *clock;
-  while (*clock - end_time < 3000) {}
+  var end_time = clock::now();
+  while (clock::now() - end_time < 3000) {}
 
+  display::close();
   return 0;
 }
