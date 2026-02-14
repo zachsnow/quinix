@@ -104,6 +104,13 @@ namespace kernel {
           panic("scheduler: no tasks after destroy");
         }
         current_task = tasks;
+        // The kernel task was interrupted by the timer while at a `wait`
+        // instruction. External interrupts don't advance IP, so the saved
+        // IP still points at `wait`. Advance it by one so the kernel
+        // resumes at the instruction after `wait` (i.e. the return jump).
+        if(!current_task->table){
+          current_task->state.ip = current_task->state.ip + 1;
+        }
         log("scheduler: restoring other task state");
         _restore_current_task();
       }

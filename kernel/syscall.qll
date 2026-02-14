@@ -45,8 +45,12 @@ namespace kernel {
 
       var fn = syscalls[sc.syscall];
       var result = fn(sc);
-      // Put result in r0 for return to user
-      interrupts::state->registers[0] = result;
+      // Put result in r0 for return to user.
+      // Skip for EXIT: the process is destroyed and interrupts::state now
+      // holds a different task's registers; writing here would corrupt them.
+      if(sc.syscall != EXIT){
+        interrupts::state->registers[0] = result;
+      }
     }
 
     global syscalls: handler[] = [
