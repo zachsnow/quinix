@@ -9,7 +9,7 @@ import {
 import { Immediate } from '@/lib/types';
 import { Instruction, Operation, Register, } from '@/vm/instructions';
 import { duplicates, IFileRange, InternalError, IParseOptions, stringToCodePoints, Syntax, writeOnce } from '@/lib/util';
-import { Compiler, FunctionCompiler, StorageCompiler } from './compiler';
+import { Compiler, StorageCompiler } from './compiler';
 import { TypeTable } from './tables';
 import { KindChecker, TypeChecker } from './typechecker';
 import { ArrayType, FunctionType, PointerType, SliceType, Storage, StructType, TemplateType, Type, VariableType } from './types';
@@ -2054,140 +2054,51 @@ class CallExpression extends Expression {
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
-    // Compile the target location of the function to call.
     const tr = this.expression.compile(compiler, lvalue);
 
     // TODO: remove this when possible.
     compiler.emitNullCheck(tr);
 
-    // Use push-as-you-go approach if we're in a function context.
-    // This saves the frame pointer before pushing arguments, allowing
-    // local variable access to work correctly as SP changes.
-    if (compiler instanceof FunctionCompiler) {
-      return this.compileWithPushAsYouGo(compiler, tr, lvalue);
-    }
+    return compiler.emitCall(tr, () => {
+      let argSize = 0;
 
-    // Fall back to original approach for non-function contexts.
-    const args = this.argumentExpressions.map((argumentExpression, i) => {
-      const expectedType = this.functionType.argumentTypes[i];
-      let r = argumentExpression.compile(compiler, lvalue);
-      r = compiler.emitConversion(r, argumentExpression.concreteType, expectedType);
-      return {
-        register: r,
-        size: expectedType.size,
-        integral: expectedType.integral || expectedType.isFloat,
-      };
-    });
-
-    const returnType = this.functionType.returnType;
-    if (!returnType.integral && !returnType.isFloat && !returnType.isConvertibleTo(Type.Void)) {
-      if (!(compiler instanceof StorageCompiler)) {
-        throw new InternalError(`expected storage when compiling non-integral return`);
+      // Non-integral return: allocate storage and push destination as hidden first arg.
+      const returnType = this.functionType.returnType;
+      if (!returnType.integral && !returnType.isFloat && !returnType.isConvertibleTo(Type.Void)) {
+        if (!(compiler instanceof StorageCompiler)) {
+          throw new InternalError('expected storage for non-integral return');
+        }
+        const identifier = compiler.generateIdentifier('return');
+        compiler.allocateStorage(identifier, returnType.size);
+        const r = compiler.allocateRegister();
+        compiler.emitIdentifier(identifier, 'local', r, false);
+        compiler.emitPush(r, 'push return destination');
+        compiler.deallocateRegister(r);
+        argSize += 1;
       }
-      const identifier = compiler.generateIdentifier('return');
-      compiler.allocateStorage(identifier, this.functionType.returnType.size);
-      const r = compiler.allocateRegister();
-      compiler.emitIdentifier(identifier, 'local', r, false);
-      args.unshift({
-        register: r,
-        size: 1,
-        integral: true,
+
+      // Compile and push each argument.
+      this.argumentExpressions.forEach((argumentExpression, i) => {
+        const expectedType = this.functionType.argumentTypes[i];
+        let r = argumentExpression.compile(compiler, lvalue);
+        r = compiler.emitConversion(r, argumentExpression.concreteType, expectedType);
+
+        if (expectedType.integral || expectedType.isFloat) {
+          compiler.emitPush(r, 'push argument');
+        } else {
+          compiler.emitPushMany(expectedType.size, 'allocate argument storage');
+          const sp = compiler.allocateRegister();
+          compiler.emitMove(sp, Compiler.SP);
+          compiler.emitStaticCopy(sp, r, expectedType.size, 'store argument');
+          compiler.deallocateRegister(sp);
+        }
+
+        compiler.deallocateRegister(r);
+        argSize += expectedType.size;
       });
-    }
 
-    return compiler.emitCall(args, tr);
-  }
-
-  private compileWithPushAsYouGo(compiler: FunctionCompiler, tr: Register, lvalue?: boolean): Register {
-    // Save the frame pointer before pushing any arguments.
-    // This allows local variable access to work as SP changes.
-    const savedFp = compiler.saveFramePointer();
-
-    // Get caller-save registers to preserve (excluding target register which is
-    // needed for the JMP instruction). For the outermost call, also exclude
-    // savedFp since it will be deallocated by restoreFramePointer before the
-    // call and the pop would conflict with the return value register. For nested
-    // calls, savedFp must be included because the callee may clobber it and the
-    // outer call still needs it.
-    const excludeFp = !compiler.isNestedFrameSave;
-    const callerSave = compiler.registers.callerSave.filter((r) => r !== tr && (!excludeFp || r !== savedFp));
-
-    // Push caller-save registers.
-    callerSave.forEach((r) => {
-      compiler.emitPush(r, 'push caller-save register');
+      return argSize;
     });
-
-    // Track total argument size for popping later.
-    let argSize = 0;
-
-    // If this function call returns a non-integral value (e.g. a struct)
-    // then we allocate storage for it in the current frame and pass the
-    // address of this storage as the first argument.
-    const returnType = this.functionType.returnType;
-    if (!returnType.integral && !returnType.isFloat && !returnType.isConvertibleTo(Type.Void)) {
-      const identifier = compiler.generateIdentifier('return');
-      compiler.allocateStorage(identifier, this.functionType.returnType.size);
-      const r = compiler.allocateRegister();
-      compiler.emitIdentifier(identifier, 'local', r, false);
-      compiler.emitPush(r, 'push return destination');
-      compiler.deallocateRegister(r);
-      argSize += 1;
-    }
-
-    // Compile and push each argument immediately.
-    this.argumentExpressions.forEach((argumentExpression, i) => {
-      const expectedType = this.functionType.argumentTypes[i];
-      let r = argumentExpression.compile(compiler, lvalue);
-
-      // Handle type conversions (e.g., array-to-slice, pointer-to-array-to-slice).
-      r = compiler.emitConversion(r, argumentExpression.concreteType, expectedType);
-
-      const integral = expectedType.integral || expectedType.isFloat;
-      const size = expectedType.size;
-
-      if (integral) {
-        compiler.emitPush(r, 'push argument');
-      } else {
-        // Non-integral: allocate stack space and copy.
-        compiler.emitPushMany(size, 'allocate argument storage');
-        const sp = compiler.allocateRegister();
-        compiler.emitMove(sp, Compiler.SP);
-        compiler.emitStaticCopy(sp, r, size, 'store argument');
-        compiler.deallocateRegister(sp);
-      }
-
-      compiler.deallocateRegister(r);
-      argSize += size;
-    });
-
-    // Restore the frame pointer before the call.
-    compiler.restoreFramePointer();
-
-    // Emit the call.
-    const returnToRef = compiler.generateReference();
-    compiler.emit([
-      new ConstantDirective(Compiler.RET, new ReferenceConstant(returnToRef)).comment('set up return address'),
-      new InstructionDirective(Instruction.createOperation(Operation.JMP, undefined, tr)).comment('call'),
-      new LabelDirective(returnToRef).comment('return address'),
-    ]);
-
-    // Save the return value.
-    const dr = compiler.allocateRegister();
-    compiler.emitMove(dr, Compiler.RET);
-
-    // Deallocate target.
-    compiler.deallocateRegister(tr);
-
-    // Pop arguments.
-    compiler.emitPopMany(argSize, 'pop arguments');
-
-    // Pop caller-save registers in reverse order.
-    callerSave.reverse();
-    callerSave.forEach((r) => {
-      compiler.emitPop(r, 'pop caller-save register');
-    });
-
-    return dr;
   }
 
   public toString() {
