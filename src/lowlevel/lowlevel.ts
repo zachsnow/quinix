@@ -719,6 +719,8 @@ class TemplateFunctionDeclaration extends BaseValueDeclaration {
 writeOnce(FunctionDeclaration, 'context');
 
 class UsingDeclaration extends Declaration {
+  private resolvedIdentifier?: string;
+
   public constructor(
     private readonly identifier: string,
   ) {
@@ -730,14 +732,28 @@ class UsingDeclaration extends Declaration {
       throw new InternalError('using outside of namespace');
     }
 
-    // Make sure this is a fully qualified identifier.
-    if (!NamedDeclaration.isFullyQualified(this.qualifiedIdentifier)) {
-      this.error(context, `expected fully qualified namespace identifier`);
-      return;
+    // If already fully qualified, use as-is.
+    if (NamedDeclaration.isFullyQualified(this.identifier)) {
+      this.resolvedIdentifier = this.identifier;
+    } else {
+      // Resolve relative identifiers by walking up the parent chain.
+      let ns: NamespaceDeclaration | undefined = this.namespace;
+      while (ns) {
+        const candidate = `${ns.qualifiedIdentifier}::${this.identifier}`;
+        if (ns.root.getNamespaces(candidate).length > 0) {
+          this.resolvedIdentifier = candidate;
+          break;
+        }
+        ns = ns.namespace;
+      }
+      if (!this.resolvedIdentifier) {
+        this.error(context, `unknown namespace identifier ${this.identifier}`);
+        return;
+      }
     }
 
     // Make sure that this using refers to a real namespace.
-    const namespaces = this.namespace.root.getNamespaces(this.qualifiedIdentifier);
+    const namespaces = this.namespace.root.getNamespaces(this.resolvedIdentifier);
     if (namespaces.length === 0) {
       this.error(context, `unknown namespace identifier ${this.identifier}`);
       return;
@@ -755,9 +771,8 @@ class UsingDeclaration extends Declaration {
   public typecheck(context: TypeChecker) { }
 
   public get qualifiedIdentifier(): string {
-    return this.identifier;
+    return this.resolvedIdentifier || this.identifier;
   }
-
 
   public toString() {
     return `using ${this.identifier};`

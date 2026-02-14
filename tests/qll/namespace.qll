@@ -1,4 +1,4 @@
-// @skip: uses unqualified namespace reference syntax
+// @expect: 27
 using global::oops;
 namespace bar {
   using bleck;
