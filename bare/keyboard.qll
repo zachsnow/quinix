@@ -1,9 +1,5 @@
 // Bare-metal keyboard peripheral interface.
-// KeypressPeripheral (0x10) must be enabled with --keyboard flag.
-//
-// With default qvm peripheral set + display + keyboard:
-//   0x603: Display (4 words)
-//   0x607: Keyboard (5 words)
+// Matches the user-mode API so programs can compile for either target.
 //
 // Memory layout at base address (5 words):
 //   +0: Special/modifier key bitmask
@@ -29,30 +25,23 @@ namespace keyboard {
   .constant global KEY_ALT: byte = 0x1000;
   .constant global KEY_META: byte = 0x2000;
 
-  // Keyboard state
-  type state = struct {
-    base: *byte;
-  };
+  // Default keyboard peripheral address
+  .constant global _KEYBOARD_BASE: byte = 0x607;
 
-  // Initialize keyboard from base address
-  function init(base: byte): state {
-    return state {
-      base = <unsafe *byte>base,
-    };
+  // Read the special/modifier key bitmask (word 0).
+  function read(): byte {
+    var base = <unsafe *byte>_KEYBOARD_BASE;
+    return *base;
   }
 
-  // Read the special/modifier key bitmask (word 0)
-  function read(kb: *state): byte {
-    return *kb->base;
+  // Check if a special/modifier key is held.
+  function held(keys: byte, key: byte): bool {
+    return (keys & key) != 0;
   }
 
-  // Check if a special/modifier key is held (checks word 0)
-  function held(kb: *state, key: byte): bool {
-    return (*kb->base & key) != 0;
-  }
-
-  // Check if an ASCII key is held (e.g. 'q', 'a', '1')
-  function key(kb: *state, ascii: byte): bool {
+  // Check if an ASCII key is held (e.g. 'q', 'a', '1').
+  function key(ascii: byte): bool {
+    var base = <unsafe *byte>_KEYBOARD_BASE;
     var word = 1 + (ascii / 32);
     var bit: byte = 1;
     var shift = ascii % 32;
@@ -60,7 +49,7 @@ namespace keyboard {
       bit = bit * 2;
       shift = shift - 1;
     }
-    var ptr = <unsafe *byte>(<unsafe byte>kb->base + word);
+    var ptr = <unsafe *byte>(<unsafe byte>base + word);
     return (*ptr & bit) != 0;
   }
 }

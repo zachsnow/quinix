@@ -88,6 +88,17 @@ namespace kernel {
     }
 
     //
+    // Clock.
+    // Single word: milliseconds since VM start.
+    //
+    .constant global clock_identifier: byte = 0x6;
+    global clock: * byte = null;
+
+    function _init_clock(entry: * peripheral_table_entry): void {
+      clock = entry->address;
+    }
+
+    //
     // Keyboard.
     // Memory layout: [key_state_bitmask]
     //
@@ -136,6 +147,11 @@ namespace kernel {
       init_table_entry {
         identifier = block_device_identifier,
         init = _init_block_device,
+        required = false,
+      },
+      init_table_entry {
+        identifier = clock_identifier,
+        init = _init_clock,
         required = false,
       },
       init_table_entry {

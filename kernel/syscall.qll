@@ -14,6 +14,7 @@ namespace kernel {
     .constant global DISPLAY_CLOSE: byte = 0xB;
     .constant global KEY_STATE: byte = 0xC;
     .constant global KEY_ASCII: byte = 0xD;
+    .constant global CLOCK_NOW: byte = 0xE;
 
     type syscall = struct {
       syscall: byte;
@@ -63,6 +64,7 @@ namespace kernel {
       _display_close,
       _key_state,
       _key_ascii,
+      _clock_now,
     ];
 
     function _translate_pointer<T>(p: * byte): * T {
@@ -460,6 +462,14 @@ namespace kernel {
         shift = shift - 1;
       }
       return (peripherals::keyboard[unsafe word] & bit) != 0;
+    }
+
+    // Return milliseconds since VM start from clock peripheral.
+    function _clock_now(sc: syscall): byte {
+      if (!peripherals::clock) {
+        return 0;
+      }
+      return *peripherals::clock;
     }
 
     function release_display(pid: byte): void {

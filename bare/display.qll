@@ -1,14 +1,5 @@
 // Bare-metal display peripheral interface.
-// DisplayPeripheral (0x5) is mapped after other debug peripherals.
-//
-// With default qvm peripheral set, display is at 0x603:
-//   0x300: Timer (1 word)
-//   0x301: Clock (1 word)
-//   0x302: DebugBreak (1 word)
-//   0x303: DebugOutput (0x100 words)
-//   0x403: DebugInput (0x100 words)
-//   0x503: DebugFile (0x100 words)
-//   0x603: Display (4 words)
+// Matches the user-mode API so programs can compile for either target.
 //
 // Memory layout at base address:
 //   +0: Control (write 0x01 to flip)
@@ -22,35 +13,36 @@ namespace display {
   .constant global FLIP: byte = 0x01;
   .constant global PENDING: byte = 0x02;
 
-  // Display peripheral state
-  type peripheral = struct {
-    control: *byte;
-    width: byte;
-    height: byte;
-    pointer: *byte;
-  };
+  // Default peripheral address and framebuffer location
+  .constant global _DISPLAY_BASE: byte = 0x603;
+  .constant global _FB_ADDR: byte = 0x10000;
 
-  // Initialize display peripheral from base address.
-  // Returns a graphics::framebuffer ready for drawing.
-  function init(base: byte, fb_memory: *byte): graphics::framebuffer {
-    var base_ptr = <unsafe *byte>base;
-    var width = base_ptr[unsafe 1];
-    var height = base_ptr[unsafe 2];
+  // Stored control pointer for flip()
+  global _control: *byte = null;
+
+  // Open the display at the requested resolution and get a framebuffer.
+  function open(width: byte, height: byte): graphics::framebuffer {
+    var base_ptr = <unsafe *byte>_DISPLAY_BASE;
+    _control = base_ptr;
 
     // Set the framebuffer pointer in the peripheral
+    var fb_memory = <unsafe *byte>_FB_ADDR;
     base_ptr[unsafe 3] = <unsafe byte>fb_memory;
 
     return graphics::framebuffer {
       pixels = fb_memory,
-      width = width,
-      height = height,
+      width = base_ptr[unsafe 1],
+      height = base_ptr[unsafe 2],
     };
   }
 
-  // Flip the display (copy framebuffer to screen)
-  function flip(base: byte): void {
-    var control = <unsafe *byte>base;
-    *control = FLIP;
-    std::wait_while(control, PENDING);
+  // Flip the display (copy framebuffer to screen).
+  function flip(): void {
+    *_control = FLIP;
+    std::wait_while(_control, PENDING);
+  }
+
+  // Release the display (no-op for bare-metal).
+  function close(): void {
   }
 }
