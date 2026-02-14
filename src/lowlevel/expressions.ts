@@ -1497,55 +1497,38 @@ class BinaryExpression extends Expression {
     }
   }
 
+  private static readonly operations: { [op: string]: { int: Operation; float?: Operation } } = {
+    '+':  { int: Operation.ADD, float: Operation.FADD },
+    '-':  { int: Operation.SUB, float: Operation.FSUB },
+    '*':  { int: Operation.MUL, float: Operation.FMUL },
+    '/':  { int: Operation.DIV, float: Operation.FDIV },
+    '%':  { int: Operation.MOD },
+    '|':  { int: Operation.OR },
+    '&':  { int: Operation.AND },
+    '<<': { int: Operation.SHL },
+    '>>': { int: Operation.SHR },
+    '==': { int: Operation.EQ,  float: Operation.FEQ },
+    '!=': { int: Operation.NEQ, float: Operation.FEQ }, // FEQ then invert
+    '<':  { int: Operation.LT,  float: Operation.FLT },
+    '>':  { int: Operation.GT,  float: Operation.FGT },
+    // <= and >= use inverted ops, then control flow uses JNZ
+    '<=': { int: Operation.GT,  float: Operation.FGT }, // Inverted
+    '>=': { int: Operation.LT,  float: Operation.FLT }, // Inverted
+  };
+
   private get operation(): Operation {
-    // Use float operations when operands are floats
+    const entry = BinaryExpression.operations[this.operator.toString()];
+    if (!entry) {
+      throw new InternalError(`unexpected binary operator ${this.operator}`);
+    }
     const isFloat = this.left.concreteType.isFloat;
-
     if (isFloat) {
-      const floatOperations: { [operator: string]: Operation } = {
-        '+': Operation.FADD,
-        '-': Operation.FSUB,
-        '*': Operation.FMUL,
-        '/': Operation.FDIV,
-        '==': Operation.FEQ,
-        '!=': Operation.FEQ, // FEQ then invert
-        '<': Operation.FLT,
-        '>': Operation.FGT,
-        '<=': Operation.FGT, // Inverted
-        '>=': Operation.FLT, // Inverted
-      };
-      const operation = floatOperations[this.operator.toString()];
-      if (operation !== undefined) {
-        return operation;
+      if (entry.float === undefined) {
+        throw new InternalError(`unsupported float operator ${this.operator}`);
       }
-      throw new InternalError(`unsupported float operator ${this.operator}`);
+      return entry.float;
     }
-
-    const operations: { [operator: string]: Operation } = {
-      '+': Operation.ADD,
-      '-': Operation.SUB,
-      '*': Operation.MUL,
-      '/': Operation.DIV,
-      '%': Operation.MOD,
-      '|': Operation.OR,
-      '&': Operation.AND,
-      '<<': Operation.SHL,
-      '>>': Operation.SHR,
-      '==': Operation.EQ,
-      '!=': Operation.NEQ,
-      '<': Operation.LT,
-      '>': Operation.GT,
-      // Note: <= and >= use inverted ops, then control flow uses JNZ
-      // a <= b: use GT, result is 1 when a > b, then JNZ skips (correct: skip when NOT <=)
-      // a >= b: use LT, result is 1 when a < b, then JNZ skips (correct: skip when NOT >=)
-      '<=': Operation.GT,
-      '>=': Operation.LT,
-    };
-    const operation = operations[this.operator.toString()];
-    if (operation !== undefined) {
-      return operation;
-    }
-    throw new InternalError(`unexpected binary operator ${this.operator}`);
+    return entry.int;
   }
 
   public compile(compiler: Compiler, lvalue?: boolean): Register {
