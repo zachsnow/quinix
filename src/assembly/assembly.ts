@@ -30,7 +30,7 @@ class Assembler extends Messages {
  */
 class Reference {
   private static QUALIFIED_IDENTIFIER_REGEX =
-    /^[a-zA-Z_][a-zA-Z_0-9\$]+(::[a-zA-Z_][a-zA-Z_0-9\$]+)*$/;
+    /^[a-zA-Z_][a-zA-Z_0-9\$]*(::[a-zA-Z_][a-zA-Z_0-9\$]*)*$/;
 
   public constructor(
     /**
