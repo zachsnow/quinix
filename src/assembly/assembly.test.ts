@@ -1,4 +1,5 @@
 import { Operation } from "@/vm/instructions";
+import { runQASM } from "@test/helpers";
 import { Assembler, AssemblyProgram, Reference, TextData } from "./assembly";
 import { parse } from "./parser";
 
@@ -34,6 +35,15 @@ describe("Reference", () => {
 
     const instructions = ref.assemble(assembler);
     expect(instructions).toBeUndefined();
+  });
+
+  test("single-char identifiers round-trip as unquoted", () => {
+    expect(new Reference("a").toString()).toBe("@a");
+    expect(new Reference("_").toString()).toBe("@_");
+  });
+
+  test("qualified identifiers with single-char segments", () => {
+    expect(new Reference("a::b").toString()).toBe("@a::b");
   });
 });
 
@@ -117,5 +127,95 @@ describe("Assembler", () => {
     expect(program!.instructions[Operation.HALT].toString()).toBe("halt");
     expect(instructionTexts[Operation.LOAD]).toBe("load r1 r2");
     expect(program!.instructions[Operation.LOAD].toString()).toBe("load r1 r2");
+  });
+
+  test("duplicate labels produce error", () => {
+    const programText = `
+      @foo:
+      @foo:
+    `;
+    const assemblyProgram: AssemblyProgram = parse(programText);
+    const [messages, program] = assemblyProgram.assemble();
+    expect(program).toBeUndefined();
+    expect(messages.errors.some((e) => e.text.includes("duplicate"))).toBe(true);
+  });
+
+  test("concat merges directives", () => {
+    const a = AssemblyProgram.parse("halt");
+    const b = AssemblyProgram.parse("nop");
+    const combined = AssemblyProgram.concat([a, b]);
+    expect(combined.directives.length).toBe(2);
+  });
+
+  test("data with references", () => {
+    const programText = `
+      data @foo 0x42
+      data @bar @foo
+      constant r0 @bar
+      halt
+    `;
+    const assemblyProgram: AssemblyProgram = parse(programText);
+    const [messages, program] = assemblyProgram.assemble();
+    expect(messages.errors.length).toBe(0);
+    expect(program).not.toBeUndefined();
+  });
+});
+
+describe("Relative jumps", () => {
+  test("rjmp forward skips instructions", async () => {
+    // r0 = 3 (offset: skip over constant+imm = 2 words, + 1 for the rjmp itself? No:
+    // rjmp adds offset to its own IP, then ipOffset=0, so IP = IP_of_rjmp + offset.
+    // After constants: r0=3, we're at word 4 (0-indexed from program start).
+    // rjmp is at word 4. We want to skip constant r1 0xDEAD (2 words) to reach halt at word 7.
+    // offset = 3 (skip rjmp word + 2 words of constant).
+    // Actually: IP_of_rjmp + 3 = 4+3 = 7 which is the halt.
+    const result = await runQASM(`
+      constant r0 0
+      constant r1 3
+      rjmp r1
+      constant r0 0xDEAD
+      halt
+    `);
+    expect(result).toBe(0);
+  });
+
+  test("rjnz backward loop counts to 5", async () => {
+    // r0 = counter, r1 = 1, r2 = limit (5), r3 = offset (-2 as unsigned)
+    // Layout: constants at words 0-7, add at 8, sub at 9, rjnz at 10.
+    // rjnz at IP=10, offset=-2 (0xFFFFFFFE), target=10+(-2)=8 (the add).
+    const result = await runQASM(`
+      constant r0 0
+      constant r1 1
+      constant r2 5
+      constant r3 0xFFFFFFFE
+      add r0 r0 r1
+      sub r2 r2 r1
+      rjnz r2 r3
+      halt
+    `);
+    expect(result).toBe(5);
+  });
+
+  test("rjz taken vs not-taken", async () => {
+    // When r0=0, rjz should jump; when r0!=0, it should not.
+    // Taken: r0=0, offset=2 skips constant r0 0xFF to reach halt.
+    const taken = await runQASM(`
+      constant r0 0
+      constant r1 2
+      rjz r0 r1
+      constant r0 0xFF
+      halt
+    `);
+    expect(taken).toBe(0);
+
+    // Not taken: r0=1, falls through to set r0=0xFF.
+    const notTaken = await runQASM(`
+      constant r0 1
+      constant r1 2
+      rjz r0 r1
+      constant r0 0xFF
+      halt
+    `);
+    expect(notTaken).toBe(0xFF);
   });
 });

@@ -112,4 +112,38 @@ describe("Parser", () => {
       expect(directive.toString()).toBe(instructionTexts[i]);
     });
   });
+
+  test("Inf, -Inf, NaN parse to correct IEEE 754 bit patterns", () => {
+    let assemblyProgram = AssemblyProgram.parse(`constant r0 Inf`);
+    let [, program] = assemblyProgram.assemble();
+    expect(program!.instructions[1].immediate! >>> 0).toBe(floatToInt(Infinity));
+
+    assemblyProgram = AssemblyProgram.parse(`constant r0 -Inf`);
+    [, program] = assemblyProgram.assemble();
+    expect(program!.instructions[1].immediate! >>> 0).toBe(floatToInt(-Infinity));
+
+    assemblyProgram = AssemblyProgram.parse(`constant r0 NaN`);
+    [, program] = assemblyProgram.assemble();
+    expect(program!.instructions[1].immediate! >>> 0).toBe(floatToInt(NaN));
+  });
+
+  test("overflow float literal throws", () => {
+    expect(() => AssemblyProgram.parse(`constant r0 1e999f`)).toThrow();
+  });
+
+  test("quoted identifiers parse", () => {
+    const assemblyProgram = AssemblyProgram.parse("@`name with spaces`:\nhalt");
+    expect(assemblyProgram.directives.length).toBe(2);
+  });
+
+  test("qualified identifiers parse", () => {
+    const assemblyProgram = AssemblyProgram.parse("constant r0 @foo::bar");
+    expect(assemblyProgram.directives[0].toString()).toBe("constant r0 @foo::bar");
+  });
+
+  test("binary literals produce correct value", () => {
+    const assemblyProgram = AssemblyProgram.parse(`constant r0 0b1010`);
+    const [, program] = assemblyProgram.assemble();
+    expect(program!.instructions[1].immediate).toBe(10);
+  });
 });

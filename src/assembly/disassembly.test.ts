@@ -137,4 +137,26 @@ describe('Disassembler: round-trip', () => {
     const { original, reassembled } = roundTrip(source);
     expect(reassembled).toEqual(original);
   });
+
+  test('relative jump instructions', () => {
+    const source = [
+      'constant r0 0x00000003',
+      'rjmp r0',
+      'constant r1 0x000000ff',
+      'halt',
+    ].join('\n');
+    const { original, reassembled } = roundTrip(source);
+    expect(reassembled).toEqual(original);
+  });
+
+  test('relative conditional jump instructions', () => {
+    const source = [
+      'constant r0 0x00000001',
+      'constant r1 0x00000002',
+      'rjnz r0 r1',
+      'halt',
+    ].join('\n');
+    const { original, reassembled } = roundTrip(source);
+    expect(reassembled).toEqual(original);
+  });
 });
