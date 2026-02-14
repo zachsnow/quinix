@@ -1,6 +1,6 @@
-// @skip: unsafe cast between byte and pointer
+// @expect: 0
 function main(): byte {
   var b: * byte = null;
   var bb: ** byte = null;
-  return <byte>b + <byte>bb;
+  return <unsafe byte>b + <unsafe byte>bb;
 }

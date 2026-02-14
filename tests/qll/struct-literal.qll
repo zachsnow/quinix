@@ -1,11 +1,11 @@
-// @skip: array literal vs pointer type mismatch
+// @expect: 50
 type Point = struct {
   x: byte;
   y: byte;
 };
 
 function main(): byte {
-  var p: * Point = [
+  var p: Point[2] = [
     Point {
       x = 10,
       y = 20,

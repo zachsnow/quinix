@@ -1,5 +1,7 @@
-// @skip: unsafe cast between byte and byte[]
+// @expect: 0
+// @libs: alloc
 function main(): byte {
   var b = new byte[4];
-  return <byte>b;
+  b[0] = 42;
+  return b[0] - 42;
 }
