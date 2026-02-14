@@ -1,4 +1,5 @@
-// @skip: system::alloc assembly reference not resolved
+// @expect: 66
+// @libs: alloc
 type Point = struct { x: byte; y: byte; };
 function main(): byte {
   var ps = new Point[7] ... Point {
