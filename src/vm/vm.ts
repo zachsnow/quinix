@@ -1159,7 +1159,7 @@ class VM {
           break;
         case Operation.MOD:
           registers[dr] =
-            registers[sr0] % registers[sr1] >>> 0;
+            (registers[sr0] % registers[sr1]) >>> 0;
           break;
 
         case Operation.AND:
