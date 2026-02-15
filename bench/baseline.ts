@@ -11,7 +11,7 @@ const ARRAY_SIZE = 3_640_049;  // Match our benchmark cycle count
 const YIELD_FREQUENCY = 10000;  // Yield every N iterations (matches VM peripheralFrequency)
 
 // Simple function to simulate minimal per-element work
-function process(value: number): number {
+function step(value: number): number {
   return (value + 1) >>> 0;
 }
 
@@ -24,7 +24,7 @@ async function runOnce(arr: Uint32Array): Promise<{ timeMs: number; sum: number 
   let sum = 0;
   const start = performance.now();
   for (let i = 0; i < arr.length; i++) {
-    sum = (sum + process(arr[i])) >>> 0;
+    sum = (sum + step(arr[i])) >>> 0;
     if (i % YIELD_FREQUENCY === 0) {
       await release();
     }

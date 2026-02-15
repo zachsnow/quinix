@@ -1,0 +1,16 @@
+{
+  "benchmarks": {
+    "compute": {
+      "cycles": 3633047,
+      "medianMs": 26.7
+    },
+    "memory": {
+      "cycles": 4346154,
+      "medianMs": 33.9
+    },
+    "kernel-boot": {
+      "cycles": 5000000,
+      "medianMs": 37.6
+    }
+  }
+}
