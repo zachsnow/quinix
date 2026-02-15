@@ -59,6 +59,13 @@ enum Operation {
   RJMP,
   RJZ,
   RJNZ,
+
+  // Signed integer operations
+  SLT,
+  SGT,
+  SDIV,
+  SMOD,
+  SAR,
 }
 
 namespace Operation {
@@ -108,6 +115,11 @@ namespace Operation {
     "rjmp s",
     "rjz s s",
     "rjnz s s",
+    "slt d s s",
+    "sgt d s s",
+    "sdiv d s s",
+    "smod d s s",
+    "sar d s s",
   ].map((spec) => {
     const parts = spec.split(" ");
     const name = parts[0];
