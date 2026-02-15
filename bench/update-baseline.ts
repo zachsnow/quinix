@@ -71,6 +71,8 @@ async function main() {
   const baseline: Baseline = { benchmarks };
   saveBaseline(baseline);
   console.log('\nWrote bench/baseline.json');
+
+  process.stdin.destroy();
 }
 
 main().catch((e) => {

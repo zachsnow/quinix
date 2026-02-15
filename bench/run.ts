@@ -59,6 +59,8 @@ async function main() {
 
   const kernelResult = await runKernelBenchmark(KERNEL_MAX_CYCLES);
   printResult('kernel-boot', kernelResult, baseline?.benchmarks['kernel-boot']);
+
+  process.stdin.destroy();
 }
 
 main().catch((e) => {
