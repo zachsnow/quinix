@@ -438,6 +438,16 @@ describe('std::vector', () => {
     `, { cycles: 10000 });
   });
 
+  test('from_array', () => {
+    return expectQLLWithStd(20, `
+      function main(): byte {
+        var arr: byte[3] = [10, 20, 30];
+        var v = std::vector::from_array<byte>(arr);
+        return v[1];
+      }
+    `, { cycles: 5000 });
+  });
+
   test('destroy', () => {
     return expectQLLWithStd(0, `
       function main(): byte {

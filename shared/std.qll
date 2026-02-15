@@ -110,7 +110,8 @@ namespace std {
     }
 
     function from_array<T>(arr: T[]): vector<T> {
-      return new T[] = arr;
+      var v: vector<T> = *(new T[] = arr);
+      return v;
     }
 
     function add<T>(vec: * vector<T>, element: T): void {
