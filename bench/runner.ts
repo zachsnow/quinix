@@ -9,15 +9,19 @@ import { Memory } from '@/lib/types';
 import { VM } from '@/vm/vm';
 import { ClockPeripheral, Peripheral, TimerPeripheral } from '@/vm/peripherals';
 import {
+  BlockDevicePeripheral,
   DebugBreakPeripheral,
   DebugFilePeripheral,
   DebugInputPeripheral,
   DebugOutputPeripheral,
+  FileBlockStorage,
 } from '@/platform/server/peripherals';
+import { SECTOR_SIZE_WORDS, sectorsFromFileSize } from '@/platform/server/qfs';
 import { compileQLLToBinary } from '@/tests/helpers';
 
 const BENCH_DIR = path.resolve(__dirname);
 const KERNEL_BIN = path.resolve(__dirname, '..', 'kernel', 'kernel.qbin');
+const DISK_IMAGE = path.resolve(__dirname, '..', 'image', 'disk.qfs');
 const BASELINE_PATH = path.join(BENCH_DIR, 'baseline.json');
 
 export interface BenchResult {
@@ -83,6 +87,10 @@ export async function runKernelBenchmark(maxCycles: number): Promise<BenchResult
   const kernelBytes = fs.readFileSync(KERNEL_BIN);
   const binary = Memory.fromBytes(new Uint8Array(kernelBytes));
 
+  const stat = fs.statSync(DISK_IMAGE);
+  const totalSectors = sectorsFromFileSize(stat.size);
+  const storage = new FileBlockStorage(DISK_IMAGE, totalSectors, SECTOR_SIZE_WORDS);
+
   const peripherals: Peripheral[] = [
     new TimerPeripheral(),
     new ClockPeripheral(),
@@ -90,6 +98,7 @@ export async function runKernelBenchmark(maxCycles: number): Promise<BenchResult
     new DebugOutputPeripheral(),
     new DebugInputPeripheral(),
     new DebugFilePeripheral(path.dirname(KERNEL_BIN)),
+    new BlockDevicePeripheral(storage, SECTOR_SIZE_WORDS),
   ];
 
   const vm = new VM({
