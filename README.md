@@ -61,16 +61,16 @@ It provides a number of syscalls to user binaries, allowing them to access "hard
 like block devices, console output, and even a simple color display. It supports virtual
 memory via an MMU peripheral, giving each process its own "view" of a 32-bit address space.
 
-> So far QOS doesn't have "native" graphics support; implementing a simple window manager
-> is next on the list!
+> So far QOS doesn't have complete graphics support; implementing a simple window manager
+> is next on the list! You can play brickout though!
 
 ## Local development
 
-Install prerequisites and build the parsers and libraries:
+Install prerequisites and build the parsers, libraries, kernel, and example disk image:
 
 ```bash
 bun install
-./build.sh
+./build.sh --all
 ```
 
 To watch for changes and rebuild automatically:
@@ -83,16 +83,24 @@ To compile, assemble, and run a QLL program on "bare metal" -- that is, without 
 of the operating system:
 
 ```bash
-bun run bin/qllc.ts -o file.qasm file.qll
-bun run bin/qasm.ts -o file.qbin file.qasm
-bun run bin/qvm.ts file.qbin
+bun run qllc -o file.qasm file.qll
+bun run qasm -o file.qbin file.qasm
+bun run qvn file.qbin
 ```
 
 Or use the combined runner:
 
 ```bash
-bun run bin/qrun.ts file.qll
+bun run qrun file.qll
 ```
+
+To run the kernel with the example disk image:
+
+```bash
+bun run qos
+```
+
+It implements a minimal shell; try `run bin/hello.qbin` or `run bin/brickout.qbin`.
 
 Run tests:
 
