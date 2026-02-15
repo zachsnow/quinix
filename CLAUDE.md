@@ -19,7 +19,7 @@ Execution
 
 ```bash
 bun install       # Install dependencies
-./build.sh        # Generate parsers, type check, build kernel, etc.
+./build.sh --all  # Generate parsers, type check, build kernel, etc.
 bun test          # Run test suite
 ```
 
@@ -28,10 +28,11 @@ bun test          # Run test suite
 All tools are in `bin/` and run via bun:
 
 ```bash
-bun run bin/qllc.ts <file.qll>     # Compile QLL to QASM
-bun run bin/qasm.ts <file.qasm>    # Assemble QASM to binary
-bun run bin/qvm.ts <file.qbin>     # Execute binary
-bun run bin/qrun.ts <file.qll>     # Compile, assemble, and run
+bun run qllc <file.qll>     # Compile QLL to QASM
+bun run qasm <file.qasm>    # Assemble QASM to binary
+bun run qvm <file.qbin>     # Execute binary
+bun run qrun <file.qll>     # Compile, assemble, and run
+bun run qos                 # Run the kernel with the example disk image
 ```
 
 ## Project Structure
@@ -46,6 +47,7 @@ bun run bin/qrun.ts <file.qll>     # Compile, assemble, and run
 - `kernel/` - OS kernel (in QLL)
 - `examples/` - Example programs in QASM and QLL
 - `docs/` - Architecture documentation
+- `tests/` - Test QASM and QLL programs that are executed by the test runner
 
 ## Languages
 
@@ -64,7 +66,7 @@ jnz r3 @loop
 halt
 ```
 
-Instructions: `halt`, `int`, `load`, `store`, `mov`, `constant`, `add`, `sub`, `mul`, `div`, `mod`, `and`, `or`, `not`, `shl`, `shr`, `eq`, `neq`, `lt`, `gt`, `jmp`, `jz`, `jnz`, `nop`, `wait`
+Instructions include: `halt`, `int`, `load`, `store`, `mov`, `constant`, `add`, `sub`, `mul`, `div`, `mod`, `and`, `or`, `not`, `shl`, `shr`, `eq`, `neq`, `lt`, `gt`, `jmp`, `jz`, `jnz`, `nop`, `wait`, `rjmp`, `rjz`, `rjnz`.
 
 Registers: `r0`-`r63`, `ip`
 
