@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Regenerate bench/bench.json by running each benchmark multiple times
- * and recording deterministic cycle counts and median wall-clock times.
+ * and recording deterministic cycle counts and best wall-clock times.
  */
 import {
   compileBench,
@@ -16,15 +16,6 @@ const ITERATIONS = 5;
 const KERNEL_MAX_CYCLES = 5_000_000;
 
 const QLL_BENCHMARKS = ['compute', 'memory'] as const;
-
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 0) {
-    return (sorted[mid - 1] + sorted[mid]) / 2;
-  }
-  return sorted[mid];
-}
 
 async function main() {
   const benchmarks: Record<string, BaselineEntry> = {};
@@ -43,9 +34,9 @@ async function main() {
       console.log(`  [${i + 1}] ${result.cycles.toLocaleString()} cycles, ${result.timeMs.toFixed(1)}ms (${mhz} MHz)`);
     }
 
-    const med = median(times);
-    benchmarks[name] = { cycles, medianMs: Math.round(med * 10) / 10 };
-    console.log(`  median: ${med.toFixed(1)}ms`);
+    const best = Math.min(...times);
+    benchmarks[name] = { cycles, bestMs: Math.round(best * 10) / 10 };
+    console.log(`  best: ${best.toFixed(1)}ms`);
   }
 
   // Kernel benchmark.
@@ -63,9 +54,9 @@ async function main() {
       console.log(`  [${i + 1}] ${result.cycles.toLocaleString()} cycles, ${result.timeMs.toFixed(1)}ms (${mhz} MHz)`);
     }
 
-    const med = median(times);
-    benchmarks[name] = { cycles, medianMs: Math.round(med * 10) / 10 };
-    console.log(`  median: ${med.toFixed(1)}ms`);
+    const best = Math.min(...times);
+    benchmarks[name] = { cycles, bestMs: Math.round(best * 10) / 10 };
+    console.log(`  best: ${best.toFixed(1)}ms`);
   }
 
   const baseline: Baseline = { benchmarks };

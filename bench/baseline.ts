@@ -71,8 +71,8 @@ async function main() {
   if (baseline) {
     console.log('\n--- vs VM benchmarks (from bench.json) ---');
     for (const [name, entry] of Object.entries(baseline.benchmarks)) {
-      const overhead = entry.medianMs / medianMs;
-      console.log(`  ${name.padEnd(14)} ${entry.medianMs}ms VM / ${medianMs.toFixed(1)}ms native = ${overhead.toFixed(2)}x overhead`);
+      const overhead = entry.bestMs / medianMs;
+      console.log(`  ${name.padEnd(14)} ${entry.bestMs}ms VM / ${medianMs.toFixed(1)}ms native = ${overhead.toFixed(2)}x overhead`);
     }
   }
 }

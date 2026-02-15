@@ -30,7 +30,7 @@ function printResult(name: string, result: BenchResult, entry: BaselineEntry | u
   console.log(`  ${result.cycles.toLocaleString()} cycles  ${result.timeMs.toFixed(1)}ms  ${formatMHz(result.cycles, result.timeMs)} MHz`);
 
   if (entry) {
-    console.log(`  baseline: ${entry.cycles.toLocaleString()} cycles  ${entry.medianMs}ms`);
+    console.log(`  baseline: ${entry.cycles.toLocaleString()} cycles  ${entry.bestMs}ms`);
 
     if (result.cycles !== entry.cycles) {
       const delta = result.cycles - entry.cycles;
@@ -40,7 +40,7 @@ function printResult(name: string, result: BenchResult, entry: BaselineEntry | u
       console.log(`  cycles: match`);
     }
 
-    console.log(`  timing: ${formatPct(result.timeMs, entry.medianMs)}`);
+    console.log(`  timing: ${formatPct(result.timeMs, entry.bestMs)}`);
   }
   console.log();
 }

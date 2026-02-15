@@ -31,7 +31,7 @@ export interface BenchResult {
 
 export interface BaselineEntry {
   cycles: number;
-  medianMs: number;
+  bestMs: number;
 }
 
 export interface Baseline {
