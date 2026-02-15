@@ -1,13 +1,12 @@
 /**
- * File-based QLL test runner.
+ * Unified file-based test runner for QLL and QASM programs.
  *
- * Discovers .qll files with directive comments and runs them as tests.
+ * Discovers test files with directive comments and runs them.
  * Directives (in comments at the top of the file):
  *   @expect: <number>       - expected return value (decimal or hex)
- *   @expect-error: <string> - expected compilation error substring
- *   @libs: alloc            - include allocator (for new/delete)
- *   @libs: std              - include standard library (includes alloc)
- *   @cycles: <number>       - VM cycle budget (default: 5000)
+ *   @expect-error: <string> - expected compilation/assembly error substring
+ *   @libs: <names>          - comma-separated library names (per-language)
+ *   @cycles: <number>       - VM cycle budget
  *   @skip                   - skip this test
  *   @skip: <reason>         - skip with reason
  */
@@ -33,10 +32,10 @@ interface TestDirectives {
   skipReason?: string;
 }
 
-function parseDirectives(source: string): TestDirectives | null {
+function parseDirectives(source: string, commentPrefix: string, defaultCycles: number): TestDirectives | null {
   const directives: TestDirectives = {
     libs: new Set(),
-    cycles: 5000,
+    cycles: defaultCycles,
     skip: false,
   };
 
@@ -44,10 +43,10 @@ function parseDirectives(source: string): TestDirectives | null {
 
   for (const line of source.split('\n')) {
     const trimmed = line.trim();
-    if (!trimmed.startsWith('//')) {
+    if (!trimmed.startsWith(commentPrefix)) {
       continue;
     }
-    const comment = trimmed.slice(2).trim();
+    const comment = trimmed.slice(commentPrefix.length).trim();
 
     const skipMatch = comment.match(/^@skip(?::\s*(.+))?$/);
     if (skipMatch) {
@@ -92,9 +91,9 @@ function parseDirectives(source: string): TestDirectives | null {
   return hasDirective ? directives : null;
 }
 
-// === Test execution ===
+// === Per-language run functions ===
 
-function compileAndRun(
+function runQLL(
   source: string,
   filename: string,
   directives: TestDirectives,
@@ -133,18 +132,62 @@ function compileAndRun(
   }
 }
 
+// QASM library map — empty for now; add entries as needed.
+const QASM_LIBS: Record<string, string> = {};
+
+function runQASM(
+  source: string,
+  filename: string,
+  directives: TestDirectives,
+): Promise<number | string> {
+  try {
+    const programs: AssemblyProgram[] = [];
+
+    for (const lib of directives.libs) {
+      const libPath = QASM_LIBS[lib];
+      if (!libPath) {
+        return Promise.resolve(`Unknown QASM lib: ${lib}`);
+      }
+      const libSource = fs.readFileSync(path.join(ROOT_DIR, libPath), 'utf-8');
+      programs.push(AssemblyProgram.parse(libSource, libPath));
+    }
+
+    programs.push(AssemblyProgram.parse(source, filename));
+    const combined = AssemblyProgram.concat(programs);
+    const [messages, binary] = combined.assemble();
+
+    if (!binary) {
+      return Promise.resolve(messages.errors.map(e => e.text).join('\n'));
+    }
+
+    const vm = new VM({ cycles: directives.cycles });
+    return vm.run(binary.encode());
+  } catch (e: any) {
+    const msg = e.location
+      ? `${e.location.filename}(${e.location.start.line}): ${e.message}`
+      : e.message;
+    return Promise.resolve(msg);
+  }
+}
+
 // === Test discovery ===
 
-function discoverTests(dir: string): Array<{ file: string; source: string; directives: TestDirectives }> {
-  const tests: Array<{ file: string; source: string; directives: TestDirectives }> = [];
+interface TestEntry {
+  file: string;
+  source: string;
+  directives: TestDirectives;
+}
+
+function discoverTests(dir: string, ext: string, commentPrefix: string, defaultCycles: number): TestEntry[] {
+  const tests: TestEntry[] = [];
 
   for (const file of fs.readdirSync(dir).sort()) {
-    if (!file.endsWith('.qll')) {
+    if (!file.endsWith(ext)) {
       continue;
     }
 
     const source = fs.readFileSync(path.join(dir, file), 'utf-8');
-    const directives = parseDirectives(source);
+    const directives = parseDirectives(source, commentPrefix, defaultCycles);
     if (directives) {
       tests.push({ file, source, directives });
     }
@@ -155,19 +198,24 @@ function discoverTests(dir: string): Array<{ file: string; source: string; direc
 
 // === Run tests ===
 
-const TEST_DIRS = [
-  { dir: path.join(ROOT_DIR, 'tests', 'qll'), label: 'tests/qll' },
+type RunFn = (source: string, filename: string, directives: TestDirectives) => Promise<number | string>;
+
+const TEST_SUITES: Array<{ dir: string; ext: string; commentPrefix: string; defaultCycles: number; run: RunFn }> = [
+  { dir: path.join(ROOT_DIR, 'tests', 'qll'),  ext: '.qll',  commentPrefix: '//', defaultCycles: 5000, run: runQLL },
+  { dir: path.join(ROOT_DIR, 'tests', 'qasm'), ext: '.qasm', commentPrefix: ';',  defaultCycles: 500,  run: runQASM },
 ];
 
-for (const { dir, label } of TEST_DIRS) {
-  if (!fs.existsSync(dir)) {
+for (const suite of TEST_SUITES) {
+  if (!fs.existsSync(suite.dir)) {
     continue;
   }
 
-  const tests = discoverTests(dir);
+  const tests = discoverTests(suite.dir, suite.ext, suite.commentPrefix, suite.defaultCycles);
   if (tests.length === 0) {
     continue;
   }
+
+  const label = path.relative(ROOT_DIR, suite.dir);
 
   describe(label, () => {
     for (const { file, source, directives } of tests) {
@@ -178,13 +226,13 @@ for (const { dir, label } of TEST_DIRS) {
 
       if (directives.expectError !== undefined) {
         test(file, async () => {
-          const result = await compileAndRun(source, file, directives);
+          const result = await suite.run(source, file, directives);
           expect(typeof result).toBe('string');
           expect(result as string).toContain(directives.expectError);
         });
       } else if (directives.expect !== undefined) {
         test(file, async () => {
-          const result = await compileAndRun(source, file, directives);
+          const result = await suite.run(source, file, directives);
           if (typeof result === 'string') {
             throw new Error(`Expected ${directives.expect}, got error: ${result}`);
           }
