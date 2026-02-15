@@ -109,6 +109,9 @@ export async function runKernelBenchmark(maxCycles: number): Promise<BenchResult
   }
   const end = performance.now();
 
+  // DebugInputPeripheral may have opened stdin; destroy so it doesn't hold the event loop.
+  process.stdin.destroy();
+
   return {
     cycles: vm.stats.cycles,
     timeMs: end - start,
