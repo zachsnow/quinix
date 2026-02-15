@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Regenerate bench/baseline.json by running each benchmark multiple times
+ * Regenerate bench/bench.json by running each benchmark multiple times
  * and recording deterministic cycle counts and median wall-clock times.
  */
 import {
@@ -70,7 +70,7 @@ async function main() {
 
   const baseline: Baseline = { benchmarks };
   saveBaseline(baseline);
-  console.log('\nWrote bench/baseline.json');
+  console.log('\nWrote bench/bench.json');
 
   process.stdin.destroy();
 }

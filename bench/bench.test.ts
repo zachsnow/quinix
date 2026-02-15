@@ -1,7 +1,7 @@
 /**
  * Performance smoke tests. Runs during `bun test` to catch regressions.
  *
- * If bench/baseline.json exists, QLL benchmarks assert exact cycle count match
+ * If bench/bench.json exists, QLL benchmarks assert exact cycle count match
  * (cycle counts are deterministic for a given binary). The kernel benchmark
  * only reports timing since timer interrupts cause minor non-determinism.
  *
@@ -29,7 +29,7 @@ describe('benchmarks', () => {
   const baseline: Baseline | null = loadBaseline();
 
   if (!baseline) {
-    console.log('[bench] No baseline.json found. Run `bun run bench:update` to create one.');
+    console.log('[bench] No bench.json found. Run `bun run bench:update` to create one.');
   }
 
   for (const name of QLL_BENCHMARKS) {

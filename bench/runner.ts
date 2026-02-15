@@ -22,7 +22,7 @@ import { compileQLLToBinary } from '@/tests/helpers';
 const BENCH_DIR = path.resolve(__dirname);
 const KERNEL_BIN = path.resolve(__dirname, '..', 'kernel', 'kernel.qbin');
 const DISK_IMAGE = path.resolve(__dirname, '..', 'image', 'disk.qfs');
-const BASELINE_PATH = path.join(BENCH_DIR, 'baseline.json');
+const BASELINE_PATH = path.join(BENCH_DIR, 'bench.json');
 
 export interface BenchResult {
   cycles: number;
@@ -132,11 +132,11 @@ export function loadBaseline(): Baseline | null {
 }
 
 /**
- * Load baseline.json from the last git commit (HEAD), ignoring uncommitted changes.
+ * Load bench.json from the last git commit (HEAD), ignoring uncommitted changes.
  */
 export function loadCommittedBaseline(): Baseline | null {
   try {
-    const json = execSync('git show HEAD:bench/baseline.json', {
+    const json = execSync('git show HEAD:bench/bench.json', {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     });

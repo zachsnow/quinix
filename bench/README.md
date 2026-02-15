@@ -11,8 +11,8 @@ Performance smoke tests for the Quinix VM. Integrated into `bun test` to catch r
 | `baseline.ts` | Native ceiling measurement (how fast can JS iterate + yield?) |
 | `runner.ts` | Shared benchmark runner used by tests and update script |
 | `bench.test.ts` | Smoke test that runs during `bun test` |
-| `update-baseline.ts` | Regenerates `baseline.json` |
-| `baseline.json` | Committed baseline with expected cycle counts and median timings |
+| `update-baseline.ts` | Regenerates `bench.json` |
+| `bench.json` | Committed baseline with expected cycle counts and median timings |
 
 ## Usage
 

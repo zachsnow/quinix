@@ -4,7 +4,7 @@
  * and call a simple function for each element?
  *
  * Includes periodic await to simulate VM's peripheral yield behavior.
- * Compares against VM benchmark timings from baseline.json if available.
+ * Compares against VM benchmark timings from bench.json if available.
  */
 import { loadBaseline } from './runner';
 
@@ -69,7 +69,7 @@ async function main() {
   // Compare against VM benchmark timings.
   const baseline = loadBaseline();
   if (baseline) {
-    console.log('\n--- vs VM benchmarks (from baseline.json) ---');
+    console.log('\n--- vs VM benchmarks (from bench.json) ---');
     for (const [name, entry] of Object.entries(baseline.benchmarks)) {
       const overhead = entry.medianMs / medianMs;
       console.log(`  ${name.padEnd(14)} ${entry.medianMs}ms VM / ${medianMs.toFixed(1)}ms native = ${overhead.toFixed(2)}x overhead`);

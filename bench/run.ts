@@ -48,7 +48,7 @@ function printResult(name: string, result: BenchResult, entry: BaselineEntry | u
 async function main() {
   const baseline: Baseline | null = loadCommittedBaseline();
   if (!baseline) {
-    console.log('No committed baseline.json found. Run `bun run bench:update` and commit.\n');
+    console.log('No committed bench.json found. Run `bun run bench:update` and commit.\n');
   }
 
   for (const name of QLL_BENCHMARKS) {
