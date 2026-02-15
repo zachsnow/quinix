@@ -4,7 +4,9 @@
  * and call a simple function for each element?
  *
  * Includes periodic await to simulate VM's peripheral yield behavior.
+ * Compares against VM benchmark timings from baseline.json if available.
  */
+import { loadBaseline } from './runner';
 
 const ITERATIONS = 5;
 const ARRAY_SIZE = 3_640_049;  // Match our benchmark cycle count
@@ -56,9 +58,23 @@ async function main() {
     console.log(`  [${i + 1}] ${result.timeMs.toFixed(2)}ms (${rate.toFixed(2)} M ops/sec)`);
   }
 
-  const avg = times.reduce((a, b) => a + b, 0) / times.length;
-  const avgRate = ARRAY_SIZE / (avg / 1000) / 1_000_000;
-  console.log(`\nAverage: ${avg.toFixed(2)}ms (${avgRate.toFixed(2)} M ops/sec)`);
+  const sorted = [...times].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const medianMs = sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+  const medianRate = ARRAY_SIZE / (medianMs / 1000) / 1_000_000;
+  console.log(`\nMedian: ${medianMs.toFixed(2)}ms (${medianRate.toFixed(2)} M ops/sec)`);
+
+  // Compare against VM benchmark timings.
+  const baseline = loadBaseline();
+  if (baseline) {
+    console.log('\n--- vs VM benchmarks (from baseline.json) ---');
+    for (const [name, entry] of Object.entries(baseline.benchmarks)) {
+      const overhead = entry.medianMs / medianMs;
+      console.log(`  ${name.padEnd(14)} ${entry.medianMs}ms VM / ${medianMs.toFixed(1)}ms native = ${overhead.toFixed(2)}x overhead`);
+    }
+  }
 }
 
 main();
