@@ -276,11 +276,12 @@ for (const suite of TEST_SUITES) {
         continue;
       }
 
-      if (directives.expectError !== undefined) {
+      const expectedError = directives.expectError;
+      if (expectedError !== undefined) {
         test(file, async () => {
           const { result } = await suite.run(source, file, directives);
           expect(typeof result).toBe('string');
-          expect(result as string).toContain(directives.expectError);
+          expect(result as string).toContain(expectedError);
         });
       } else if (directives.expect !== undefined || directives.stdout !== undefined) {
         test(file, async () => {
