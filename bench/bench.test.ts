@@ -79,8 +79,8 @@ describe('benchmarks', () => {
       `${best.timeMs.toFixed(1)}ms (${formatMHz(best.cycles, best.timeMs)} MHz)`
     );
 
-    expect(best.cycles).toBeGreaterThan(0);
     if (baseline?.benchmarks['kernel-boot']) {
+      expect(best.cycles).toBe(baseline.benchmarks['kernel-boot'].cycles);
       assertTiming(best.timeMs, baseline.benchmarks['kernel-boot'], 'kernel-boot');
     }
   });

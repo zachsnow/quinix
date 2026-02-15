@@ -88,8 +88,8 @@ export async function runBenchmark(binary: Uint32Array, maxCycles?: number): Pro
 
 /**
  * Run the kernel binary as a benchmark. The kernel boots, enters the shell,
- * and spins waiting for stdin — the cycle limit fires and throws, but
- * vm.stats.cycles is still readable after the throw.
+ * receives "exit" on stdin, and halts. With cycle-based peripherals the
+ * cycle count is fully deterministic.
  */
 export async function runKernelBenchmark(maxCycles: number): Promise<BenchResult> {
   const kernelBytes = fs.readFileSync(KERNEL_BIN);
@@ -104,7 +104,7 @@ export async function runKernelBenchmark(maxCycles: number): Promise<BenchResult
     new ClockPeripheral(),
     new DebugBreakPeripheral(),
     new DebugOutputPeripheral(),
-    new DebugInputPeripheral(),
+    new DebugInputPeripheral(['exit']),
     new DebugFilePeripheral(path.dirname(KERNEL_BIN)),
     new BlockDevicePeripheral(storage, SECTOR_SIZE_WORDS),
   ];
@@ -116,13 +116,7 @@ export async function runKernelBenchmark(maxCycles: number): Promise<BenchResult
   });
 
   const start = performance.now();
-  try {
-    await vm.run(binary);
-  } catch (e: any) {
-    if (!e.message?.includes('exceeded max cycles')) {
-      throw e;
-    }
-  }
+  await vm.run(binary);
   const end = performance.now();
 
   return { cycles: vm.stats.cycles, timeMs: end - start };

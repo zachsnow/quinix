@@ -1,4 +1,4 @@
-import { stringToCodePoints, ResolvablePromise, codePointsToString, release } from '@/lib/util';
+import { stringToCodePoints, ResolvablePromise, codePointsToString } from '@/lib/util';
 import { logger } from '@/lib/logger';
 import { VM } from '@/vm/vm';
 import type { Interrupt } from '@/vm/vm';
@@ -22,9 +22,6 @@ class DebugOutputPeripheral extends BufferedPeripheral {
   public output = "";
 
   public async onWrite(data: number[]): Promise<void> {
-    // Release for "realism".
-    await release();
-
     const s = codePointsToString(data);
     this.output += s;
     process.stdout.write(s);
@@ -43,9 +40,11 @@ class DebugInputPeripheral extends BufferedPeripheral {
   private resolvablePromise?: ResolvablePromise<number[]>;
 
   private buffer: number[] = [];
+  private inputQueue: string[];
 
-  public constructor() {
+  public constructor(input?: string[]) {
     super();
+    this.inputQueue = input ? [...input] : [];
     this.listener = this.listener.bind(this);
   }
 
@@ -56,6 +55,12 @@ class DebugInputPeripheral extends BufferedPeripheral {
   }
 
   protected onRead(): Promise<number[]> {
+    // If there's queued input, resolve immediately.
+    if (this.inputQueue.length > 0) {
+      const line = this.inputQueue.shift()!;
+      return Promise.resolve(stringToCodePoints(line));
+    }
+
     if (this.resolvablePromise) {
       this.resolvablePromise.reject('read while pending');
     }

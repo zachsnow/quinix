@@ -2,15 +2,15 @@
   "benchmarks": {
     "compute": {
       "cycles": 3633047,
-      "bestMs": 24.6
+      "bestMs": 25.4
     },
     "memory": {
       "cycles": 4346154,
-      "bestMs": 28.3
+      "bestMs": 28.4
     },
     "kernel-boot": {
-      "cycles": 5000000,
-      "bestMs": 38.8
+      "cycles": 320067,
+      "bestMs": 12.2
     }
   }
 }
