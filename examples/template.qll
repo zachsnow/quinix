@@ -11,8 +11,8 @@ type point = struct {
 
 function printn(n: byte): void {
   var buffer: byte[16];
-  std::str::itoa(n, buffer, 10);
-  std::console::print(buffer);
+  var s = std::str::itoa(n, buffer, 10);
+  std::console::print(s);
 }
 
 function print_point<T>(p: T): void {
