@@ -38,8 +38,12 @@ namespace kernel {
     // Error handler - called by trampoline which handles stack switching and INT return.
     .export function _error_interrupt(): void {
       var reason = *fault_reason::reason;
-      log("process: error interrupt:");
-      log(_fault_reason_string(reason));
+      var ip = interrupts::state->ip;
+      std::console::print("process: fault at ");
+      memory::log_hex(ip);
+      std::console::print(": ");
+      std::console::print(_fault_reason_string(reason));
+      std::console::print("\n");
 
       // Kill the faulting process.
       var process = current_process();

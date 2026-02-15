@@ -23,8 +23,8 @@
 ; When an interrupt fires from userspace, SP contains the user's virtual stack
 ; address. With MMU disabled, using this as a physical address corrupts memory.
 ; Interrupt handlers must switch to this kernel stack at the start.
-; Located at 0x1F000 (below kernel heap at 0x10000, above interrupt table).
-data @kernel_interrupt_sp 0x1F000
+; Located at 0x1FF00 (between kernel code and heap at 0x20000).
+data @kernel_interrupt_sp 0x1FF00
 
 ; Interrupt trampoline for syscall handler.
 ; This wrapper switches to the kernel stack BEFORE calling the QLL handler,

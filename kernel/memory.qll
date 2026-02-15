@@ -1,12 +1,12 @@
 namespace kernel::memory {
   // Configuration
   .constant global TOTAL_PHYSICAL_MEMORY: byte = 0x400000;  // 4M words (16MB)
-  .constant global KERNEL_RESERVED: byte = 0x20000;         // 128K words for kernel
+  .constant global KERNEL_RESERVED: byte = 0x30000;         // 192K words for kernel
   .constant global CHUNK_SIZE: byte = 0x1000;               // 4K words per chunk
   .constant global MAX_PAGES_PER_PROCESS: byte = 8;
 
   // Kernel heap is managed by std::alloc (shared/alloc.qll).
-  // See kernel/alloc.qll which sets std::heap to 0x10000.
+  // See kernel/alloc.qll which sets std::heap to 0x20000.
 
   // User memory pool (for process memory)
   global user_pool_base: byte = 0x0;
