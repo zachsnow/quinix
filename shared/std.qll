@@ -181,18 +181,12 @@ namespace std {
       }
     }
 
-    function ntoa(number: byte, buffer: string, base: byte, allowNegative: bool): string {
+    function ntoa(number: byte, buffer: string, base: byte): string {
       len buffer = cap buffer;
 
       if (cap buffer < 1) {
         len buffer = 0;
         return buffer;
-      }
-
-      var negative = false;
-      if (allowNegative && number < 0) {
-        negative = true;
-        number = -number;
       }
 
       var i = 0;
@@ -217,6 +211,48 @@ namespace std {
         i = i + 1;
       }
 
+      len buffer = i;
+      reverse(buffer);
+      return buffer;
+    }
+
+    function itoa(number: int, buffer: string, base: byte): string {
+      len buffer = cap buffer;
+
+      if (cap buffer < 1) {
+        len buffer = 0;
+        return buffer;
+      }
+
+      var zero: int = 0;
+      var negative = false;
+      if (number < zero) {
+        negative = true;
+        number = zero - number;
+      }
+
+      var i = 0;
+      while (number != zero) {
+        var digit: byte = <unsafe byte>(number % <unsafe int>base);
+        buffer[i] = digit > 9 ?
+          digit - 10 + 97 :
+          digit + 48;
+        i = i + 1;
+
+        if (i >= len buffer) {
+          len buffer = 0;
+          return buffer;
+        }
+
+        number = number / <unsafe int>base;
+      }
+
+      // Handle 0.
+      if (i == 0) {
+        buffer[i] = 48;
+        i = i + 1;
+      }
+
       // Sign.
       if (negative) {
         if (i >= len buffer) {
@@ -232,12 +268,8 @@ namespace std {
       return buffer;
     }
 
-    function itoa(number: byte, buffer: string, base: byte): string {
-      return ntoa(number, buffer, base, true);
-    }
-
     function utoa(number: byte, buffer: string, base: byte): string {
-      return ntoa(number, buffer, base, false);
+      return ntoa(number, buffer, base);
     }
 
     function equal(a: string, b: string): bool {
@@ -317,6 +349,7 @@ namespace std {
   type fmt = struct {
     fmt_type: fmt::fmt_type;
     n: byte;
+    i: int;
     base: byte;
     s: string;
     p: * byte;
@@ -339,10 +372,10 @@ namespace std {
         s = s,
       };
     }
-    function fi(n: byte): fmt {
+    function fi(n: int): fmt {
       return fmt {
         fmt_type = fmt_type::I,
-        n = n,
+        i = n,
       };
     }
     function fu(n: byte): fmt {
@@ -371,7 +404,7 @@ namespace std {
           console::print(s);
         }
         else if (f.fmt_type == fmt_type::I) {
-          var s = str::itoa(f.n, buffer, f.base || 10);
+          var s = str::itoa(f.i, buffer, f.base || 10);
           if (len s == 0) {
             return false;
           }

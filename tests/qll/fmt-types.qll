@@ -5,7 +5,8 @@ function main(): byte {
   var x: byte = 255;
   var f0 = std::fmt::fu(x);
   var f1 = std::fmt::fs(" ");
-  var f2 = std::fmt::fi(-1);
+  var ni: int = -1;
+  var f2 = std::fmt::fi(ni);
   var f3 = std::fmt::fs(" ");
   var f4 = std::fmt::fp(&x);
   var f5 = std::fmt::nl;

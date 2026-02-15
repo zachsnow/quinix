@@ -44,7 +44,7 @@ global ROW_COLORS: byte[5] = [
   0xFF00AAFF,  // Light blue
 ];
 
-function itoa(n: byte, buf: byte[]): void {
+function utoa(n: byte, buf: byte[]): void {
   var i: byte = 0;
   var tmp: byte[6];
 
@@ -67,19 +67,6 @@ function itoa(n: byte, buf: byte[]): void {
     j = j + 1;
   }
   buf[j] = 0;
-}
-
-function abs(x: byte): byte {
-  // Values > 0x7FFFFFFF are "negative" in two's complement
-  if (x > 0x7FFFFFFF) {
-    return 0 - x;
-  }
-  return x;
-}
-
-// Check if a value represents a positive signed number
-function is_positive(x: byte): bool {
-  return x > 0 && x < 0x80000000;
 }
 
 function draw_bricks(fb: *graphics::framebuffer, bricks: byte[]): void {
@@ -111,12 +98,12 @@ function draw_hud(fb: *graphics::framebuffer, score: byte, lives: byte): void {
   // Score
   graphics::fill_rect(fb, 0, 0, 160, 10, graphics::color::BLACK);
   graphics::font::draw_string(fb, 4, 1, "SCORE:", graphics::color::GRAY, graphics::color::BLACK);
-  itoa(score, buf);
+  utoa(score, buf);
   graphics::font::draw_string(fb, 52, 1, buf, graphics::color::WHITE, graphics::color::BLACK);
 
   // Lives
   graphics::font::draw_string(fb, 100, 1, "LIVES:", graphics::color::GRAY, graphics::color::BLACK);
-  itoa(lives, buf);
+  utoa(lives, buf);
   graphics::font::draw_string(fb, 148, 1, buf, graphics::color::WHITE, graphics::color::BLACK);
 }
 
@@ -138,8 +125,8 @@ function main(): byte {
   // Ball position and velocity
   var bx: byte = 0;
   var by: byte = 0;
-  var bdx: byte = BALL_SPEED;
-  var bdy: byte = 0 - BALL_SPEED;
+  var bdx: int = 2;
+  var bdy: int = -2;
 
   // Frame timing
   var last_time: byte = clock::now();
@@ -211,8 +198,8 @@ function main(): byte {
 
       // Launch on space or up
       if (keys & (keyboard::KEY_SPACE | keyboard::KEY_UP)) {
-        bdx = BALL_SPEED;
-        bdy = 0 - BALL_SPEED;
+        bdx = 2;
+        bdy = -2;
         state = STATE_PLAYING;
       }
     }
@@ -222,21 +209,21 @@ function main(): byte {
       graphics::fill_circle(&fb, bx, by, BALL_R + 1, graphics::color::BLACK);
 
       // Move ball
-      bx = bx + bdx;
-      by = by + bdy;
+      bx = bx + <unsafe byte>bdx;
+      by = by + <unsafe byte>bdy;
 
       // Wall collisions
       if (bx <= BALL_R) {
         bx = BALL_R;
-        bdx = abs(bdx);
+        if (bdx < 0) { bdx = 0 - bdx; }
       }
       if (bx >= SCREEN_W - BALL_R) {
         bx = SCREEN_W - BALL_R;
-        bdx = 0 - abs(bdx);
+        if (bdx > 0) { bdx = 0 - bdx; }
       }
       if (by <= BALL_R + 12) {
         by = BALL_R + 12;
-        bdy = abs(bdy);
+        if (bdy < 0) { bdy = 0 - bdy; }
       }
 
       // Ball fell below paddle
@@ -254,18 +241,18 @@ function main(): byte {
 
       // Paddle collision
       if (state == STATE_PLAYING) {
-        if (is_positive(bdy) && by + BALL_R >= PADDLE_Y && by - BALL_R <= PADDLE_Y + PADDLE_H) {
+        if (bdy > 0 && by + BALL_R >= PADDLE_Y && by - BALL_R <= PADDLE_Y + PADDLE_H) {
           if (bx >= px && bx <= px + PADDLE_W) {
             by = PADDLE_Y - BALL_R;
-            bdy = 0 - abs(bdy);
+            if (bdy > 0) { bdy = 0 - bdy; }
 
             // Angle based on hit position
             var hit = bx - px;
             if (hit < PADDLE_W / 3) {
-              bdx = 0 - BALL_SPEED;
+              bdx = -2;
             } else {
               if (hit > PADDLE_W * 2 / 3) {
-                bdx = BALL_SPEED;
+                bdx = 2;
               }
             }
           }

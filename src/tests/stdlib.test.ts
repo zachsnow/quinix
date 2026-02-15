@@ -89,8 +89,9 @@ describe('std::str', () => {
   test('itoa: positive number', () => {
     return expectQLLWithStd(0x34, `
       function main(): byte {
+        var n: int = 42;
         var buffer: byte[16];
-        std::str::itoa(42, buffer, 10);
+        std::str::itoa(n, buffer, 10);
         return buffer[0];
       }
     `, { cycles: 10000 });
@@ -99,8 +100,9 @@ describe('std::str', () => {
   test('itoa: zero', () => {
     return expectQLLWithStd(0x30, `
       function main(): byte {
+        var n: int = 0;
         var buffer: byte[16];
-        std::str::itoa(0, buffer, 10);
+        std::str::itoa(n, buffer, 10);
         return buffer[0];
       }
     `, { cycles: 10000 });
@@ -109,8 +111,20 @@ describe('std::str', () => {
   test('itoa: multi-digit number', () => {
     return expectQLLWithStd(0x31, `
       function main(): byte {
+        var n: int = 123;
         var buffer: byte[16];
-        std::str::itoa(123, buffer, 10);
+        std::str::itoa(n, buffer, 10);
+        return buffer[0];
+      }
+    `, { cycles: 10000 });
+  });
+
+  test('itoa: negative number', () => {
+    return expectQLLWithStd(0x2D, `
+      function main(): byte {
+        var n: int = -42;
+        var buffer: byte[16];
+        std::str::itoa(n, buffer, 10);
         return buffer[0];
       }
     `, { cycles: 10000 });
@@ -590,8 +604,21 @@ describe('std::fmt', () => {
   test('print with fi', () => {
     return expectQLLOutput("42", `
       function main(): byte {
+        var n: int = 42;
         var fmts: std::fmt[1];
-        fmts[0] = std::fmt::fi(42);
+        fmts[0] = std::fmt::fi(n);
+        std::fmt::print(fmts);
+        return 0;
+      }
+    `, { cycles: 30000 });
+  });
+
+  test('print with fi negative', () => {
+    return expectQLLOutput("-7", `
+      function main(): byte {
+        var n: int = -7;
+        var fmts: std::fmt[1];
+        fmts[0] = std::fmt::fi(n);
         std::fmt::print(fmts);
         return 0;
       }
