@@ -1,5 +1,5 @@
 // Simple display demo - basic shapes only.
-// Run with: bun run bin/qrun.ts examples/display-simple.qll -- --display 320x200
+// Run with: bun run qrun examples/display-simple.qll --display 320x200
 
 function main(): byte {
   var fb = display::open(320, 200);

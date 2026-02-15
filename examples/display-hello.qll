@@ -1,5 +1,5 @@
 // Simple display hello world
-// Run with: bun run bin/qrun.ts examples/display-hello.qll -- --display 320x200
+// Run with: bun run qrun examples/display-hello.qll --display 320x200
 
 function main(): byte {
   var fb = display::open(320, 200);

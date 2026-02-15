@@ -1,5 +1,5 @@
 // Minimal display demo
-// Run with: bun run bin/qrun.ts examples/lowlevel/display-minimal.qll -- --display 64x64
+// Run with: bun run bin/qrun.ts examples/lowlevel/display-minimal.qll --display 64x64
 
 function main(): byte {
   // Display peripheral at 0x603

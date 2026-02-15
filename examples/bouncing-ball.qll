@@ -1,5 +1,5 @@
 // Bouncing ball demo with FPS counter
-// Run with: bun run bin/qrun.ts examples/bouncing-ball.qll -- --display 320x200
+// Run with: bun run qrun examples/bouncing-ball.qll --display 320x200
 
 .constant global BALL_SIZE: byte = 8;
 .constant global SCREEN_W: byte = 320;

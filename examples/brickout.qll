@@ -1,7 +1,7 @@
 // Brickout - a Breakout clone for Quinix
 //
 // Compiles for both bare-metal and user-mode targets:
-//   bun run qrun examples/brickout.qll -- --display 320x200 --keyboard
+//   bun run qrun examples/brickout.qll --display 320x200 --keyboard
 //   bun run bin/qllc.ts --target=user examples/brickout.qll
 
 .constant global SCREEN_W: byte = 320;

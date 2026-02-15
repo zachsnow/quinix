@@ -1,5 +1,5 @@
 // Display demo - shows graphics primitives and text rendering.
-// Run with: bun run bin/qrun.ts examples/display-demo.qll -- --display 320x200
+// Run with: bun run qrun examples/display-demo.qll --display 320x200
 
 function main(): byte {
   var fb = display::open(320, 200);
