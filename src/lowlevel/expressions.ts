@@ -34,6 +34,8 @@ abstract class Expression extends Syntax {
    */
   public concreteType!: Type;
 
+  public get isNumericLiteral(): boolean { return false; }
+
   /**
    *
    * @param bindings generic type bindings.
@@ -275,6 +277,8 @@ class IntLiteralExpression extends Expression {
   public constant(): Immediate | undefined {
     return this.immediate;
   }
+
+  public get isNumericLiteral(): boolean { return true; }
 }
 
 // Float conversion helpers for parsing and display
@@ -1400,8 +1404,17 @@ class BinaryExpression extends Expression {
   }
 
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    const tLeft = this.left.typecheck(context);
-    const tRight = this.right.typecheck(context, tLeft);
+    let tLeft: Type;
+    let tRight: Type;
+
+    if (this.left.isNumericLiteral) {
+      // Typecheck right first so the literal on the left gets peer context.
+      tRight = this.right.typecheck(context, contextual);
+      tLeft = this.left.typecheck(context, tRight.numeric ? tRight : contextual);
+    } else {
+      tLeft = this.left.typecheck(context, contextual);
+      tRight = this.right.typecheck(context, tLeft);
+    }
 
     switch (this.operator) {
       case '+':
@@ -1731,8 +1744,13 @@ class UnaryExpression extends Expression {
     )
   }
 
+  public get isNumericLiteral(): boolean {
+    return (this.operator === '-' || this.operator === '+') && this.expression.isNumericLiteral;
+  }
+
   public typecheck(context: TypeChecker, contextual?: Type): Type {
-    const type = this.expression.typecheck(context);
+    const passContextual = this.operator === '+' || this.operator === '-';
+    const type = this.expression.typecheck(context, passContextual ? contextual : undefined);
 
     switch (this.operator) {
       case '+':

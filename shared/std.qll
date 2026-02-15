@@ -224,15 +224,14 @@ namespace std {
         return buffer;
       }
 
-      var zero: int = 0;
       var negative = false;
-      if (number < zero) {
+      if (number < 0) {
         negative = true;
-        number = zero - number;
+        number = 0 - number;
       }
 
       var i = 0;
-      while (number != zero) {
+      while (number != 0) {
         var digit: byte = <unsafe byte>(number % <unsafe int>base);
         buffer[i] = digit > 9 ?
           digit - 10 + 97 :
