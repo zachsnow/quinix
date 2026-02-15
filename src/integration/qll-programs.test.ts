@@ -7,6 +7,7 @@
  *   @expect-error: <string> - expected compilation error substring
  *   @libs: alloc            - include allocator (for new/delete)
  *   @libs: std              - include standard library (includes alloc)
+ *   @stdout: "string"        - expected stdout output (supports \n, \\, \")
  *   @cycles: <number>       - VM cycle budget (default: 5000)
  *   @skip                   - skip this test
  *   @skip: <reason>         - skip with reason
@@ -18,6 +19,8 @@ import path from 'path';
 import { VM } from '@/vm/vm';
 import { LowLevelProgram } from '@/lowlevel/lowlevel';
 import { AssemblyProgram } from '@/assembly/assembly';
+import { TimerPeripheral, ClockPeripheral } from '@/vm/peripherals';
+import { DebugBreakPeripheral, DebugOutputPeripheral } from '@/platform/server/peripherals';
 import { getStdLib, getBareEntrypoint, getAllocator } from '@test/helpers';
 
 const ROOT_DIR = path.resolve(__dirname, '..', '..');
@@ -27,10 +30,33 @@ const ROOT_DIR = path.resolve(__dirname, '..', '..');
 interface TestDirectives {
   expect?: number;
   expectError?: string;
+  stdout?: string;
   libs: Set<string>;
   cycles: number;
   skip: boolean;
   skipReason?: string;
+}
+
+function parseQuotedString(raw: string): string {
+  if (!raw.startsWith('"') || !raw.endsWith('"')) {
+    throw new Error(`@stdout value must be quoted: ${raw}`);
+  }
+  let result = '';
+  for (let i = 1; i < raw.length - 1; i++) {
+    if (raw[i] === '\\') {
+      i++;
+      switch (raw[i]) {
+        case 'n': result += '\n'; break;
+        case 't': result += '\t'; break;
+        case '\\': result += '\\'; break;
+        case '"': result += '"'; break;
+        default: result += '\\' + raw[i]; break;
+      }
+    } else {
+      result += raw[i];
+    }
+  }
+  return result;
 }
 
 function parseDirectives(source: string): TestDirectives | null {
@@ -72,6 +98,13 @@ function parseDirectives(source: string): TestDirectives | null {
       continue;
     }
 
+    const stdoutMatch = comment.match(/^@stdout:\s*(".*")$/);
+    if (stdoutMatch) {
+      directives.stdout = parseQuotedString(stdoutMatch[1]);
+      hasDirective = true;
+      continue;
+    }
+
     const libsMatch = comment.match(/^@libs:\s*(.+)$/);
     if (libsMatch) {
       for (const lib of libsMatch[1].split(',').map(s => s.trim())) {
@@ -94,11 +127,16 @@ function parseDirectives(source: string): TestDirectives | null {
 
 // === Test execution ===
 
+interface RunResult {
+  result: number | string;
+  output: string;
+}
+
 function compileAndRun(
   source: string,
   filename: string,
   directives: TestDirectives,
-): Promise<number | string> {
+): Promise<RunResult> {
   try {
     const libs: LowLevelProgram[] = [];
     if (directives.libs.has('std')) {
@@ -112,7 +150,7 @@ function compileAndRun(
     const typeErrors = program.typecheck().errors;
 
     if (typeErrors.length) {
-      return Promise.resolve(typeErrors.map(e => e.text).join('\n'));
+      return Promise.resolve({ result: typeErrors.map(e => e.text).join('\n'), output: '' });
     }
 
     const entrypoint = getBareEntrypoint();
@@ -120,16 +158,27 @@ function compileAndRun(
     const [messages, binary] = combined.assemble();
 
     if (!binary) {
-      return Promise.resolve(messages.errors.map(e => e.text).join('\n'));
+      return Promise.resolve({ result: messages.errors.map(e => e.text).join('\n'), output: '' });
     }
 
-    const vm = new VM({ cycles: directives.cycles });
-    return vm.run(binary.encode());
+    const debugOutput = new DebugOutputPeripheral();
+    const peripherals = [
+      new TimerPeripheral(),
+      new ClockPeripheral(),
+      new DebugBreakPeripheral(),
+      debugOutput,
+    ];
+
+    const vm = new VM({ cycles: directives.cycles, peripherals });
+    return vm.run(binary.encode()).then(
+      result => ({ result, output: debugOutput.output.replace(/\0+$/, '') }),
+      (e: any) => ({ result: e.message ?? String(e), output: debugOutput.output.replace(/\0+$/, '') }),
+    );
   } catch (e: any) {
     const msg = e.location
       ? `${e.location.filename}(${e.location.start.line}): ${e.message}`
       : e.message;
-    return Promise.resolve(msg);
+    return Promise.resolve({ result: msg, output: '' });
   }
 }
 
@@ -178,17 +227,22 @@ for (const { dir, label } of TEST_DIRS) {
 
       if (directives.expectError !== undefined) {
         test(file, async () => {
-          const result = await compileAndRun(source, file, directives);
+          const { result } = await compileAndRun(source, file, directives);
           expect(typeof result).toBe('string');
           expect(result as string).toContain(directives.expectError);
         });
-      } else if (directives.expect !== undefined) {
+      } else if (directives.expect !== undefined || directives.stdout !== undefined) {
         test(file, async () => {
-          const result = await compileAndRun(source, file, directives);
+          const { result, output } = await compileAndRun(source, file, directives);
           if (typeof result === 'string') {
-            throw new Error(`Expected ${directives.expect}, got error: ${result}`);
+            throw new Error(`Expected success, got error: ${result}`);
           }
-          expect(result).toBe(directives.expect);
+          if (directives.expect !== undefined) {
+            expect(result).toBe(directives.expect);
+          }
+          if (directives.stdout !== undefined) {
+            expect(output).toBe(directives.stdout);
+          }
         });
       }
     }
