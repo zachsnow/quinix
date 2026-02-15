@@ -44,31 +44,6 @@ global ROW_COLORS: byte[5] = [
   0xFF00AAFF,  // Light blue
 ];
 
-function utoa(n: byte, buf: byte[]): void {
-  var i: byte = 0;
-  var tmp: byte[6];
-
-  if (n == 0) {
-    buf[0] = '0';
-    buf[1] = 0;
-    return;
-  }
-
-  while (n > 0 && i < 6) {
-    tmp[i] = '0' + (n % 10);
-    n = n / 10;
-    i = i + 1;
-  }
-
-  var j: byte = 0;
-  while (i > 0) {
-    i = i - 1;
-    buf[j] = tmp[i];
-    j = j + 1;
-  }
-  buf[j] = 0;
-}
-
 function draw_bricks(fb: *graphics::framebuffer, bricks: byte[]): void {
   for (var row: byte = 0; row < BRICK_ROWS; row = row + 1) {
     for (var col: byte = 0; col < BRICK_COLS; col = col + 1) {
@@ -98,12 +73,12 @@ function draw_hud(fb: *graphics::framebuffer, score: byte, lives: byte): void {
   // Score
   graphics::fill_rect(fb, 0, 0, 160, 10, graphics::color::BLACK);
   graphics::font::draw_string(fb, 4, 1, "SCORE:", graphics::color::GRAY, graphics::color::BLACK);
-  utoa(score, buf);
+  std::str::utoa(score, buf, 10);
   graphics::font::draw_string(fb, 52, 1, buf, graphics::color::WHITE, graphics::color::BLACK);
 
   // Lives
   graphics::font::draw_string(fb, 100, 1, "LIVES:", graphics::color::GRAY, graphics::color::BLACK);
-  utoa(lives, buf);
+  std::str::utoa(lives, buf, 10);
   graphics::font::draw_string(fb, 148, 1, buf, graphics::color::WHITE, graphics::color::BLACK);
 }
 

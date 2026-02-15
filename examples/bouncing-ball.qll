@@ -5,33 +5,6 @@
 .constant global SCREEN_W: byte = 320;
 .constant global SCREEN_H: byte = 200;
 
-// Convert number to decimal string (up to 5 digits)
-function itoa(n: byte, buf: byte[]): void {
-  var i: byte = 0;
-  var tmp: byte[5];
-
-  if (n == 0) {
-    buf[0] = '0';
-    buf[1] = 0;
-    return;
-  }
-
-  while (n > 0 && i < 5) {
-    tmp[i] = '0' + (n % 10);
-    n = n / 10;
-    i = i + 1;
-  }
-
-  // Reverse into buf
-  var j: byte = 0;
-  while (i > 0) {
-    i = i - 1;
-    buf[j] = tmp[i];
-    j = j + 1;
-  }
-  buf[j] = 0;
-}
-
 function main(): byte {
   var fb = display::open(SCREEN_W, SCREEN_H);
 
@@ -92,7 +65,7 @@ function main(): byte {
     // Only redraw FPS when it changes
     if (fps != last_fps) {
       graphics::fill_rect(&fb, 4, 4, 40, 8, graphics::color::BLACK);
-      itoa(fps, fps_buf);
+      std::str::utoa(fps, fps_buf, 10);
       graphics::font::draw_string(&fb, 4, 4, fps_buf, graphics::color::WHITE, graphics::color::BLACK);
       last_fps = fps;
     }
