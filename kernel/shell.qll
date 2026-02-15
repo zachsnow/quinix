@@ -106,7 +106,7 @@ namespace shell {
   }
 
   function cmd_help(): void {
-    std::console::print("Commands: help, pwd, cd, ls, cat, touch, rm, mkdir, run, exit\n");
+    std::console::print("Commands: help, pwd, cd, ls, cat, touch, rm, mkdir, run, verbose, exit\n");
   }
 
   function cmd_pwd(): void {
@@ -503,6 +503,25 @@ namespace shell {
     std::console::print("\n");
   }
 
+  function cmd_verbose(args: byte[], args_len: byte): void {
+    if (str_eq_n("on", args, args_len)) {
+      kernel::verbose = true;
+      std::console::print("Verbose mode on.\n");
+    } else if (str_eq_n("off", args, args_len)) {
+      kernel::verbose = false;
+      std::console::print("Verbose mode off.\n");
+    } else if (args_len == 0) {
+      kernel::verbose = !kernel::verbose;
+      if (kernel::verbose) {
+        std::console::print("Verbose mode on.\n");
+      } else {
+        std::console::print("Verbose mode off.\n");
+      }
+    } else {
+      std::console::print("Usage: verbose [on|off]\n");
+    }
+  }
+
   function cmd_exit(): void {
     std::console::print("Goodbye.\n");
     kernel::support::halt(0);
@@ -519,6 +538,8 @@ namespace shell {
     } else {
       std::console::print("No filesystem available.\n");
     }
+
+    kernel::verbose = false;
 
     var line: byte[0x100];
 
@@ -580,6 +601,8 @@ namespace shell {
           cmd_mkdir(args, args_len);
         } else if (str_eq_n("run", cmd, cmd_len)) {
           cmd_run(args, args_len);
+        } else if (str_eq_n("verbose", cmd, cmd_len)) {
+          cmd_verbose(args, args_len);
         } else if (str_eq_n("exit", cmd, cmd_len)) {
           cmd_exit();
         } else {

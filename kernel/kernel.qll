@@ -3,6 +3,8 @@
 // * Configure interrupt handlers.
 // * Enter idle loop.
 namespace kernel {
+  global verbose: bool = true;
+
   type error = byte;
   namespace error {
     .constant global PANIC: error = -1;
@@ -39,6 +41,10 @@ namespace kernel {
   }
 
   function log(message: byte[]): void {
+    if (!verbose) {
+      return;
+    }
+
     // If peripherals have been properly configured, just use that.
     if(peripherals::debug_output){
       std::console::print(message);
