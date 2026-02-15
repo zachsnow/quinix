@@ -23,8 +23,8 @@
 ; When an interrupt fires from userspace, SP contains the user's virtual stack
 ; address. With MMU disabled, using this as a physical address corrupts memory.
 ; Interrupt handlers must switch to this kernel stack at the start.
-; Located at 0x1F000 (below kernel heap at 0x10000, above interrupt table).
-data @kernel_interrupt_sp 0x1F000
+; Located at 0x1FF00 (between kernel code and heap at 0x20000).
+data @kernel_interrupt_sp 0x1FF00
 
 ; Interrupt trampoline for syscall handler.
 ; This wrapper switches to the kernel stack BEFORE calling the QLL handler,
@@ -113,7 +113,7 @@ data @kernel_interrupt_sp 0x1F000
 
   ; Update the interrupt count to ensure high interrupts (like syscall 0x80) are mapped.
   ; The count must be at least as high as the highest interrupt number used.
-  constant r5 0x43        ; Count address (REGISTER_COUNT + 2).
+  constant r5 0x44        ; Count address (REGISTER_COUNT + 3, after fault reason).
   constant r6 0x80        ; Ensure count >= 128 for syscalls.
   store r5 r6             ; Update count.
 

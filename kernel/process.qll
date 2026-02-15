@@ -16,11 +16,36 @@ namespace kernel {
 
     global processes: std::vector<* process> = null;
 
+    function _fault_reason_string(reason: fault_reason): byte[] {
+      if (reason == fault_reason::INVALID_INSTRUCTION) {
+        return "invalid instruction";
+      }
+      if (reason == fault_reason::UNIMPLEMENTED_INSTRUCTION) {
+        return "unimplemented instruction";
+      }
+      if (reason == fault_reason::MEMORY_FAULT) {
+        return "memory fault";
+      }
+      if (reason == fault_reason::OUT_OF_BOUNDS) {
+        return "out of bounds";
+      }
+      if (reason == fault_reason::INVALID_INTERRUPT) {
+        return "invalid interrupt";
+      }
+      return "unknown";
+    }
+
     // Error handler - called by trampoline which handles stack switching and INT return.
     .export function _error_interrupt(): void {
-      log("process: error interrupt!");
+      var reason = *fault_reason::reason;
+      var ip = interrupts::state->ip;
+      std::console::print("process: fault at ");
+      memory::log_hex(ip);
+      std::console::print(": ");
+      std::console::print(_fault_reason_string(reason));
+      std::console::print("\n");
 
-      // For now, just kill the current process.
+      // Kill the faulting process.
       var process = current_process();
       destroy_process(process);
 

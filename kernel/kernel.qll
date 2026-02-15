@@ -26,6 +26,18 @@ namespace kernel {
 
   }
 
+  type fault_reason = byte;
+  namespace fault_reason {
+    .constant global INVALID_INSTRUCTION: fault_reason = 0x1;
+    .constant global UNIMPLEMENTED_INSTRUCTION: fault_reason = 0x2;
+    .constant global MEMORY_FAULT: fault_reason = 0x3;
+    .constant global OUT_OF_BOUNDS: fault_reason = 0x4;
+    .constant global INVALID_INTERRUPT: fault_reason = 0x5;
+
+    // The fault reason is stored at address 0x43 (after 65 saved registers + 2 header bytes).
+    global reason: * fault_reason = <unsafe * fault_reason>0x43;
+  }
+
   function log(message: byte[]): void {
     // If peripherals have been properly configured, just use that.
     if(peripherals::debug_output){
