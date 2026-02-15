@@ -2,44 +2,10 @@ import { Address } from "@/lib/types";
 import { Instruction, Operation, Program, Register } from "./instructions";
 import { BufferedPeripheral, DisplayPeripheral, TimerPeripheral, ClockPeripheral } from "./peripherals";
 import { VM } from "./vm";
-import { floatToInt, intToFloat } from "@test/helpers";
+import { floatToInt, intToFloat, runInstructions, runAndDump, binaryOp, unaryOp } from "@test/helpers";
 
 describe("VM", () => {
-  async function run(instructions: Instruction[]): Promise<number> {
-    const program = new Program(instructions);
-
-    const vm = new VM();
-    return vm.run(program.encode());
-  }
-
-  async function dump(instructions: Instruction[], address: Address) {
-    const program = new Program(instructions);
-
-    const vm = new VM();
-    await vm.run(program.encode());
-    const view = vm.dump(address, 1);
-    return view[0];
-  }
-
-  const binaryOp = (op: Operation, l: number, r: number) => {
-    return [
-      Instruction.createOperation(Operation.CONSTANT, 1),
-      Instruction.createImmediate(l),
-      Instruction.createOperation(Operation.CONSTANT, 2),
-      Instruction.createImmediate(r),
-      Instruction.createOperation(op, Register.R0, 1, 2),
-      Instruction.createOperation(Operation.HALT),
-    ];
-  };
-
-  const unaryOp = (op: Operation, n: number) => {
-    return [
-      Instruction.createOperation(Operation.CONSTANT, 1),
-      Instruction.createImmediate(n),
-      Instruction.createOperation(op, Register.R0, 1),
-      Instruction.createOperation(Operation.HALT),
-    ];
-  };
+  const run = runInstructions;
 
   test("arithmetic: +", () => {
     return Promise.all([
@@ -279,7 +245,7 @@ describe("VM", () => {
 
   test("store", () => {
     return expect(
-      dump(
+      runAndDump(
         [
           Instruction.createOperation(Operation.CONSTANT, 0),
           Instruction.createImmediate(0x2000),
@@ -288,7 +254,7 @@ describe("VM", () => {
           Instruction.createOperation(Operation.STORE, 0, 1),
         ],
         0x2000
-      )
+      ).then(v => v[0])
     ).resolves.toBe(0x30);
   });
 
