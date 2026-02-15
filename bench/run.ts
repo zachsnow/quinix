@@ -6,7 +6,7 @@ import {
   compileBench,
   runBenchmark,
   runKernelBenchmark,
-  loadBaseline,
+  loadCommittedBaseline,
   type Baseline,
   type BenchResult,
   type BaselineEntry,
@@ -46,9 +46,9 @@ function printResult(name: string, result: BenchResult, entry: BaselineEntry | u
 }
 
 async function main() {
-  const baseline: Baseline | null = loadBaseline();
+  const baseline: Baseline | null = loadCommittedBaseline();
   if (!baseline) {
-    console.log('No baseline.json found. Run `bun run bench:update` to create one.\n');
+    console.log('No committed baseline.json found. Run `bun run bench:update` and commit.\n');
   }
 
   for (const name of QLL_BENCHMARKS) {

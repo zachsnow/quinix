@@ -1,6 +1,7 @@
 /**
  * Shared benchmark runner logic used by both bench.test.ts and update-baseline.ts.
  */
+import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -119,6 +120,21 @@ export function loadBaseline(): Baseline | null {
     return null;
   }
   return JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf-8'));
+}
+
+/**
+ * Load baseline.json from the last git commit (HEAD), ignoring uncommitted changes.
+ */
+export function loadCommittedBaseline(): Baseline | null {
+  try {
+    const json = execSync('git show HEAD:bench/baseline.json', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
 }
 
 export function saveBaseline(baseline: Baseline): void {
