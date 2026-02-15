@@ -6,9 +6,12 @@ Framebuffer-based color display and keyboard input peripherals for Quinix.
 
 ### Overview
 
-The display peripheral provides a DMA-style color display. Programs allocate a framebuffer in memory and point the peripheral to it. On FLIP, the peripheral reads pixels from that address and updates the display. This mirrors how classic VGA and DMA-based graphics hardware worked.
+The display peripheral provides a DMA-style color display. Programs allocate a framebuffer in memory
+and point the peripheral to it. On FLIP, the peripheral reads pixels from that address and updates the
+display. This is how classic VGA and DMA-based graphics hardware worked.
 
-The display supports user-specified resolutions: the kernel writes the requested width and height to shared memory before each FLIP, similar to DOS video modes.
+The display supports user-specified resolutions: the kernel writes the requested width and height
+to shared memory before each FLIP, similar to DOS video modes.
 
 ### Memory Layout
 
