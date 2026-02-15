@@ -14,7 +14,7 @@
     "rootDir": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@test/*": ["src/test/*"],
+      "@test/*": ["src/tests/*"],
       "@server/*": ["src/platform/server/*"],
       "@browser/*": ["src/platform/browser/*"],
       "@bin/*": ["bin/*"]
