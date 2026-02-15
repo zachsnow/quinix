@@ -186,7 +186,7 @@ class TwoLevelPageTablePeripheral extends Peripheral implements MMU {
     const physicalOffset = virtualAddress & 0b111111111111; // Last 12 bits.
 
     // Check address cache.
-    const indexes = table1Index | table2Index;
+    const indexes = (table1Index << 10) | table2Index;
     let physicalAddress, entryFlags;
     let cachedAddress = this.mru[indexes];
     if (cachedAddress !== undefined) {
