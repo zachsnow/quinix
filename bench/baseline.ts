@@ -6,7 +6,7 @@
  * Includes periodic await to simulate VM's peripheral yield behavior.
  * Compares against VM benchmark timings from bench.json if available.
  */
-import { loadBaseline } from './runner';
+import { loadBaseline } from './bench';
 
 const ITERATIONS = 5;
 const ARRAY_SIZE = 3_640_049;  // Match our benchmark cycle count

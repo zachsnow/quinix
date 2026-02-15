@@ -1,35 +1,25 @@
 /**
  * Performance smoke tests. Runs during `bun test` to catch regressions.
  *
- * If bench/bench.json exists, QLL benchmarks assert exact cycle count match
- * (cycle counts are deterministic for a given binary) and that wall-clock
- * time hasn't regressed beyond a threshold.
- *
- * Each benchmark runs 5 times (matching bench:update methodology) and uses
- * the best time to eliminate JIT warmup noise. The threshold is compared
- * against the baseline median.
- *
- * If no baseline exists, tests pass but log a suggestion to run `bun run bench:update`.
+ * Each benchmark runs 5 times and uses the best time to eliminate JIT warmup
+ * noise. Asserts exact cycle count match and that timing is within 20% of
+ * the baseline best.
  */
 import { describe, test, expect } from 'bun:test';
 
 import {
+  KERNEL_MAX_CYCLES,
+  BENCH_RUNS,
+  QLL_BENCHMARKS,
   compileBench,
   runBenchmark,
   runKernelBenchmark,
   loadBaseline,
-  type Baseline,
   type BaselineEntry,
   type BenchResult,
-} from './runner';
+} from './bench';
 
-const KERNEL_MAX_CYCLES = 5_000_000;
-const BENCH_RUNS = 5;
-
-// Fail if best time exceeds baseline median by more than 20%.
 const TIMING_THRESHOLD = 1.2;
-
-const QLL_BENCHMARKS = ['compute', 'memory'] as const;
 
 function formatMHz(cycles: number, ms: number): string {
   return (cycles / (ms / 1000) / 1_000_000).toFixed(2);
@@ -49,7 +39,7 @@ function assertTiming(timeMs: number, entry: BaselineEntry, name: string) {
 }
 
 describe('benchmarks', () => {
-  const baseline: Baseline | null = loadBaseline();
+  const baseline = loadBaseline();
 
   if (!baseline) {
     console.log('[bench] No bench.json found. Run `bun run bench:update` to create one.');
@@ -89,7 +79,6 @@ describe('benchmarks', () => {
       `${best.timeMs.toFixed(1)}ms (${formatMHz(best.cycles, best.timeMs)} MHz)`
     );
 
-    // No exact cycle assertion — timer interrupts cause non-determinism.
     expect(best.cycles).toBeGreaterThan(0);
     if (baseline?.benchmarks['kernel-boot']) {
       assertTiming(best.timeMs, baseline.benchmarks['kernel-boot'], 'kernel-boot');

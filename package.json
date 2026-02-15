@@ -32,9 +32,9 @@
     "qrun": "bun run bin/qrun.ts",
     "qstrings": "bun run bin/qstrings.ts",
     "qos": "bun run bin/qvm.ts kernel/kernel.qbin --disk image/disk.qfs --display 320x200 --keyboard",
-    "bench": "bun run bench/run.ts",
+    "bench": "bun run bench/bench.ts",
     "bench:baseline": "bun run bench/baseline.ts",
-    "bench:update": "bun run bench/update-baseline.ts"
+    "bench:update": "bun run bench/bench.ts --update"
   },
   "dependencies": {
     "peggy": "^4.2.0",
