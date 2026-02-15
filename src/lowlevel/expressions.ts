@@ -1292,7 +1292,7 @@ class CastExpression extends Expression {
     // Don't use contextual typing for float/byte casts to avoid int literals becoming float literals.
     // We want `<float>42` to typecheck as int->float conversion, not contextually typed float.
     // But we still want contextual typing for pointer casts like `<* byte>null`.
-    const targetIsScalar = this.type.isFloat || this.type.isConvertibleTo(Type.Byte);
+    const targetIsScalar = this.type.isFloat || this.type.isConvertibleTo(Type.Byte) || this.type.isConvertibleTo(Type.Int);
     const type = this.expression.typecheck(context, targetIsScalar ? undefined : this.type);
 
     // We can safely cast away nominal differences.
@@ -1497,23 +1497,23 @@ class BinaryExpression extends Expression {
     }
   }
 
-  private static readonly operations: { [op: string]: { int: Operation; float?: Operation } } = {
+  private static readonly operations: { [op: string]: { int: Operation; float?: Operation; sint?: Operation } } = {
     '+':  { int: Operation.ADD, float: Operation.FADD },
     '-':  { int: Operation.SUB, float: Operation.FSUB },
     '*':  { int: Operation.MUL, float: Operation.FMUL },
-    '/':  { int: Operation.DIV, float: Operation.FDIV },
-    '%':  { int: Operation.MOD },
+    '/':  { int: Operation.DIV, float: Operation.FDIV, sint: Operation.SDIV },
+    '%':  { int: Operation.MOD, sint: Operation.SMOD },
     '|':  { int: Operation.OR },
     '&':  { int: Operation.AND },
     '<<': { int: Operation.SHL },
-    '>>': { int: Operation.SHR },
+    '>>': { int: Operation.SHR, sint: Operation.SAR },
     '==': { int: Operation.EQ,  float: Operation.FEQ },
     '!=': { int: Operation.NEQ, float: Operation.FEQ }, // FEQ then invert
-    '<':  { int: Operation.LT,  float: Operation.FLT },
-    '>':  { int: Operation.GT,  float: Operation.FGT },
+    '<':  { int: Operation.LT,  float: Operation.FLT, sint: Operation.SLT },
+    '>':  { int: Operation.GT,  float: Operation.FGT, sint: Operation.SGT },
     // <= and >= use inverted ops, then control flow uses JNZ
-    '<=': { int: Operation.GT,  float: Operation.FGT }, // Inverted
-    '>=': { int: Operation.LT,  float: Operation.FLT }, // Inverted
+    '<=': { int: Operation.GT,  float: Operation.FGT, sint: Operation.SGT }, // Inverted
+    '>=': { int: Operation.LT,  float: Operation.FLT, sint: Operation.SLT }, // Inverted
   };
 
   private get operation(): Operation {
@@ -1527,6 +1527,9 @@ class BinaryExpression extends Expression {
         throw new InternalError(`unsupported float operator ${this.operator}`);
       }
       return entry.float;
+    }
+    if (this.left.concreteType.isSigned && entry.sint !== undefined) {
+      return entry.sint;
     }
     return entry.int;
   }

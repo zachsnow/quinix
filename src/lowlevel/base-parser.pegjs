@@ -68,7 +68,7 @@ Whitespace
 
 Tokens
   = LenToken / CapacityToken
-  / NullToken / VoidToken / ByteToken / FloatToken
+  / NullToken / VoidToken / ByteToken / IntToken / FloatToken
   / SizeofToken / DefaultToken
   / NewToken / DeleteToken
   / UnsafeToken
@@ -83,6 +83,7 @@ LenToken = tok:"len" !Identifier { return tok; }
 CapacityToken = tok:"cap" !Identifier { return tok; }
 NullToken = tok:"null" !Identifier { return tok; }
 ByteToken = tok:"byte" !Identifier { return tok; }
+IntToken = tok:"int" !Identifier { return tok; }
 FloatToken = tok:"float" !Identifier { return tok; }
 VoidToken = tok:"void" !Identifier { return tok; }
 SizeofToken = tok:"sizeof" !Identifier { return tok; }

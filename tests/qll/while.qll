@@ -1,12 +1,12 @@
 // @expect: 30
 
-type int = byte;
+type num = byte;
 
-function main(): int {
-    var i: int = 10;
-    var j: int = 0;
+function main(): num {
+    var i: num = 10;
+    var j: num = 0;
 
-    while(i > <int>0){
+    while(i > <num>0){
         i = i - 1;
         j = j + 3;
     }

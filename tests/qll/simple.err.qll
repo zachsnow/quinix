@@ -1,7 +1,7 @@
-// @expect-error: unknown type identifier int
+// @expect-error: unknown type identifier num
 function main(): byte {
   var i: byte = 42;
-  var k: int = 0;
+  var k: num = 0;
   var z: byte = i == k;
   return &i;
 }
