@@ -223,7 +223,7 @@ abstract class BufferedPeripheral extends Peripheral {
     // Get shared data.
     const sourceSize = this.mapping.view[this.SIZE_ADDR];
     const size = Math.min(sourceSize, this.bufferSize);
-    for (var i = 0; i < size; i++) {
+    for (let i = 0; i < size; i++) {
       this.outputBuffer.push(this.mapping.view[this.BUFFER_ADDR + i]);
     }
 
@@ -253,7 +253,7 @@ abstract class BufferedPeripheral extends Peripheral {
 
     this.mapping.view[this.SIZE_ADDR] = size;
 
-    for (var i = 0; i < size; i++) {
+    for (let i = 0; i < size; i++) {
       this.mapping.view[this.BUFFER_ADDR + i] = this.inputBuffer[i];
     }
     this.inputBuffer.splice(0, size);

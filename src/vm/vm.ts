@@ -458,7 +458,7 @@ class VM {
     );
 
     const countAddress = this.INTERRUPT_TABLE_COUNT_ADDR;
-    var handlerCount = this.memory[countAddress];
+    let handlerCount = this.memory[countAddress];
 
     log.debug(
       `${Immediate.toString(countAddress)}: ${Immediate.toString(handlerCount)}`
@@ -742,14 +742,14 @@ class VM {
 
   private interruptStore(): void {
     const base = this.INTERRUPT_TABLE_REGISTERS_ADDR;
-    for (var i = 0; i < this.state.registers.length; i++) {
+    for (let i = 0; i < this.state.registers.length; i++) {
       this.memory[base + i] = this.state.registers[i];
     }
   }
 
   private interruptRestore(): void {
     const base = this.INTERRUPT_TABLE_REGISTERS_ADDR;
-    for (var i = 0; i < this.state.registers.length; i++) {
+    for (let i = 0; i < this.state.registers.length; i++) {
       this.state.registers[i] = this.memory[base + i];
       this.memory[base + i] = 0;
     }
