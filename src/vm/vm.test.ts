@@ -667,6 +667,226 @@ describe("VM", () => {
     // - External test harness that waits for real time to pass
   });
 
+  test("arithmetic: <<", () => {
+    return Promise.all([
+      // Zero shift
+      expect(run(binaryOp(Operation.SHL, 0x1, 0x0))).resolves.toBe(0x1),
+      // Single bit
+      expect(run(binaryOp(Operation.SHL, 0x1, 0x1))).resolves.toBe(0x2),
+      // Multi-bit
+      expect(run(binaryOp(Operation.SHL, 0x1, 0x4))).resolves.toBe(0x10),
+      // Shift by 31
+      expect(run(binaryOp(Operation.SHL, 0x1, 31))).resolves.toBe(0x80000000),
+      // Shift by 32 wraps to 0 via mask
+      expect(run(binaryOp(Operation.SHL, 0x1, 32))).resolves.toBe(0x1),
+    ]);
+  });
+
+  test("arithmetic: >>", () => {
+    return Promise.all([
+      // Single bit
+      expect(run(binaryOp(Operation.SHR, 0x2, 0x1))).resolves.toBe(0x1),
+      // High bit
+      expect(run(binaryOp(Operation.SHR, 0x80000000, 0x1))).resolves.toBe(0x40000000),
+      // Multi-bit
+      expect(run(binaryOp(Operation.SHR, 0x100, 0x4))).resolves.toBe(0x10),
+      // Zero shift
+      expect(run(binaryOp(Operation.SHR, 0xdeadbeef, 0x0))).resolves.toBe(0xdeadbeef),
+      // Shift by 31
+      expect(run(binaryOp(Operation.SHR, 0x80000000, 31))).resolves.toBe(0x1),
+    ]);
+  });
+
+  test("constant", () => {
+    return Promise.all([
+      expect(run(unaryOp(Operation.MOV, 0))).resolves.toBe(0),
+      expect(
+        run([
+          Instruction.createOperation(Operation.CONSTANT, Register.R0),
+          Instruction.createImmediate(42),
+          Instruction.createOperation(Operation.HALT),
+        ])
+      ).resolves.toBe(42),
+      expect(
+        run([
+          Instruction.createOperation(Operation.CONSTANT, Register.R0),
+          Instruction.createImmediate(0xffffffff),
+          Instruction.createOperation(Operation.HALT),
+        ])
+      ).resolves.toBe(0xffffffff),
+    ]);
+  });
+
+  test("jmp", () => {
+    // Jump over an instruction that would set r0=0xFF
+    // Layout: [0]const r0 [1]42 [2]const r1 [3]addr [4]jmp [5]const r0 [6]0xff [7]halt
+    return expect(
+      run([
+        Instruction.createOperation(Operation.CONSTANT, Register.R0),
+        Instruction.createImmediate(42),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(VM.PROGRAM_ADDR + 7),
+        Instruction.createOperation(Operation.JMP, undefined, 1),
+        Instruction.createOperation(Operation.CONSTANT, Register.R0),
+        Instruction.createImmediate(0xff),
+        Instruction.createOperation(Operation.HALT),
+      ])
+    ).resolves.toBe(42);
+  });
+
+  test("jz: taken when r0=0", () => {
+    // Layout: [0]const r1 [1]addr [2]jz [3]const r0 [4]0xff [5]halt
+    return expect(
+      run([
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(VM.PROGRAM_ADDR + 5),
+        Instruction.createOperation(Operation.JZ, undefined, Register.R0, 1),
+        Instruction.createOperation(Operation.CONSTANT, Register.R0),
+        Instruction.createImmediate(0xff),
+        Instruction.createOperation(Operation.HALT),
+      ])
+    ).resolves.toBe(0);
+  });
+
+  test("jz: not taken when r0!=0", () => {
+    return expect(
+      run([
+        Instruction.createOperation(Operation.CONSTANT, Register.R0),
+        Instruction.createImmediate(1),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(VM.PROGRAM_ADDR + 100),
+        Instruction.createOperation(Operation.JZ, undefined, Register.R0, 1),
+        Instruction.createOperation(Operation.CONSTANT, Register.R0),
+        Instruction.createImmediate(42),
+        Instruction.createOperation(Operation.HALT),
+      ])
+    ).resolves.toBe(42);
+  });
+
+  test("jnz: taken when r0!=0", () => {
+    // Layout: [0]const r0 [1]1 [2]const r1 [3]addr [4]jnz [5]const r0 [6]0xff [7]halt
+    return expect(
+      run([
+        Instruction.createOperation(Operation.CONSTANT, Register.R0),
+        Instruction.createImmediate(1),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(VM.PROGRAM_ADDR + 7),
+        Instruction.createOperation(Operation.JNZ, undefined, Register.R0, 1),
+        Instruction.createOperation(Operation.CONSTANT, Register.R0),
+        Instruction.createImmediate(0xff),
+        Instruction.createOperation(Operation.HALT),
+      ])
+    ).resolves.toBe(1);
+  });
+
+  test("jnz: not taken when r0=0", () => {
+    return expect(
+      run([
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(VM.PROGRAM_ADDR + 100),
+        Instruction.createOperation(Operation.JNZ, undefined, Register.R0, 1),
+        Instruction.createOperation(Operation.CONSTANT, Register.R0),
+        Instruction.createImmediate(42),
+        Instruction.createOperation(Operation.HALT),
+      ])
+    ).resolves.toBe(42);
+  });
+
+  test("rjmp: forward skip", () => {
+    // Layout: [0]const r0 [1]99 [2]const r1 [3]3 [4]rjmp [5]const r0 [6]0xff [7]halt
+    // rjmp at 4, offset 3 → IP = 4+3 = 7 = halt
+    return expect(
+      run([
+        Instruction.createOperation(Operation.CONSTANT, Register.R0),
+        Instruction.createImmediate(99),
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(3),
+        Instruction.createOperation(Operation.RJMP, undefined, 1),
+        Instruction.createOperation(Operation.CONSTANT, Register.R0),
+        Instruction.createImmediate(0xff),
+        Instruction.createOperation(Operation.HALT),
+      ])
+    ).resolves.toBe(99);
+  });
+
+  test("rjz: taken and not-taken", () => {
+    return Promise.all([
+      // Taken: r0=0, jump forward
+      // Layout: [0]const r1 [1]3 [2]rjz [3]const r0 [4]0xff [5]halt
+      // rjz at 2, offset 3 → IP = 2+3 = 5 = halt
+      expect(
+        run([
+          Instruction.createOperation(Operation.CONSTANT, 1),
+          Instruction.createImmediate(3),
+          Instruction.createOperation(Operation.RJZ, undefined, Register.R0, 1),
+          Instruction.createOperation(Operation.CONSTANT, Register.R0),
+          Instruction.createImmediate(0xff),
+          Instruction.createOperation(Operation.HALT),
+        ])
+      ).resolves.toBe(0),
+      // Not taken: r0=1
+      expect(
+        run([
+          Instruction.createOperation(Operation.CONSTANT, Register.R0),
+          Instruction.createImmediate(1),
+          Instruction.createOperation(Operation.CONSTANT, 1),
+          Instruction.createImmediate(100),
+          Instruction.createOperation(Operation.RJZ, undefined, Register.R0, 1),
+          Instruction.createOperation(Operation.CONSTANT, Register.R0),
+          Instruction.createImmediate(42),
+          Instruction.createOperation(Operation.HALT),
+        ])
+      ).resolves.toBe(42),
+    ]);
+  });
+
+  test("rjnz: backward loop counts to N", () => {
+    // Count from 0 to 5 using rjnz to loop backward
+    // Layout: [0]const r1 [1]5 [2]const r2 [3]1 [4]const r4 [5]-2
+    //         [6]add [7]neq [8]rjnz [9]halt
+    // rjnz at 8, offset -2 → IP = 8+(-2) = 6 = add (loop body)
+    return expect(
+      run([
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(5),
+        Instruction.createOperation(Operation.CONSTANT, 2),
+        Instruction.createImmediate(1),
+        Instruction.createOperation(Operation.CONSTANT, 4),
+        Instruction.createImmediate(-2 >>> 0),
+        // @loop:
+        Instruction.createOperation(Operation.ADD, Register.R0, Register.R0, 2),
+        Instruction.createOperation(Operation.NEQ, 3, Register.R0, 1),
+        Instruction.createOperation(Operation.RJNZ, undefined, 3, 4),
+        Instruction.createOperation(Operation.HALT),
+      ])
+    ).resolves.toBe(5);
+  });
+
+  test("nop: preserves registers", () => {
+    return expect(
+      run([
+        Instruction.createOperation(Operation.CONSTANT, Register.R0),
+        Instruction.createImmediate(42),
+        Instruction.createOperation(Operation.NOP),
+        Instruction.createOperation(Operation.NOP),
+        Instruction.createOperation(Operation.NOP),
+        Instruction.createOperation(Operation.HALT),
+      ])
+    ).resolves.toBe(42);
+  });
+
+  test("int: unmapped handler faults", async () => {
+    // INT with no handler mapped should fault
+    await expect(
+      run([
+        Instruction.createOperation(Operation.CONSTANT, 1),
+        Instruction.createImmediate(5),
+        Instruction.createOperation(Operation.INT, undefined, 1),
+        Instruction.createOperation(Operation.HALT),
+      ])
+    ).rejects.toThrow("fault");
+  });
+
   describe("ClockPeripheral", () => {
     test("provides increasing time value", async () => {
       const clock = new ClockPeripheral();
