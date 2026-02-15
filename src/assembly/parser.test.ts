@@ -146,4 +146,20 @@ describe("Parser", () => {
     const [, program] = assemblyProgram.assemble();
     expect(program!.instructions[1].immediate).toBe(10);
   });
+
+  test("negative integer literals produce two's complement", () => {
+    let assemblyProgram = AssemblyProgram.parse(`constant r0 -1`);
+    let [, program] = assemblyProgram.assemble();
+    expect(program!.instructions[1].immediate! >>> 0).toBe(0xFFFFFFFF);
+
+    assemblyProgram = AssemblyProgram.parse(`constant r0 -42`);
+    [, program] = assemblyProgram.assemble();
+    expect(program!.instructions[1].immediate! >>> 0).toBe((-42) >>> 0);
+  });
+
+  test("negative integers in data directives", () => {
+    const assemblyProgram = AssemblyProgram.parse(`data @foo -1 -2 0`);
+    expect(assemblyProgram.directives.length).toBe(1);
+    expect(assemblyProgram.directives[0]).toBeInstanceOf(DataDirective);
+  });
 });

@@ -126,6 +126,10 @@ Exponent
   = [eE] sign:[+-]? digits:[0-9]+ { return 'e' + (sign || '') + digits.join(''); }
 
 Number
+  = "-" n:UnsignedNumber { return ((-n) >>> 0); }
+  / n:UnsignedNumber { return n; }
+
+UnsignedNumber
   = "0x" number:[0-9a-fA-F]+ { return parseInt(number.join(''), 16); }
   / "0b" digits:[01]+ { return parseInt(digits.join(''), 2); }
   / number:[0-9]+ { return parseInt(number.join(''), 10); }
