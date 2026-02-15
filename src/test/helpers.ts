@@ -11,7 +11,8 @@ import { Instruction, Operation, Program, Register } from '@/vm/instructions';
 import { LowLevelProgram } from '@/lowlevel/lowlevel';
 import { AssemblyProgram } from '@/assembly/assembly';
 import { Immediate, Address } from '@/lib/types';
-import { Peripheral } from '@/vm/peripherals';
+import { Peripheral, TimerPeripheral, ClockPeripheral } from '@/vm/peripherals';
+import { DebugBreakPeripheral, DebugOutputPeripheral } from '@/platform/server/peripherals';
 
 // === Path Constants ===
 
@@ -441,4 +442,38 @@ export function assertSuccess(result: VMResult | string): asserts result is numb
   if (typeof result === 'string') {
     throw new Error(`Expected success, got error: ${result}`);
   }
+}
+
+/**
+ * Compile and run QLL with stdlib, returning both exit code and captured output.
+ * Peripherals are ordered to place DebugOutputPeripheral at base 0x303,
+ * matching bare/console.qll's hardcoded addresses.
+ */
+export async function runQLLWithStdOutput(
+  source: string,
+  options: VMOptions = {}
+): Promise<{ result: VMResult | string; output: string }> {
+  const debugOutput = new DebugOutputPeripheral();
+  const peripherals = [
+    new TimerPeripheral(),
+    new ClockPeripheral(),
+    new DebugBreakPeripheral(),
+    debugOutput,
+    ...(options.peripherals ?? []),
+  ];
+  try {
+    const result = await runQLLWithStd(source, { ...options, peripherals });
+    return { result, output: debugOutput.output };
+  } catch (e: any) {
+    return { result: e.message ?? String(e), output: debugOutput.output };
+  }
+}
+
+/**
+ * Run QLL with stdlib and expect specific captured output.
+ */
+export function expectQLLOutput(output: string, source: string, options: VMOptions = {}) {
+  return expect(
+    runQLLWithStdOutput(source, options).then(r => r.output.replace(/\0+$/, ''))
+  ).resolves.toBe(output);
 }

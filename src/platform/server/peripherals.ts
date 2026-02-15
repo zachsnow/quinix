@@ -19,12 +19,14 @@ const log = logger('vm:peripherals');
 class DebugOutputPeripheral extends BufferedPeripheral {
   public readonly name = "debug-output";
   public readonly identifier = 0x00000003;
+  public output = "";
 
   public async onWrite(data: number[]): Promise<void> {
     // Release for "realism".
     await release();
 
     const s = codePointsToString(data);
+    this.output += s;
     process.stdout.write(s);
   }
 }

@@ -3,7 +3,7 @@
  * Tests the shared/std.qll and shared/alloc.qll functions.
  */
 
-import { expectQLLWithStd } from '@test/helpers';
+import { expectQLLWithStd, expectQLLOutput } from '@test/helpers';
 
 describe('std::math', () => {
   test('max: first larger', () => {
@@ -124,6 +124,126 @@ describe('std::str', () => {
         return buffer[0];
       }
     `, { cycles: 10000 });
+  });
+
+  test('equal: matching strings', () => {
+    return expectQLLWithStd(1, `
+      function main(): byte {
+        var a: byte[5] = "hello";
+        var b: byte[5] = "hello";
+        return std::str::equal(a, b) ? 1 : 0;
+      }
+    `);
+  });
+
+  test('equal: different strings', () => {
+    return expectQLLWithStd(0, `
+      function main(): byte {
+        var a: byte[5] = "hello";
+        var b: byte[5] = "world";
+        return std::str::equal(a, b) ? 1 : 0;
+      }
+    `);
+  });
+
+  test('equal: different lengths', () => {
+    return expectQLLWithStd(0, `
+      function main(): byte {
+        var a: byte[2] = "hi";
+        var b: byte[5] = "hello";
+        return std::str::equal(a, b) ? 1 : 0;
+      }
+    `);
+  });
+
+  test('index_of: found', () => {
+    return expectQLLWithStd(2, `
+      function main(): byte {
+        var s: byte[5] = "hello";
+        return std::str::index_of(s, 0x6C);
+      }
+    `, { cycles: 10000 });
+  });
+
+  test('index_of: not found', () => {
+    return expectQLLWithStd(-1, `
+      function main(): byte {
+        var s: byte[5] = "hello";
+        return std::str::index_of(s, 0x7A);
+      }
+    `, { cycles: 10000 });
+  });
+
+  test('starts_with: match', () => {
+    return expectQLLWithStd(1, `
+      function main(): byte {
+        var s: byte[5] = "hello";
+        var p: byte[3] = "hel";
+        return std::str::starts_with(s, p) ? 1 : 0;
+      }
+    `, { cycles: 10000 });
+  });
+
+  test('starts_with: no match', () => {
+    return expectQLLWithStd(0, `
+      function main(): byte {
+        var s: byte[5] = "hello";
+        var p: byte[3] = "wor";
+        return std::str::starts_with(s, p) ? 1 : 0;
+      }
+    `, { cycles: 10000 });
+  });
+
+  test('ends_with: match', () => {
+    return expectQLLWithStd(1, `
+      function main(): byte {
+        var s: byte[5] = "hello";
+        var p: byte[2] = "lo";
+        return std::str::ends_with(s, p) ? 1 : 0;
+      }
+    `, { cycles: 10000 });
+  });
+
+  test('ends_with: no match', () => {
+    return expectQLLWithStd(0, `
+      function main(): byte {
+        var s: byte[5] = "hello";
+        var p: byte[2] = "he";
+        return std::str::ends_with(s, p) ? 1 : 0;
+      }
+    `, { cycles: 10000 });
+  });
+
+  test('to_upper', () => {
+    return expectQLLWithStd(0x48, `
+      function main(): byte {
+        var s: byte[5] = "hello";
+        std::str::to_upper(s);
+        return s[0];
+      }
+    `, { cycles: 10000 });
+  });
+
+  test('to_lower', () => {
+    return expectQLLWithStd(0x68, `
+      function main(): byte {
+        var s: byte[5] = "HELLO";
+        std::str::to_lower(s);
+        return s[0];
+      }
+    `, { cycles: 10000 });
+  });
+
+  test('concat', () => {
+    return expectQLLOutput("abcd", `
+      function main(): byte {
+        var a: byte[2] = "ab";
+        var b: byte[2] = "cd";
+        var result: byte[] = std::str::concat(a, b);
+        std::console::print(result);
+        return 0;
+      }
+    `, { cycles: 20000 });
   });
 });
 
@@ -317,6 +437,34 @@ describe('std::vector', () => {
       }
     `, { cycles: 10000 });
   });
+
+  test('destroy', () => {
+    return expectQLLWithStd(0, `
+      function main(): byte {
+        var v = std::vector::create<byte>(10);
+        std::vector::add(&v, 42);
+        std::vector::destroy<byte>(v);
+        return 0;
+      }
+    `, { cycles: 5000 });
+  });
+
+  test('foreach', () => {
+    return expectQLLWithStd(60, `
+      global sum: byte = 0;
+      function accumulate(n: byte): void {
+        sum = sum + n;
+      }
+      function main(): byte {
+        var v = std::vector::create<byte>(10);
+        std::vector::add(&v, 10);
+        std::vector::add(&v, 20);
+        std::vector::add(&v, 30);
+        std::vector::foreach<byte>(v, accumulate);
+        return sum;
+      }
+    `, { cycles: 15000 });
+  });
 });
 
 describe('std::ilist', () => {
@@ -386,6 +534,25 @@ describe('std::ilist', () => {
       }
     `, { cycles: 15000 });
   });
+
+  test('foreach', () => {
+    return expectQLLWithStd(30, `
+      type Node = struct { value: byte; next: *Node; };
+      global sum: byte = 0;
+      function accumulate(node: *Node): void {
+        sum = sum + node->value;
+      }
+      function main(): byte {
+        var list: *Node = null;
+        var n1 = new Node = Node { value = 10, next = null };
+        var n2 = new Node = Node { value = 20, next = null };
+        std::ilist::add<*Node>(&list, n1);
+        std::ilist::add<*Node>(&list, n2);
+        std::ilist::foreach<*Node>(list, accumulate);
+        return sum;
+      }
+    `, { cycles: 15000 });
+  });
 });
 
 describe('std::slice type', () => {
@@ -395,5 +562,52 @@ describe('std::slice type', () => {
         return sizeof std::slice<byte>;
       }
     `);
+  });
+});
+
+describe('std::fmt', () => {
+  test('print with fs', () => {
+    return expectQLLOutput("hello", `
+      function main(): byte {
+        var fmts: std::fmt[1];
+        fmts[0] = std::fmt::fs("hello");
+        std::fmt::print(fmts);
+        return 0;
+      }
+    `, { cycles: 20000 });
+  });
+
+  test('print with fi', () => {
+    return expectQLLOutput("42", `
+      function main(): byte {
+        var fmts: std::fmt[1];
+        fmts[0] = std::fmt::fi(42);
+        std::fmt::print(fmts);
+        return 0;
+      }
+    `, { cycles: 30000 });
+  });
+
+  test('print with fu', () => {
+    return expectQLLOutput("255", `
+      function main(): byte {
+        var fmts: std::fmt[1];
+        fmts[0] = std::fmt::fu(255);
+        std::fmt::print(fmts);
+        return 0;
+      }
+    `, { cycles: 30000 });
+  });
+});
+
+describe('std::buffered', () => {
+  test('write via console::print', () => {
+    return expectQLLOutput("hello", `
+      function main(): byte {
+        var s: byte[5] = "hello";
+        std::console::print(s);
+        return 0;
+      }
+    `, { cycles: 10000 });
   });
 });
