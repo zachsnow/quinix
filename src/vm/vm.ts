@@ -691,6 +691,13 @@ class VM {
     return this.resumeInterrupt.promise;
   }
 
+  private tickPeripherals(): void {
+    const cycles = this.stats.cycles;
+    for (const mapping of this.mappedPeripherals) {
+      mapping.peripheral.tick(cycles);
+    }
+  }
+
   /**
    * Resumes execution.
    */
@@ -702,7 +709,8 @@ class VM {
 
       switch (result) {
         case "continue":
-          // Keep on keeping on.
+          // Tick cycle-based peripherals before yielding.
+          this.tickPeripherals();
           await release();
           break;
 
@@ -720,14 +728,27 @@ class VM {
           }
           break;
 
-        case "wait":
-          // Wait for the next interrupt to begin trigger.  This will resume
-          // execution.
+        case "wait": {
+          // Fast-forward to next cycle-based event.
+          let earliest: number | null = null;
+          for (const mapping of this.mappedPeripherals) {
+            const next = mapping.peripheral.nextTick();
+            if (next !== null && (earliest === null || next < earliest)) {
+              earliest = next;
+            }
+          }
+          if (earliest !== null) {
+            this.stats.cycles = earliest;
+            this.tickPeripherals();
+            break;
+          }
+          // No cycle-based events; wait for async interrupt.
           log.debug("wait");
           this.stats.waited = true;
           this.state.waiting = true;
           await this.nextInterrupt();
           break;
+        }
 
         case "halt":
           return this.state.registers[Register.R0];

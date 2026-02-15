@@ -6,6 +6,8 @@ import { FaultReason, VM } from "./vm";
 
 const log = logger("vm:peripherals");
 
+const CYCLES_PER_MS = 10_000; // 10 MHz virtual clock
+
 abstract class Peripheral {
   /**
    * The peripheral's display name.
@@ -68,6 +70,17 @@ abstract class Peripheral {
    * to map an interrupt.
    */
   public interrupt: Interrupt = 0x0;
+
+  /**
+   * Called by the VM each yield point with the current cycle count.
+   */
+  public tick(cycles: number): void {}
+
+  /**
+   * Returns the next cycle at which this peripheral needs to fire,
+   * or null if it has no pending cycle-based event.
+   */
+  public nextTick(): number | null { return null; }
 
   /**
    * The peripheral's interrupt handler.
@@ -293,6 +306,7 @@ abstract class BufferedPeripheral extends Peripheral {
 
 /**
  * A peripheral implementing a "hardware" timer.
+ * Fires interrupts based on VM cycle count rather than wall-clock time.
  */
 class TimerPeripheral extends Peripheral {
   public readonly name = "timer";
@@ -304,56 +318,56 @@ class TimerPeripheral extends Peripheral {
 
   public readonly TIME_ADDR = 0x0;
 
-  private milliseconds = 0;
-  private interval?: ReturnType<typeof setInterval>;
+  private active = false;
+  private cycleInterval = 0;
+  private nextTarget = 0;
 
   public unmap() {
-    if (this.interval) {
-      log.debug(`${this.name}: unmapping and clearing interval`);
-      clearInterval(this.interval);
-    }
+    this.active = false;
+    this.cycleInterval = 0;
+    this.nextTarget = 0;
   }
 
   public notify(address: Address): void {
-    if (!this.mapping) {
+    if (!this.mapping || !this.vm) {
       this.unmapped();
     }
 
-    // Don't do anything if we are already running at this interval.
     const milliseconds = this.mapping.view[0];
-    if (this.milliseconds === milliseconds) {
+
+    if (milliseconds === 0) {
+      log.debug(`${this.name}: disabled`);
+      this.active = false;
       return;
     }
-    this.milliseconds = milliseconds;
 
-    // Clear current interval.
-    if (this.interval) {
-      log.debug(`${this.name}: clearing interval`);
-      clearInterval(this.interval);
-      this.interval = undefined;
-    }
-
-    // Allow disabling the timer entirely.
-    if (this.milliseconds) {
-      log.debug(`${this.name}: configuring interval ${this.milliseconds}`);
-      this.interval = setInterval(() => {
-        this.intervalHandler();
-      }, this.milliseconds);
-    }
+    this.cycleInterval = milliseconds * CYCLES_PER_MS;
+    this.nextTarget = this.vm.stats.cycles + this.cycleInterval;
+    this.active = true;
+    log.debug(`${this.name}: configuring interval ${milliseconds}ms (${this.cycleInterval} cycles)`);
   }
 
-  private intervalHandler() {
+  public tick(cycles: number): void {
     if (!this.vm) {
       this.unmapped();
     }
-    log.debug(`${this.name}: interrupting`);
-    this.vm.interrupt(this.interrupt);
+
+    while (this.active && cycles >= this.nextTarget) {
+      log.debug(`${this.name}: interrupting at cycle ${cycles}`);
+      this.vm.interrupt(this.interrupt);
+      this.nextTarget += this.cycleInterval;
+    }
+  }
+
+  public nextTick(): number | null {
+    return this.active ? this.nextTarget : null;
   }
 }
 
 /**
  * A peripheral providing a millisecond clock.
  * Read the single word to get milliseconds since VM start.
+ * Derives time from the VM's cycle counter.
  */
 class ClockPeripheral extends Peripheral {
   public readonly name = "clock";
@@ -362,9 +376,6 @@ class ClockPeripheral extends Peripheral {
   public readonly io = 0x0;
   public readonly shared = 0x1;
 
-  private startTime = 0;
-  private interval?: ReturnType<typeof setInterval>;
-
   public map(vm: VM, mapping: PeripheralMapping): void {
     super.map(vm, mapping);
 
@@ -372,23 +383,14 @@ class ClockPeripheral extends Peripheral {
       this.unmapped();
     }
 
-    this.startTime = Date.now();
     this.mapping.view[0] = 0;
-
-    // Update clock every 1ms
-    this.interval = setInterval(() => {
-      if (this.mapping) {
-        this.mapping.view[0] = Date.now() - this.startTime;
-      }
-    }, 1);
   }
 
-  public unmap() {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = undefined;
+  public tick(cycles: number): void {
+    if (!this.mapping) {
+      return;
     }
-    super.unmap();
+    this.mapping.view[0] = Math.floor(cycles / CYCLES_PER_MS);
   }
 
   public notify(address: Address): void {
@@ -488,6 +490,6 @@ class DisplayPeripheral extends Peripheral {
   }
 }
 
-export { BufferedPeripheral, ClockPeripheral, DisplayPeripheral, Peripheral, TimerPeripheral };
+export { BufferedPeripheral, ClockPeripheral, CYCLES_PER_MS, DisplayPeripheral, Peripheral, TimerPeripheral };
 export type { DisplayRenderer, PeripheralMapping };
 
