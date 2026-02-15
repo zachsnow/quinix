@@ -308,3 +308,65 @@ describe("Integration: interrupt lifecycle", () => {
     expect(result).toBe(42);
   });
 });
+
+describe("Integration: MMU fault", () => {
+  test("write to read-only page triggers fault handler", async () => {
+    // Use enableMmu with 2 pages (identity-mapped). Modify page 1's flags
+    // to remove Write permission, then attempt a write. The fault handler
+    // should fire with MEMORY_FAULT reason.
+    const assembled = assembleQASM(`
+      ; --- Fault handler at 0x500: read fault reason, halt with it ---
+      constant r1 0x500
+      constant r2 0x05000000    ; constant r0
+      store r1 r2
+      constant r1 0x501
+      constant r2 0x43          ; fault reason address
+      store r1 r2
+      constant r1 0x502
+      constant r2 0x02000000    ; load r0 r0
+      store r1 r2
+      constant r1 0x503
+      constant r2 0x00000000    ; halt
+      store r1 r2
+
+      ; --- Set up interrupt table for fault (interrupt 1) ---
+      constant r1 0x01
+      load r3 r1
+      constant r4 0x1
+      add r3 r3 r4
+      constant r2 0x500
+      store r3 r2
+      constant r1 0x44
+      constant r2 0x1
+      store r1 r2
+
+      ; --- Remove Write flag from page 1 ---
+      ; Page table at 0x80: [count] [page0: vaddr,paddr,size,flags] [page1: vaddr,paddr,size,flags]
+      ; Page 1 flags at 0x80 + 1 + 4 + 3 = 0x88
+      ; Current flags = 0xF (Present|Read|Write|Execute)
+      ; New flags = 0xB (Present|Read|Execute, no Write)
+      constant r1 0x88
+      constant r2 0x0B
+      store r1 r2
+
+      ; --- Notify MMU to rebuild: store page table base to MMU IO at 0x300 ---
+      constant r1 0x300
+      constant r2 0x80
+      store r1 r2
+
+      ; --- Attempt write to page 1 (address 0x200000) - should fault ---
+      constant r1 0x200000
+      constant r2 0xDEAD
+      store r1 r2
+
+      ; Should not reach here
+      halt
+    `);
+
+    expect(assembled.success).toBe(true);
+
+    const vm = new VM({ enableMmu: true, mmuPages: 2, cycles: 500 });
+    const result = await vm.run(assembled.binary!);
+    expect(result).toBe(0x03); // MEMORY_FAULT
+  });
+});
