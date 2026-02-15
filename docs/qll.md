@@ -20,8 +20,13 @@ Key features of the language include:
 | Type | Size | Description |
 |------|------|-------------|
 | `byte` | 1 word | Unsigned integer (32-bit on Quinix VM) |
+| `int` | 1 word | Signed integer (32-bit, two's complement) |
 | `bool` | 1 word | Boolean value (0 = false, non-zero = true) |
 | `void` | 0 | No value; only valid as function return type |
+
+`byte` and `int` share the same 32-bit storage but are distinct types with no implicit conversion. Arithmetic and comparison operators use unsigned semantics for `byte` and signed semantics for `int`. Use `<unsafe int>` or `<unsafe byte>` to cast between them.
+
+Integer literals default to `byte` but adopt the `int` type from context: variable annotations, function parameters, assignments, return statements, and peer operands in binary expressions. Unary `-` and `+` on literals propagate context, so `var x: int = -3` works directly.
 
 ### Compound Types
 
@@ -95,7 +100,7 @@ QLL uses **pass-by-value** for all types. All arguments are passed on the stack 
 ### Integral Types (size = 1)
 
 Pushed as a single word:
-- `byte`, `bool`
+- `byte`, `int`, `bool`
 - Pointers (`* T`)
 - Single-word structs
 
@@ -197,7 +202,7 @@ function main(): void {
 ### No Other Implicit Conversions
 
 QLL does not perform:
-- Numeric promotions or truncations
+- Numeric promotions or truncations (including between `byte` and `int`)
 - Pointer type coercions
 - Struct-to-struct conversions
 
