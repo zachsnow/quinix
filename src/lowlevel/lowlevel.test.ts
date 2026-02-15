@@ -68,7 +68,7 @@ describe('QLLC parsing', () => {
     test('simple comments', () => {
       expect(LowLevelProgram.parse(`
         // Hi!
-        type int = byte; // Yeah!
+        type num = byte; // Yeah!
       `).declarations.length).toBe(1);
     });
 
@@ -332,18 +332,18 @@ describe('QLLC typechecking', () => {
     test('simple instantiation, nominal type', () => {
       return expectValid(`
         type vector<T> = T[];
-        type int = byte;
+        type num = byte;
         function reduce<T, C>(vec: vector<T>, fn: (T, C) => C, c: C): C {
           for(var i = 0; i < len vec; i = i + 1){
             c = fn(vec[i], c);
           }
           return c;
         }
-        function add(a: int, b: int): int {
+        function add(a: num, b: num): num {
           return a + b;
         }
-        function sum(v: vector<int>): int {
-          return reduce<int, int>(v, add, 0);
+        function sum(v: vector<num>): num {
+          return reduce<num, num>(v, add, 0);
         }
       `);
     });
@@ -358,14 +358,14 @@ describe('QLLC typechecking', () => {
             }
             return c;
           }
-          type int = void;
+          type num = void;
         }
-        type int = byte;
-        function add(a: int, b: int): int {
+        type num = byte;
+        function add(a: num, b: num): num {
           return a + b;
         }
-        function sum(v: std::vector<int>): int {
-          return std::reduce<int, int>(v, add, 0);
+        function sum(v: std::vector<num>): num {
+          return std::reduce<num, num>(v, add, 0);
         }
       `);
     });
@@ -380,15 +380,15 @@ describe('QLLC typechecking', () => {
             }
             return c;
           }
-          type int = void;
+          type num = void;
         }
         type vector = byte;
-        type int = byte;
-        function add(a: int, b: int): int {
+        type num = byte;
+        function add(a: num, b: num): num {
           return a + b;
         }
-        function sum(v: std::vector<int>): int {
-          return std::reduce<int, int>(v, add, 0);
+        function sum(v: std::vector<num>): num {
+          return std::reduce<num, num>(v, add, 0);
         }
       `);
     });
@@ -414,12 +414,12 @@ describe('QLLC typechecking', () => {
   describe('Typechecking errors', () => {
     test('nominal check', () => {
       // Named types are convertible to their underlying type, so returning
-      // an `int` (alias for `byte`) from a function returning `byte` is allowed,
+      // a `num` (alias for `byte`) from a function returning `byte` is allowed,
       // consistent with variable init, assignment, and function args.
       expect(errors(`
-        type int = byte;
+        type num = byte;
         function main(): byte {
-          var i: int = 0;
+          var i: num = 0;
           return i;
         }
       `)).toEqual([]);
@@ -427,13 +427,13 @@ describe('QLLC typechecking', () => {
 
     test('arithmetic', () => {
       expect(errors(`
-        type int = byte;
+        type num = byte;
         function main(): void {
-          var i: int = 0;
+          var i: num = 0;
           var j: byte = 1;
           i + j;
         }
-      `)).toEqual(['expected int, actual byte']);
+      `)).toEqual(['expected num, actual byte']);
     });
 
     test('struct wrong type', () => {
@@ -580,11 +580,11 @@ describe('QLLC typechecking', () => {
       `);
     });
 
-    test('contextual int', () => {
+    test('contextual num', () => {
       expectValid(`
-        type int = byte;
-        function main(): int {
-          var i: int = 0;
+        type num = byte;
+        function main(): num {
+          var i: num = 0;
           return i;
         }
       `)
@@ -1799,8 +1799,8 @@ describe('QLLC end-to-end', () => {
 
   test('sizeof Point', () => {
     return expectRunToBe(2, `
-      type int = byte;
-      type Point = struct { x: int; y: int; };
+      type num = byte;
+      type Point = struct { x: num; y: num; };
       function main(): byte {
         return sizeof Point;
       }
@@ -1809,8 +1809,8 @@ describe('QLLC end-to-end', () => {
 
   test('sizeof Point3D', () => {
     return expectRunToBe(3, `
-      type int = byte;
-      type Point3D = struct { x: int; y: int; z: int; };
+      type num = byte;
+      type Point3D = struct { x: num; y: num; z: num; };
       function main(): byte {
         return sizeof Point3D;
       }
@@ -1819,8 +1819,8 @@ describe('QLLC end-to-end', () => {
 
   test('sizeof nested struct', () => {
     return expectRunToBe(6, `
-      type int = byte;
-      type Point3D = struct { x: int; y: int; z: int; };
+      type num = byte;
+      type Point3D = struct { x: num; y: num; z: num; };
       type Pair = struct { left: Point3D; right: Point3D; };
       function main(): byte {
         return sizeof Pair;

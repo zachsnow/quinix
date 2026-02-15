@@ -6,6 +6,7 @@
  *   @expect: <number>       - expected return value (decimal or hex)
  *   @expect-error: <string> - expected compilation/assembly error substring
  *   @libs: <names>          - comma-separated library names (per-language)
+ *   @stdout: "string"        - expected stdout output (supports \n, \\, \")
  *   @cycles: <number>       - VM cycle budget
  *   @skip                   - skip this test
  *   @skip: <reason>         - skip with reason
@@ -17,6 +18,8 @@ import path from 'path';
 import { VM } from '@/vm/vm';
 import { LowLevelProgram } from '@/lowlevel/lowlevel';
 import { AssemblyProgram } from '@/assembly/assembly';
+import { TimerPeripheral, ClockPeripheral } from '@/vm/peripherals';
+import { DebugBreakPeripheral, DebugOutputPeripheral } from '@/platform/server/peripherals';
 import { getStdLib, getBareEntrypoint, getAllocator } from '@test/helpers';
 
 const ROOT_DIR = path.resolve(__dirname, '..', '..');
@@ -26,10 +29,33 @@ const ROOT_DIR = path.resolve(__dirname, '..', '..');
 interface TestDirectives {
   expect?: number;
   expectError?: string;
+  stdout?: string;
   libs: Set<string>;
   cycles: number;
   skip: boolean;
   skipReason?: string;
+}
+
+function parseQuotedString(raw: string): string {
+  if (!raw.startsWith('"') || !raw.endsWith('"')) {
+    throw new Error(`@stdout value must be quoted: ${raw}`);
+  }
+  let result = '';
+  for (let i = 1; i < raw.length - 1; i++) {
+    if (raw[i] === '\\') {
+      i++;
+      switch (raw[i]) {
+        case 'n': result += '\n'; break;
+        case 't': result += '\t'; break;
+        case '\\': result += '\\'; break;
+        case '"': result += '"'; break;
+        default: result += '\\' + raw[i]; break;
+      }
+    } else {
+      result += raw[i];
+    }
+  }
+  return result;
 }
 
 function parseDirectives(source: string, commentPrefix: string, defaultCycles: number): TestDirectives | null {
@@ -71,6 +97,13 @@ function parseDirectives(source: string, commentPrefix: string, defaultCycles: n
       continue;
     }
 
+    const stdoutMatch = comment.match(/^@stdout:\s*(".*")$/);
+    if (stdoutMatch) {
+      directives.stdout = parseQuotedString(stdoutMatch[1]);
+      hasDirective = true;
+      continue;
+    }
+
     const libsMatch = comment.match(/^@libs:\s*(.+)$/);
     if (libsMatch) {
       for (const lib of libsMatch[1].split(',').map(s => s.trim())) {
@@ -93,11 +126,16 @@ function parseDirectives(source: string, commentPrefix: string, defaultCycles: n
 
 // === Per-language run functions ===
 
+interface RunResult {
+  result: number | string;
+  output: string;
+}
+
 function runQLL(
   source: string,
   filename: string,
   directives: TestDirectives,
-): Promise<number | string> {
+): Promise<RunResult> {
   try {
     const libs: LowLevelProgram[] = [];
     if (directives.libs.has('std')) {
@@ -111,7 +149,7 @@ function runQLL(
     const typeErrors = program.typecheck().errors;
 
     if (typeErrors.length) {
-      return Promise.resolve(typeErrors.map(e => e.text).join('\n'));
+      return Promise.resolve({ result: typeErrors.map(e => e.text).join('\n'), output: '' });
     }
 
     const entrypoint = getBareEntrypoint();
@@ -119,16 +157,27 @@ function runQLL(
     const [messages, binary] = combined.assemble();
 
     if (!binary) {
-      return Promise.resolve(messages.errors.map(e => e.text).join('\n'));
+      return Promise.resolve({ result: messages.errors.map(e => e.text).join('\n'), output: '' });
     }
 
-    const vm = new VM({ cycles: directives.cycles });
-    return vm.run(binary.encode());
+    const debugOutput = new DebugOutputPeripheral();
+    const peripherals = [
+      new TimerPeripheral(),
+      new ClockPeripheral(),
+      new DebugBreakPeripheral(),
+      debugOutput,
+    ];
+
+    const vm = new VM({ cycles: directives.cycles, peripherals });
+    return vm.run(binary.encode()).then(
+      result => ({ result, output: debugOutput.output.replace(/\0+$/, '') }),
+      (e: any) => ({ result: e.message ?? String(e), output: debugOutput.output.replace(/\0+$/, '') }),
+    );
   } catch (e: any) {
     const msg = e.location
       ? `${e.location.filename}(${e.location.start.line}): ${e.message}`
       : e.message;
-    return Promise.resolve(msg);
+    return Promise.resolve({ result: msg, output: '' });
   }
 }
 
@@ -139,14 +188,14 @@ function runQASM(
   source: string,
   filename: string,
   directives: TestDirectives,
-): Promise<number | string> {
+): Promise<RunResult> {
   try {
     const programs: AssemblyProgram[] = [];
 
     for (const lib of directives.libs) {
       const libPath = QASM_LIBS[lib];
       if (!libPath) {
-        return Promise.resolve(`Unknown QASM lib: ${lib}`);
+        return Promise.resolve({ result: `Unknown QASM lib: ${lib}`, output: '' });
       }
       const libSource = fs.readFileSync(path.join(ROOT_DIR, libPath), 'utf-8');
       programs.push(AssemblyProgram.parse(libSource, libPath));
@@ -157,16 +206,19 @@ function runQASM(
     const [messages, binary] = combined.assemble();
 
     if (!binary) {
-      return Promise.resolve(messages.errors.map(e => e.text).join('\n'));
+      return Promise.resolve({ result: messages.errors.map(e => e.text).join('\n'), output: '' });
     }
 
     const vm = new VM({ cycles: directives.cycles });
-    return vm.run(binary.encode());
+    return vm.run(binary.encode()).then(
+      result => ({ result, output: '' }),
+      (e: any) => ({ result: e.message ?? String(e), output: '' }),
+    );
   } catch (e: any) {
     const msg = e.location
       ? `${e.location.filename}(${e.location.start.line}): ${e.message}`
       : e.message;
-    return Promise.resolve(msg);
+    return Promise.resolve({ result: msg, output: '' });
   }
 }
 
@@ -198,7 +250,7 @@ function discoverTests(dir: string, ext: string, commentPrefix: string, defaultC
 
 // === Run tests ===
 
-type RunFn = (source: string, filename: string, directives: TestDirectives) => Promise<number | string>;
+type RunFn = (source: string, filename: string, directives: TestDirectives) => Promise<RunResult>;
 
 const TEST_SUITES: Array<{ dir: string; ext: string; commentPrefix: string; defaultCycles: number; run: RunFn }> = [
   { dir: path.join(ROOT_DIR, 'tests', 'qll'),  ext: '.qll',  commentPrefix: '//', defaultCycles: 5000, run: runQLL },
@@ -226,17 +278,22 @@ for (const suite of TEST_SUITES) {
 
       if (directives.expectError !== undefined) {
         test(file, async () => {
-          const result = await suite.run(source, file, directives);
+          const { result } = await suite.run(source, file, directives);
           expect(typeof result).toBe('string');
           expect(result as string).toContain(directives.expectError);
         });
-      } else if (directives.expect !== undefined) {
+      } else if (directives.expect !== undefined || directives.stdout !== undefined) {
         test(file, async () => {
-          const result = await suite.run(source, file, directives);
+          const { result, output } = await suite.run(source, file, directives);
           if (typeof result === 'string') {
-            throw new Error(`Expected ${directives.expect}, got error: ${result}`);
+            throw new Error(`Expected success, got error: ${result}`);
           }
-          expect(result).toBe(directives.expect);
+          if (directives.expect !== undefined) {
+            expect(result).toBe(directives.expect);
+          }
+          if (directives.stdout !== undefined) {
+            expect(output).toBe(directives.stdout);
+          }
         });
       }
     }

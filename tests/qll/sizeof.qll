@@ -1,8 +1,8 @@
 // @expect: 2
-type int = byte;
+type num = byte;
 type Point = struct {
-  x: int;
-  y: int;
+  x: num;
+  y: num;
 };
 function main(): byte {
   return sizeof Point;

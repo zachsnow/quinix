@@ -1309,6 +1309,23 @@ class VM {
           break;
         }
 
+        // Signed integer operations
+        case Operation.SLT:
+          registers[dr] = (registers[sr0] | 0) < (registers[sr1] | 0) ? 1 : 0;
+          break;
+        case Operation.SGT:
+          registers[dr] = (registers[sr0] | 0) > (registers[sr1] | 0) ? 1 : 0;
+          break;
+        case Operation.SDIV:
+          registers[dr] = ((registers[sr0] | 0) / (registers[sr1] | 0)) >>> 0;
+          break;
+        case Operation.SMOD:
+          registers[dr] = ((registers[sr0] | 0) % (registers[sr1] | 0)) >>> 0;
+          break;
+        case Operation.SAR:
+          registers[dr] = ((registers[sr0] | 0) >> (registers[sr1] & 0x1f)) >>> 0;
+          break;
+
         default:
           this.fault(FaultReason.UNIMPLEMENTED_INSTRUCTION, `unimplemented instruction: ${operation}`);
           return "continue";

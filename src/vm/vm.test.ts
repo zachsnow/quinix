@@ -667,6 +667,82 @@ describe("VM", () => {
     // - External test harness that waits for real time to pass
   });
 
+  // Signed integer operation tests
+  test("signed: slt", () => {
+    return Promise.all([
+      // positive < positive
+      expect(run(binaryOp(Operation.SLT, 1, 2))).resolves.toBe(1),
+      expect(run(binaryOp(Operation.SLT, 2, 1))).resolves.toBe(0),
+      expect(run(binaryOp(Operation.SLT, 1, 1))).resolves.toBe(0),
+      // negative < negative (-2 < -1)
+      expect(run(binaryOp(Operation.SLT, (-2 >>> 0), (-1 >>> 0)))).resolves.toBe(1),
+      expect(run(binaryOp(Operation.SLT, (-1 >>> 0), (-2 >>> 0)))).resolves.toBe(0),
+      // mixed sign: negative < positive
+      expect(run(binaryOp(Operation.SLT, (-1 >>> 0), 1))).resolves.toBe(1),
+      expect(run(binaryOp(Operation.SLT, 1, (-1 >>> 0)))).resolves.toBe(0),
+      // zero
+      expect(run(binaryOp(Operation.SLT, 0, 0))).resolves.toBe(0),
+      expect(run(binaryOp(Operation.SLT, (-1 >>> 0), 0))).resolves.toBe(1),
+      expect(run(binaryOp(Operation.SLT, 0, (-1 >>> 0)))).resolves.toBe(0),
+    ]);
+  });
+
+  test("signed: sgt", () => {
+    return Promise.all([
+      expect(run(binaryOp(Operation.SGT, 2, 1))).resolves.toBe(1),
+      expect(run(binaryOp(Operation.SGT, 1, 2))).resolves.toBe(0),
+      expect(run(binaryOp(Operation.SGT, 1, 1))).resolves.toBe(0),
+      // negative > negative (-1 > -2)
+      expect(run(binaryOp(Operation.SGT, (-1 >>> 0), (-2 >>> 0)))).resolves.toBe(1),
+      expect(run(binaryOp(Operation.SGT, (-2 >>> 0), (-1 >>> 0)))).resolves.toBe(0),
+      // mixed sign: positive > negative
+      expect(run(binaryOp(Operation.SGT, 1, (-1 >>> 0)))).resolves.toBe(1),
+      expect(run(binaryOp(Operation.SGT, (-1 >>> 0), 1))).resolves.toBe(0),
+    ]);
+  });
+
+  test("signed: sdiv", () => {
+    return Promise.all([
+      // positive / positive
+      expect(run(binaryOp(Operation.SDIV, 7, 2))).resolves.toBe(3),
+      expect(run(binaryOp(Operation.SDIV, 6, 3))).resolves.toBe(2),
+      // negative / positive: -7 / 2 = -3
+      expect(run(binaryOp(Operation.SDIV, (-7 >>> 0), 2))).resolves.toBe((-3 >>> 0)),
+      // positive / negative: 7 / -2 = -3
+      expect(run(binaryOp(Operation.SDIV, 7, (-2 >>> 0)))).resolves.toBe((-3 >>> 0)),
+      // negative / negative: -7 / -2 = 3
+      expect(run(binaryOp(Operation.SDIV, (-7 >>> 0), (-2 >>> 0)))).resolves.toBe(3),
+    ]);
+  });
+
+  test("signed: smod", () => {
+    return Promise.all([
+      // positive % positive
+      expect(run(binaryOp(Operation.SMOD, 7, 3))).resolves.toBe(1),
+      // negative % positive: -7 % 3 = -1
+      expect(run(binaryOp(Operation.SMOD, (-7 >>> 0), 3))).resolves.toBe((-1 >>> 0)),
+      // positive % negative: 7 % -3 = 1
+      expect(run(binaryOp(Operation.SMOD, 7, (-3 >>> 0)))).resolves.toBe(1),
+      // negative % negative: -7 % -3 = -1
+      expect(run(binaryOp(Operation.SMOD, (-7 >>> 0), (-3 >>> 0)))).resolves.toBe((-1 >>> 0)),
+    ]);
+  });
+
+  test("signed: sar", () => {
+    return Promise.all([
+      // positive: arithmetic shift right same as logical
+      expect(run(binaryOp(Operation.SAR, 0x100, 4))).resolves.toBe(0x10),
+      expect(run(binaryOp(Operation.SAR, 0x80, 1))).resolves.toBe(0x40),
+      // negative: sign bit propagates (0x80000000 >> 1 = 0xC0000000)
+      expect(run(binaryOp(Operation.SAR, 0x80000000, 1))).resolves.toBe(0xC0000000),
+      // -1 >> any = -1
+      expect(run(binaryOp(Operation.SAR, 0xFFFFFFFF, 1))).resolves.toBe(0xFFFFFFFF),
+      expect(run(binaryOp(Operation.SAR, 0xFFFFFFFF, 31))).resolves.toBe(0xFFFFFFFF),
+      // shift by 0
+      expect(run(binaryOp(Operation.SAR, 0xDEADBEEF, 0))).resolves.toBe(0xDEADBEEF),
+    ]);
+  });
+
   test("arithmetic: <<", () => {
     return Promise.all([
       // Zero shift

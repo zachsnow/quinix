@@ -62,7 +62,7 @@ describe('Types', () => {
   describe('Equality / Conversion', () => {
     test('identifier equality', () => {
       const ns = new NamespaceDeclaration('global', [
-        new TypeDeclaration('int', Type.Byte),
+        new TypeDeclaration('num', Type.Byte),
         ...NamespaceDeclaration.builtins,
       ]);
       const context = new TypeChecker(ns);
@@ -72,7 +72,7 @@ describe('Types', () => {
       expect(kindcheck('void').isEqualTo(kindcheck('void'))).toBe(true);
       expect(kindcheck('bool').isEqualTo(kindcheck('bool'))).toBe(true);
       expect(kindcheck('string').isEqualTo(kindcheck('string'))).toBe(true);
-      expect(kindcheck('int', context).isEqualTo(kindcheck('int', context))).toBe(true);
+      expect(kindcheck('num', context).isEqualTo(kindcheck('num', context))).toBe(true);
 
       // Not equal nominal binding.
       expect(kindcheck('byte').isEqualTo(kindcheck('bool'))).toBe(false);
@@ -81,8 +81,8 @@ describe('Types', () => {
       expect(kindcheck('byte[]').isEqualTo(kindcheck('string'))).toBe(false);
       expect(kindcheck('string').isEqualTo(kindcheck('byte[]'))).toBe(false);
 
-      expect(kindcheck('byte').isEqualTo(kindcheck('int', context))).toBe(false);
-      expect(kindcheck('int', context).isEqualTo(kindcheck('byte'))).toBe(false);
+      expect(kindcheck('byte').isEqualTo(kindcheck('num', context))).toBe(false);
+      expect(kindcheck('num', context).isEqualTo(kindcheck('byte'))).toBe(false);
     });
 
     test('identifier ', () => {
@@ -223,20 +223,20 @@ describe('Types', () => {
   });
 
   describe('Kindchecking', () => {
-    test('invalid recursive type: type int = int', () => {
+    test('invalid recursive type: type num = num', () => {
       const ns = new NamespaceDeclaration('global', [
-        new TypeDeclaration('int', parse('int')),
+        new TypeDeclaration('num', parse('num')),
         ...NamespaceDeclaration.builtins,
       ]);
       const context = new TypeChecker(ns);
       ns.kindcheck(context);
-      expect(context.errors[0].text).toBe(`recursive type int`);
+      expect(context.errors[0].text).toBe(`recursive type num`);
     });
 
-    test('invalid recursive type: type int = number; type number = int;', () => {
+    test('invalid recursive type: type num = number; type number = num;', () => {
       const ns = new NamespaceDeclaration('global', [
-        new TypeDeclaration('number', parse('int')),
-        new TypeDeclaration('int', parse('number')),
+        new TypeDeclaration('number', parse('num')),
+        new TypeDeclaration('num', parse('number')),
       ]);
       const context = new TypeChecker(ns);
       ns.kindcheck(context);
@@ -244,60 +244,60 @@ describe('Types', () => {
       expect(context.errors[0].text).toBe(`recursive type number`);
     });
 
-    test('invalid recursive type: type int = * int', () => {
+    test('invalid recursive type: type num = * num', () => {
       const ns = new NamespaceDeclaration('global', [
-        new TypeDeclaration('int', parse('* int')),
+        new TypeDeclaration('num', parse('* num')),
         ...NamespaceDeclaration.builtins,
       ]);
       const context = new TypeChecker(ns);
       ns.kindcheck(context);
-      expect(context.errors[0].text).toBe(`recursive type int`);
+      expect(context.errors[0].text).toBe(`recursive type num`);
     });
 
-    test('invalid recursive type: type int = * number; type number = int;', () => {
+    test('invalid recursive type: type num = * number; type number = num;', () => {
       const ns = new NamespaceDeclaration('global', [
-        new TypeDeclaration('int', parse('* number')),
-        new TypeDeclaration('number', parse('* int')),
+        new TypeDeclaration('num', parse('* number')),
+        new TypeDeclaration('number', parse('* num')),
         ...NamespaceDeclaration.builtins,
       ]);
       const context = new TypeChecker(ns);
       ns.kindcheck(context);
       // Only one error is generated due to early return after first kindcheck
-      expect(context.errors[0].text).toBe(`recursive type int`);
+      expect(context.errors[0].text).toBe(`recursive type num`);
     });
 
-    test('invalid recursive type: type int = struct { x: int; }', () => {
+    test('invalid recursive type: type num = struct { x: num; }', () => {
       const ns = new NamespaceDeclaration('global', [
-        new TypeDeclaration('int', parse('struct { x: int; }')),
+        new TypeDeclaration('num', parse('struct { x: num; }')),
         ...NamespaceDeclaration.builtins,
       ]);
       const context = new TypeChecker(ns);
       ns.kindcheck(context);
-      expect(context.errors[0].text).toBe(`recursive type int`);
+      expect(context.errors[0].text).toBe(`recursive type num`);
     });
 
-    test('invalid recursive type: type int = int[] (requires struct wrapper)', () => {
+    test('invalid recursive type: type num = num[] (requires struct wrapper)', () => {
       const ns = new NamespaceDeclaration('global', [
-        new TypeDeclaration('int', parse('int[]')),
+        new TypeDeclaration('num', parse('num[]')),
         ...NamespaceDeclaration.builtins,
       ]);
       const context = new TypeChecker(ns);
       ns.kindcheck(context);
-      expect(context.errors[0].text).toBe(`recursive type int`);
+      expect(context.errors[0].text).toBe(`recursive type num`);
     });
 
-    test('valid recursive type: type int = struct { x: int[]; }', () => {
+    test('valid recursive type: type num = struct { x: num[]; }', () => {
       const ns = new NamespaceDeclaration('global', [
-        new TypeDeclaration('int', parse('struct { x: int[]; }')),
+        new TypeDeclaration('num', parse('struct { x: num[]; }')),
       ]);
       const context = new TypeChecker(ns);
       ns.kindcheck(context);
       expect(context.errors.length).toBe(0);
     });
 
-    test('valid recursive type: type int = struct { x: * int; }', () => {
+    test('valid recursive type: type num = struct { x: * num; }', () => {
       const ns = new NamespaceDeclaration('global', [
-        new TypeDeclaration('int', parse('struct { x: * int; }')),
+        new TypeDeclaration('num', parse('struct { x: * num; }')),
       ]);
       const context = new TypeChecker(ns);
       ns.kindcheck(context);
@@ -360,16 +360,16 @@ describe('Types', () => {
       const dec = new TemplateTypeDeclaration('t', ['A', 'B'], parse('(A, * B) => B'));
       const ns = new NamespaceDeclaration('global', [
         dec,
-        new TypeDeclaration('int', Type.Byte),
+        new TypeDeclaration('num', Type.Byte),
       ]);
 
       const context = new TypeChecker(ns);
       ns.kindcheck(context);
 
-      const int = parse('int');
-      int.kindcheck(context, new KindChecker());
+      const num = parse('num');
+      num.kindcheck(context, new KindChecker());
 
-      expect(dec.type.instantiate(context, new KindChecker(), [ Type.Byte, int ]).toString()).toBe('(byte, * int) => int');
+      expect(dec.type.instantiate(context, new KindChecker(), [ Type.Byte, num ]).toString()).toBe('(byte, * num) => num');
 
     });
   });

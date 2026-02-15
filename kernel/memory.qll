@@ -16,9 +16,9 @@ namespace kernel::memory {
   // Logging helper: print a hex number.
   function log_hex(n: byte): void {
     var buf: byte[12];
-    std::str::utoa(n, buf, 16);
+    var s = std::str::utoa(n, buf, 16);
     std::console::print("0x");
-    std::console::print(buf);
+    std::console::print(s);
   }
 
   type flags = byte;

@@ -181,11 +181,12 @@ namespace std {
       }
     }
 
-    function ntoa(number: byte, buffer: string, base: byte, allowNegative: bool): bool {
+    function ntoa(number: byte, buffer: string, base: byte, allowNegative: bool): string {
       len buffer = cap buffer;
 
       if (cap buffer < 1) {
-        return false;
+        len buffer = 0;
+        return buffer;
       }
 
       var negative = false;
@@ -203,7 +204,8 @@ namespace std {
         i = i + 1;
 
         if (i >= len buffer) {
-          return false;
+          len buffer = 0;
+          return buffer;
         }
 
         number = number / base;
@@ -218,7 +220,8 @@ namespace std {
       // Sign.
       if (negative) {
         if (i >= len buffer) {
-          return false;
+          len buffer = 0;
+          return buffer;
         }
         buffer[i] = 45;
         i = i + 1;
@@ -226,14 +229,14 @@ namespace std {
 
       len buffer = i;
       reverse(buffer);
-      return true;
+      return buffer;
     }
 
-    function itoa(number: byte, buffer: string, base: byte): bool {
+    function itoa(number: byte, buffer: string, base: byte): string {
       return ntoa(number, buffer, base, true);
     }
 
-    function utoa(number: byte, buffer: string, base: byte): bool {
+    function utoa(number: byte, buffer: string, base: byte): string {
       return ntoa(number, buffer, base, false);
     }
 
@@ -361,22 +364,25 @@ namespace std {
       for (var i = 0; i < len formats; i = i + 1) {
         var f = formats[i];
         if (f.fmt_type == fmt_type::U) {
-          if (!str::utoa(f.n, buffer, f.base || 10)) {
+          var s = str::utoa(f.n, buffer, f.base || 10);
+          if (len s == 0) {
             return false;
           }
-          console::print(buffer);
+          console::print(s);
         }
         else if (f.fmt_type == fmt_type::I) {
-          if (!str::itoa(f.n, buffer, f.base || 10)) {
+          var s = str::itoa(f.n, buffer, f.base || 10);
+          if (len s == 0) {
             return false;
           }
-          console::print(buffer);
+          console::print(s);
         }
         else if (f.fmt_type == fmt_type::P) {
-          if (!str::utoa(<unsafe byte>f.p, buffer, f.base || 16)) {
+          var s = str::utoa(<unsafe byte>f.p, buffer, f.base || 16);
+          if (len s == 0) {
             return false;
           }
-          console::print(buffer);
+          console::print(s);
         }
         else if (f.fmt_type == fmt_type::S) {
           console::print(f.s);

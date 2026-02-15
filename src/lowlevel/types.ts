@@ -122,7 +122,7 @@ abstract class Type extends Syntax {
    * @param context the context in which to resolve type names.
    */
   public get numeric(): boolean {
-    return this.isConvertibleTo(Type.Byte) || this.isConvertibleTo(Type.Float);
+    return this.isConvertibleTo(Type.Byte) || this.isConvertibleTo(Type.Int) || this.isConvertibleTo(Type.Float);
   }
 
   /**
@@ -130,6 +130,13 @@ abstract class Type extends Syntax {
    */
   public get isFloat(): boolean {
     return this.isConvertibleTo(Type.Float);
+  }
+
+  /**
+   * Whether this type is a signed integer type.
+   */
+  public get isSigned(): boolean {
+    return this.isConvertibleTo(Type.Int);
   }
 
   /**
@@ -179,7 +186,7 @@ class TypedIdentifier {
   }
 }
 
-const Builtins = ['byte', 'float', 'void', '<error>'] as const;
+const Builtins = ['byte', 'int', 'float', 'void', '<error>'] as const;
 type Builtin = (typeof Builtins)[number];
 
 
@@ -1254,6 +1261,7 @@ namespace Type {
   // Builtins.
   export const Void = new BuiltinType('void');
   export const Byte = new BuiltinType('byte');
+  export const Int = new BuiltinType('int');
   export const Float = new BuiltinType('float');
   export const Error = new BuiltinType('<error>');
 }

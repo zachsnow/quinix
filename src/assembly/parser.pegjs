@@ -64,6 +64,11 @@ BinaryUpdateOperation
   / "feq" { return Operation.FEQ; }
   / "flt" { return Operation.FLT; }
   / "fgt" { return Operation.FGT; }
+  / "slt" { return Operation.SLT; }
+  / "sgt" { return Operation.SGT; }
+  / "sdiv" { return Operation.SDIV; }
+  / "smod" { return Operation.SMOD; }
+  / "sar" { return Operation.SAR; }
 
 UnaryUpdateOperation
   = "load" { return Operation.LOAD; }

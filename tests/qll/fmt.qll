@@ -1,4 +1,5 @@
 // @expect: 1
+// @stdout: "x=42\n"
 // @libs: std
 // @cycles: 500000
 function main(): byte {
