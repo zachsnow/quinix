@@ -181,6 +181,10 @@ function printResult(name: string, result: BenchResult, entry: BaselineEntry | u
   console.log();
 }
 
+function bestOf(results: BenchResult[]): BenchResult {
+  return results.reduce((a, b) => a.timeMs < b.timeMs ? a : b);
+}
+
 async function run() {
   const baseline = loadCommittedBaseline();
   if (!baseline) {
@@ -189,12 +193,20 @@ async function run() {
 
   for (const name of QLL_BENCHMARKS) {
     const binary = compileBench(name);
-    const result = await runBenchmark(binary);
-    printResult(name, result, baseline?.benchmarks[name]);
+    const results: BenchResult[] = [];
+    for (let i = 0; i < BENCH_RUNS; i++) {
+      results.push(await runBenchmark(binary));
+    }
+    printResult(name, bestOf(results), baseline?.benchmarks[name]);
   }
 
-  const kernelResult = await runKernelBenchmark(KERNEL_MAX_CYCLES);
-  printResult('kernel-boot', kernelResult, baseline?.benchmarks['kernel-boot']);
+  {
+    const results: BenchResult[] = [];
+    for (let i = 0; i < BENCH_RUNS; i++) {
+      results.push(await runKernelBenchmark(KERNEL_MAX_CYCLES));
+    }
+    printResult('kernel-boot', bestOf(results), baseline?.benchmarks['kernel-boot']);
+  }
 
   process.stdin.destroy();
 }
