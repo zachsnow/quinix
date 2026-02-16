@@ -349,7 +349,7 @@ class TimerPeripheral extends Peripheral {
     }
 
     while (this.active && cycles >= this.nextTarget) {
-      log.debug(`${this.name}: interrupting at cycle ${cycles}`);
+      log.debug(() => `${this.name}: interrupting at cycle ${cycles}`);
       this.vm.interrupt(this.interrupt);
       this.nextTarget += this.cycleInterval;
     }
