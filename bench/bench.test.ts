@@ -9,24 +9,19 @@ import { describe, test, expect } from 'bun:test';
 
 import {
   KERNEL_MAX_CYCLES,
-  BENCH_RUNS,
   QLL_BENCHMARKS,
   compileBench,
   runBenchmark,
   runKernelBenchmark,
+  runBestOf,
   loadBaseline,
   type BaselineEntry,
-  type BenchResult,
 } from './bench';
 
 const TIMING_THRESHOLD = 1.2;
 
 function formatMHz(cycles: number, ms: number): string {
   return (cycles / (ms / 1000) / 1_000_000).toFixed(2);
-}
-
-function bestOf(results: BenchResult[]): BenchResult {
-  return results.reduce((a, b) => a.timeMs < b.timeMs ? a : b);
 }
 
 function assertTiming(timeMs: number, entry: BaselineEntry, name: string) {
@@ -48,12 +43,7 @@ describe('benchmarks', () => {
   for (const name of QLL_BENCHMARKS) {
     test(name, async () => {
       const binary = compileBench(name);
-
-      const results: BenchResult[] = [];
-      for (let i = 0; i < BENCH_RUNS; i++) {
-        results.push(await runBenchmark(binary));
-      }
-      const best = bestOf(results);
+      const best = await runBestOf(() => runBenchmark(binary));
 
       console.log(
         `[bench] ${name}: ${best.cycles.toLocaleString()} cycles, ` +
@@ -68,11 +58,7 @@ describe('benchmarks', () => {
   }
 
   test('kernel-boot', async () => {
-    const results: BenchResult[] = [];
-    for (let i = 0; i < BENCH_RUNS; i++) {
-      results.push(await runKernelBenchmark(KERNEL_MAX_CYCLES));
-    }
-    const best = bestOf(results);
+    const best = await runBestOf(() => runKernelBenchmark(KERNEL_MAX_CYCLES));
 
     console.log(
       `[bench] kernel-boot: ${best.cycles.toLocaleString()} cycles, ` +

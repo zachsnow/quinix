@@ -65,6 +65,24 @@ export function compileBench(name: string): Uint32Array {
   return result.binary;
 }
 
+export function bestOf(results: BenchResult[]): BenchResult {
+  return results.reduce((a, b) => a.timeMs < b.timeMs ? a : b);
+}
+
+export async function runBestOf(
+  fn: () => Promise<BenchResult>,
+  runs: number = BENCH_RUNS,
+  onRun?: (i: number, result: BenchResult) => void,
+): Promise<BenchResult> {
+  const results: BenchResult[] = [];
+  for (let i = 0; i < runs; i++) {
+    const result = await fn();
+    results.push(result);
+    onRun?.(i, result);
+  }
+  return bestOf(results);
+}
+
 export async function runBenchmark(binary: Uint32Array, maxCycles?: number): Promise<BenchResult> {
   const peripherals: Peripheral[] = [
     new TimerPeripheral(),
@@ -181,10 +199,6 @@ function printResult(name: string, result: BenchResult, entry: BaselineEntry | u
   console.log();
 }
 
-function bestOf(results: BenchResult[]): BenchResult {
-  return results.reduce((a, b) => a.timeMs < b.timeMs ? a : b);
-}
-
 async function run() {
   const baseline = loadCommittedBaseline();
   if (!baseline) {
@@ -193,25 +207,23 @@ async function run() {
 
   for (const name of QLL_BENCHMARKS) {
     const binary = compileBench(name);
-    const results: BenchResult[] = [];
-    for (let i = 0; i < BENCH_RUNS; i++) {
-      results.push(await runBenchmark(binary));
-    }
-    printResult(name, bestOf(results), baseline?.benchmarks[name]);
+    const best = await runBestOf(() => runBenchmark(binary));
+    printResult(name, best, baseline?.benchmarks[name]);
   }
 
-  {
-    const results: BenchResult[] = [];
-    for (let i = 0; i < BENCH_RUNS; i++) {
-      results.push(await runKernelBenchmark(KERNEL_MAX_CYCLES));
-    }
-    printResult('kernel-boot', bestOf(results), baseline?.benchmarks['kernel-boot']);
-  }
+  const best = await runBestOf(() => runKernelBenchmark(KERNEL_MAX_CYCLES));
+  printResult('kernel-boot', best, baseline?.benchmarks['kernel-boot']);
 
   process.stdin.destroy();
 }
 
 // === CLI: update ===
+
+function logRun(name: string) {
+  return (i: number, result: BenchResult) => {
+    console.log(`  [${i + 1}] ${result.cycles.toLocaleString()} cycles, ${result.timeMs.toFixed(1)}ms (${formatMHz(result.cycles, result.timeMs)} MHz)`);
+  };
+}
 
 async function update() {
   const benchmarks: Record<string, BaselineEntry> = {};
@@ -219,37 +231,17 @@ async function update() {
   for (const name of QLL_BENCHMARKS) {
     console.log(`\n--- ${name} ---`);
     const binary = compileBench(name);
-    const times: number[] = [];
-    let cycles = 0;
-
-    for (let i = 0; i < BENCH_RUNS; i++) {
-      const result = await runBenchmark(binary);
-      cycles = result.cycles;
-      times.push(result.timeMs);
-      console.log(`  [${i + 1}] ${result.cycles.toLocaleString()} cycles, ${result.timeMs.toFixed(1)}ms (${formatMHz(result.cycles, result.timeMs)} MHz)`);
-    }
-
-    const best = Math.min(...times);
-    benchmarks[name] = { cycles, bestMs: Math.round(best * 10) / 10 };
-    console.log(`  best: ${best.toFixed(1)}ms`);
+    const best = await runBestOf(() => runBenchmark(binary), BENCH_RUNS, logRun(name));
+    benchmarks[name] = { cycles: best.cycles, bestMs: Math.round(best.timeMs * 10) / 10 };
+    console.log(`  best: ${best.timeMs.toFixed(1)}ms`);
   }
 
   {
     const name = 'kernel-boot';
     console.log(`\n--- ${name} ---`);
-    const times: number[] = [];
-    let cycles = 0;
-
-    for (let i = 0; i < BENCH_RUNS; i++) {
-      const result = await runKernelBenchmark(KERNEL_MAX_CYCLES);
-      cycles = result.cycles;
-      times.push(result.timeMs);
-      console.log(`  [${i + 1}] ${result.cycles.toLocaleString()} cycles, ${result.timeMs.toFixed(1)}ms (${formatMHz(result.cycles, result.timeMs)} MHz)`);
-    }
-
-    const best = Math.min(...times);
-    benchmarks[name] = { cycles, bestMs: Math.round(best * 10) / 10 };
-    console.log(`  best: ${best.toFixed(1)}ms`);
+    const best = await runBestOf(() => runKernelBenchmark(KERNEL_MAX_CYCLES), BENCH_RUNS, logRun(name));
+    benchmarks[name] = { cycles: best.cycles, bestMs: Math.round(best.timeMs * 10) / 10 };
+    console.log(`  best: ${best.timeMs.toFixed(1)}ms`);
   }
 
   saveBaseline({ benchmarks });
