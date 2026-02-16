@@ -222,7 +222,7 @@ Many peripherals use a common "buffered" protocol for streaming data. The memory
 
 ### Timer (0x00000001)
 
-Hardware timer that triggers periodic interrupts.
+Hardware timer that triggers periodic interrupts. Derives timing from the VM's cycle counter at 10 MHz (10,000 cycles per millisecond), so interrupt delivery is deterministic with respect to instruction count.
 
 | Offset | Name | IO | Description |
 |--------|------|-----|-------------|
@@ -233,15 +233,27 @@ Hardware timer that triggers periodic interrupts.
 **Operation:**
 - Write milliseconds to interval to start the timer
 - Write 0 to disable the timer
-- Timer triggers interrupt 0x02 at the configured interval
+- Timer triggers interrupt 0x02 at the configured interval (in virtual time)
 
 **Example:**
 ```qasm
-; Start 100ms timer
+; Start 100ms timer (fires every 1,000,000 cycles)
 constant r0 @timer_addr
 constant r1 100
 store r0 r1
 ```
+
+---
+
+### Clock (0x00000006)
+
+Read-only millisecond clock. Reports virtual milliseconds elapsed since VM start, derived from the cycle counter at 10 MHz.
+
+| Offset | Name | IO | Description |
+|--------|------|-----|-------------|
+| 0x00 | milliseconds | No | Milliseconds since VM start (read-only) |
+
+**Operation:** Read the shared word to get the current virtual time. The value is updated at each peripheral tick (every `peripheralFrequency` instructions).
 
 ---
 

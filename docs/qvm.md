@@ -98,11 +98,12 @@ The VM executes in a loop:
 2. Translate IP through MMU with Execute flag
 3. Decode and execute instruction
 4. Advance IP (unless jump/interrupt)
-5. Periodically yield to allow peripheral async operations
+5. Every `peripheralFrequency` instructions, tick cycle-based peripherals and yield to allow async operations
+
+The `wait` instruction suspends execution until an interrupt arrives. Cycle-based peripherals (timer, clock) continue to advance during WAIT: the VM increments the cycle counter by `peripheralFrequency`, ticks peripherals, and yields in a loop until an interrupt fires.
 
 The VM halts when:
 - `halt` instruction executes (returns r0)
-- `wait` instruction executes (waits for next interrupt)
 - Unhandled fault occurs
 - Maximum cycle count exceeded
 
