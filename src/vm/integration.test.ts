@@ -297,9 +297,11 @@ describe("Integration: interrupt lifecycle", () => {
 
     expect(assembled.success).toBe(true);
 
-    const vm = new VM({ cycles: 50000 });
+    const vm = new VM({ cycles: 50_000_000 });
 
-    // Fire interrupt after a short delay to wake VM from WAIT
+    // Fire interrupt after a short delay to wake VM from WAIT.
+    // The VM idles in a cycle-advancing loop until release() yields
+    // to the event loop, allowing this setTimeout to fire.
     setTimeout(() => {
       vm.interrupt(2);
     }, 50);

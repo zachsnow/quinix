@@ -65,22 +65,18 @@ abstract class Peripheral {
   public abstract notify(address: Address): void;
 
   /**
+   * Called by the VM each yield point with the current cycle count.
+   * Peripherals that derive behavior from virtual time should
+   * implement this.
+   */
+  public tick?(cycles: number): void;
+
+  /**
    * The interrupt that this peripheral will use to communicate
    * with the VM; `0x0` means that the peripheral does not need
    * to map an interrupt.
    */
   public interrupt: Interrupt = 0x0;
-
-  /**
-   * Called by the VM each yield point with the current cycle count.
-   */
-  public tick(cycles: number): void {}
-
-  /**
-   * Returns the next cycle at which this peripheral needs to fire,
-   * or null if it has no pending cycle-based event.
-   */
-  public nextTick(): number | null { return null; }
 
   /**
    * The peripheral's interrupt handler.
@@ -359,9 +355,6 @@ class TimerPeripheral extends Peripheral {
     }
   }
 
-  public nextTick(): number | null {
-    return this.active ? this.nextTarget : null;
-  }
 }
 
 /**
@@ -490,6 +483,6 @@ class DisplayPeripheral extends Peripheral {
   }
 }
 
-export { BufferedPeripheral, ClockPeripheral, CYCLES_PER_MS, DisplayPeripheral, Peripheral, TimerPeripheral };
+export { BufferedPeripheral, ClockPeripheral, DisplayPeripheral, Peripheral, TimerPeripheral };
 export type { DisplayRenderer, PeripheralMapping };
 

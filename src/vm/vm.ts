@@ -694,7 +694,7 @@ class VM {
   private tickPeripherals(): void {
     const cycles = this.stats.cycles;
     for (const mapping of this.mappedPeripherals) {
-      mapping.peripheral.tick(cycles);
+      mapping.peripheral.tick?.(cycles);
     }
   }
 
@@ -728,27 +728,14 @@ class VM {
           }
           break;
 
-        case "wait": {
-          // Fast-forward to next cycle-based event.
-          let earliest: number | null = null;
-          for (const mapping of this.mappedPeripherals) {
-            const next = mapping.peripheral.nextTick();
-            if (next !== null && (earliest === null || next < earliest)) {
-              earliest = next;
-            }
-          }
-          if (earliest !== null) {
-            this.stats.cycles = earliest;
-            this.tickPeripherals();
-            break;
-          }
-          // No cycle-based events; wait for async interrupt.
-          log.debug("wait");
-          this.stats.waited = true;
-          this.state.waiting = true;
-          await this.nextInterrupt();
+        case "wait":
+          // Advance virtual time and tick peripherals. Cycle-based
+          // interrupts (timer) fire via tick(); async interrupts
+          // (keyboard) fire during the release() yield.
+          this.stats.cycles += this.peripheralFrequency;
+          this.tickPeripherals();
+          await release();
           break;
-        }
 
         case "halt":
           return this.state.registers[Register.R0];
